@@ -103,6 +103,13 @@ V0.0 本地检查、暂存审查、私有仓库创建/推送/SHA 核验与远程
 - `uv run --frozen python scripts/dev.py check` 最终退出 0：Ruff lint/format（50 文件）、strict mypy（37 源文件）、**56 passed / 3 lab deselected**、schema/OpenAPI/TS 一致性、ESLint/Prettier/vue-tsc、Vitest 3 项及 Vite 生产构建通过。此总入口不包含 Playwright；本轮浏览器验收由后续实际远程 CI 单独记录。
 - 当前 V0.1 仍未验收：独立端点 30 min、计划维护/中断对照、日志—报文精确对齐及独立 QC、正式 Parquet、只读运行 Web 待实现/验证。本次没有正式异常标签、检测算法结果或电力模型验收。
 
+### 修复分支与远程验证
+
+- 代码提交 `5269d1e92cae7fdf2261cf6ab90b92ba003d25b0`，`fix: preserve independent IEC 104 evidence and causal records`；已推送 `origin/fix/v01-evidence-integrity`，`git ls-remote` 与本地 SHA 一致。
+- 已创建 PR #1：https://github.com/lxxkimwoaini/pvcomm-sim/pull/1 ，base=main，head=fix/v01-evidence-integrity，状态 OPEN，未合并。仓库核验仍为 lxxkimwoaini/pvcomm-sim、PRIVATE、默认 main。
+- 该代码 SHA 的 push CI `45564634514` 与 pull_request CI `45564679157` 均实际 conclusion=success。两次均含 Ubuntu/Windows Python 和 Frontend and browser 三个成功 job，真实后端 Playwright 流程通过；CI 不执行特权 lab。
+- 本段是上述已完成运行的事后记录；随后仅文档提交的 SHA 不与代码测试 SHA 混称。暂存区检查与密钥模式扫描无匹配，无 outputs/data/PCAP/依赖环境入库，实验结束无本次 namespace 或 worker 残留。
+
 ## GitHub
 
 仓库：https://github.com/lxxkimwoaini/pvcomm-sim 。所有者 lxxkimwoaini，visibility=PRIVATE，defaultBranchRef=main，viewerPermission=ADMIN。`gh repo create pvcomm-sim --private --source=. --remote=origin --push` 实际退出 0。
