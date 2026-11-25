@@ -62,6 +62,8 @@ test('reads real evidence and replays only available observations', async ({
   )
   await page.goto('/')
   await page.getByRole('button', { name: '运行与回放' }).click()
+  await expect(page.getByRole('region', { name: '运行状态' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '跟随最新数据' })).toBeEnabled()
   await page.locator('.run-controls .el-select__wrapper').first().click()
   await page.getByRole('option', { name: new RegExp(key) }).click()
   await expect(

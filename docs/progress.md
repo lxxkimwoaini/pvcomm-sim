@@ -238,3 +238,5 @@ NetEm首轮三站4cea408运行completed，独立QC v3失败于重组归属帧（
 逐帧及c104 v2.2.1源码核对后，修正V0.3初始化/停止生命周期，详ADR0010；保留原V0.1/V0.2默认。新源码待实际逐级重验。测量脚本增加真实DOM游标/功率时间、近似绘制时间和干净代码要求，实时与回放年龄分开。预检003因重复辅助输出目录失败，记录保留；独立测量编号修正后004完成30秒真实off/live/replay，无fatal，不能作为一小时验收。Windows总check实际122普通测试、mypy80、Ruff/schema/前端质量/Vitest3/build通过；随后新增测量汇总4项单元测试通过，生命周期回归及最终总检另记。当前V0.3仍未通过。
 
 生命周期修正后的Windows完整check退出0：129 passed/10 deselected、mypy81、Ruff/format/schema、前端ESLint（仍2条缩进warning）/Prettier/vue-tsc/Vitest3/build通过，Vite817kB提示保留。首次类型检查发现单元替身lambda依赖append返回值，改为显式返回bool后通过，未删测试。该普通check不计真实协议验收。
+
+76a3d2c冻结源码`/var/lib/pvcomm/sources/v03-s7`逐级重验启动。三站120s全QC通过，P99=23.281709ms/max601.993079ms；正在十站。真实30站浏览器初轮等待选项超时，保留outputs/v03-prehour-e2e.log及失败上下文；改为先等待首次真实快照已显示、跟随按钮可用，再操作下拉框（不延长测试期限、不force点击），复验2 passed/1 skipped、22.2s。测量harness采用同一就绪边界。预检005真实30秒三时段完成、无errors，实际请求live9/replay2、API资源每阶段10样本，汇总明确acceptance=false（standalone且不足1h、无新实时功率），不冒充正式验收。

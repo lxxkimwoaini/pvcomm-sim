@@ -232,6 +232,8 @@ try {
   })
   await page.goto('http://127.0.0.1:5173')
   await page.getByRole('button', { name: '运行与回放' }).click()
+  await expect(page.getByRole('region', { name: '运行状态' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '跟随最新数据' })).toBeEnabled()
   const key = createHash('sha256').update(name).digest('hex').slice(0, 16)
   await page.locator('.run-controls .el-select__wrapper').first().click()
   await page.getByRole('option', { name: new RegExp(key) }).click()
