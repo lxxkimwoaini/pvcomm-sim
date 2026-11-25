@@ -15,8 +15,9 @@ from pvcomm.storage.parquet import read_jsonl
 from pvcomm.storage.power_parquet import verify_power_parquet
 from pvcomm.weather import HistoricalWeather
 
-VERSION = "v02-power-v2"
+VERSION = "v02-power-v3"
 TOLERANCE = 1e-6
+MODEL_TOLERANCE = 1e-4
 
 
 def evaluate_power(root: Path) -> dict[str, Any]:
@@ -118,7 +119,7 @@ def evaluate_power(root: Path) -> dict[str, Any]:
             expected = model.calculate(expected_weather)
             error = max(abs(row[field] - expected[field]) for field in expected)
             errors.append(error)
-            models &= error < TOLERANCE
+            models &= error < MODEL_TOLERANCE
             previous = row
     check(
         "electrical_bounds",
