@@ -142,3 +142,7 @@ V0.1 验收补齐启动：在 `feat/v01-acceptance` 上实施 `docs/plans/2026-1
 - 协议/对照冻结SHA0847def；QC/API/UI代码SHA60cdbae2c9ef533166952547f16ca950a47f2d76，已推送origin/feat/v01-acceptance。PR #2为OPEN、base=fix/v01-evidence-integrity，依赖PR #1，未合并。仓库仍PRIVATE、默认main。
 - 60cdbae的push CI45569491739与PR CI45569549685实际success，均4个job全部success；普通CI64项、Arrow3项、Vitest3项、浏览器2 passed/1 skipped，真实证据用例只在本地授权数据模式运行。
 - 逐门禁实测、指令和证据路径见docs/reports/2026-11-25-v01-acceptance.md。V0.1只完成协议开发验收，不代表正式物理模型、数据集或V0.4标签管线。下一任务：V0.2气象输入、物理参数与潮流模型设计和验证。此后仅文档提交单独记录，不混用代码测试SHA。
+
+## 仓库可见性变更（2026-11-25）
+
+用户明确要求改为公开仓库。核实当前账号 lxxkimwoaini 对目标仓库具有 ADMIN 权限后，`gh repo edit lxxkimwoaini/pvcomm-sim --visibility public --accept-visibility-change-consequences` 实际退出0；随后 `gh repo view` 核验 visibility=PUBLIC，地址 https://github.com/lxxkimwoaini/pvcomm-sim 。此前 PRIVATE 记录是历史状态。本次仅更新仓库设置和进度记录，diff检查通过，不涉及代码测试；未将既往CI结果算作本次文档提交的CI结果。
