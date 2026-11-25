@@ -44,6 +44,16 @@ test('reads real evidence and replays only available observations', async ({
     .trim()
     .split('\n')
     .map((line) => JSON.parse(line))
+  // Index the retained evidence once; do not rescan the hour-long log for
+  // every station/IOA or every displayed point. Assertions stay identical.
+  const bySeries = new Map<string, typeof observed>()
+  for (const row of observed) {
+    if (row.event_type !== 'master_observed_point') continue
+    const seriesKey = `${row.station_id}:${row.ioa}`
+    const rows = bySeries.get(seriesKey)
+    if (rows) rows.push(row)
+    else bySeries.set(seriesKey, [row])
+  }
   const point = observed.find(
     (row) => row.event_type === 'master_observed_point' && row.ioa === 1001,
   )
@@ -78,25 +88,26 @@ test('reads real evidence and replays only available observations', async ({
       (r) => r.event_type === 'master_observed_point' && r.ioa === 1001,
     )?.value
   expect(latestPower).toBeDefined()
+  let verifiedPoints = 0
   for (const station of latest.stations) {
     for (const measurement of station.measurements ?? []) {
-      const raw = observed.filter(
-        (r) =>
-          r.event_type === 'master_observed_point' &&
-          r.station_id === station.station_id &&
-          r.ioa === measurement.ioa,
-      )
+      const raw = bySeries.get(`${station.station_id}:${measurement.ioa}`) ?? []
       if (latest.stations.length <= 3) {
         expect(
           measurement.points.map((p: { value: number }) => p.value),
         ).toEqual(raw.slice(-600).map((r) => r.value))
       } else {
         expect(measurement.points.length).toBeLessThanOrEqual(120)
-        for (const p of measurement.points)
-          expect(raw.some((r) => r.value === p.value)).toBeTruthy()
+        const rawValues = new Set(raw.map((r) => r.value))
+        const unmatched = measurement.points.filter(
+          (p: { value: number }) => !rawValues.has(p.value),
+        )
+        expect(unmatched).toEqual([])
       }
+      verifiedPoints += measurement.points.length
     }
   }
+  console.info('Retained evidence points verified:', verifiedPoints)
   await expect(page.locator('.power-reading').first()).toContainText(
     (latest.stations[0].latest_power_kw as number).toFixed(2),
   )

@@ -31,7 +31,7 @@ def test_api_matches_cli_service(config_text: str) -> None:
     client = TestClient(create_app())
     assert client.get("/api/health").json() == {
         "status": "ok",
-        "stage": "V0.2-development",
+        "stage": "V0.3-development",
         "simulation_available": True,
         "web_run_submission_available": False,
     }

@@ -240,3 +240,15 @@ NetEm首轮三站4cea408运行completed，独立QC v3失败于重组归属帧（
 生命周期修正后的Windows完整check退出0：129 passed/10 deselected、mypy81、Ruff/format/schema、前端ESLint（仍2条缩进warning）/Prettier/vue-tsc/Vitest3/build通过，Vite817kB提示保留。首次类型检查发现单元替身lambda依赖append返回值，改为显式返回bool后通过，未删测试。该普通check不计真实协议验收。
 
 76a3d2c冻结源码`/var/lib/pvcomm/sources/v03-s7`逐级重验启动。三站120s全QC通过，P99=23.281709ms/max601.993079ms；正在十站。真实30站浏览器初轮等待选项超时，保留outputs/v03-prehour-e2e.log及失败上下文；改为先等待首次真实快照已显示、跟随按钮可用，再操作下拉框（不延长测试期限、不force点击），复验2 passed/1 skipped、22.2s。测量harness采用同一就绪边界。预检005真实30秒三时段完成、无errors，实际请求live9/replay2、API资源每阶段10样本，汇总明确acceptance=false（standalone且不足1h、无新实时功率），不冒充正式验收。
+
+### 最终逐级与一小时实测、交付一致性修正
+
+S7的3/10/20/30站全部QC通过，完整APDU分别2267/6654/12736/40855，解析率均100%；日志P99分别23.281709/3.845138/3.867107/3.788537ms，工具丢失均0、cleanup=[]。30站短运行含30秒Web预检006，不能把整个360s当无Web对照。76a3d2c的CI45618961711、29aa7e0的CI45619736287实际success，各五job成功。
+
+最终冻结29aa7e0b17c094e13692166f2ddd7fcc62d01cb0，源码/var/lib/pvcomm/sources/v03-hour-s8。最终真实回归/var/lib/pvcomm/runs/v03_final_regression_s8：断联1 passed/138.17s；V0.1协议及清理3 passed/45.05s；V0.2 90s run/parse/Arrow/QC均退出0；科学与Arrow6 passed/133 deselected/9.21s。上述实验未并行运行命名空间任务。
+
+一小时证据/var/lib/pvcomm/runs/v03_hour_s8/v03_30_normal_001，业务起点北京时间2026-11-25 21:22:08.701296625，实际3599.999549616s、completed/clean/cleanup=[]。run墙钟3637.690s（含初始化/停止），parse235.614s、独立QC223.299s、性能汇总0.632s，均退出0。333021完整APDU全部匹配；31路捕获及66个NetEm qdisc丢失0；P99=3.747593ms/max476.711026ms；90命令全部accepted_complete，物理108664样本、740次三馈线潮流/22200站点行全量重算误差0。Web三阶段真实完成，1197实时请求、238回放请求均200；9550新功率显示样本P95=1469ms/P99=1555ms/max2601ms，performance-report.web_measurement.passed=true。
+
+备份outputs/v03_hour_s8_backup共394文件、1390074210字节，复制文件逐一与原件SHA256一致，原件保留；备份清单与冻结源码tar同目录。冻结源码tar SHA256=a24c40860d717bc242e13b8924367a25eda69ff4cb5034ac2dc88315594ad7e5。正式数据集尚未发布，不将不同输出根的同名开发run_id混合。
+
+交付检查发现Health.stage及API/架构文档仍为V0.2，修正为V0.3-development并重新生成OpenAPI/TS、同步契约和UI测试；冻结运行源码未改。完整check退出0：129 passed/10 deselected，mypy81、Ruff/format/schema/前端质量/Vitest3/build通过，保留2条HTML缩进warning和817kB构建提示。最终一小时历史UI初两次综合测试触及默认30s总限：日志outputs/v03-final-real-e2e.log及-002.log，失败上下文分别复制outputs/v03-final-ui-failure-001/002。测试改为一次站点/IOA索引和每曲线聚合不匹配点断言，仍核对全部显示点，不改30s或断言语义；003实际2 passed/1 skipped、26.3s，其中真实数据操作23.4s、27183点核对。最后web-test再次退出0。该测试修正不改生产业务。最终详细报告与远程交付核验随后补齐，不进入V0.4。

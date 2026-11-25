@@ -182,10 +182,10 @@ export interface components {
             simulation_available: true;
             /**
              * Stage
-             * @default V0.2-development
+             * @default V0.3-development
              * @constant
              */
-            stage: "V0.2-development";
+            stage: "V0.3-development";
             /**
              * Status
              * @default ok

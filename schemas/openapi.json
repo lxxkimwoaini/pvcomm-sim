@@ -237,8 +237,8 @@
             "type": "boolean"
           },
           "stage": {
-            "const": "V0.2-development",
-            "default": "V0.2-development",
+            "const": "V0.3-development",
+            "default": "V0.3-development",
             "title": "Stage",
             "type": "string"
           },
