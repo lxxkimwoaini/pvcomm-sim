@@ -47,10 +47,12 @@ manifest 区分 `completed` 与 `qc_status=pending`，保存代码 SHA/dirty 标
 实验IOA扩展：1004电流A、1005 GHI W/m²、1008可用AC功率kW，均M_ME_NC_1。1006目标是接受设定值，不是实际出力；所有M2曲线仅投影master_observed_point并按available_at截断。新真值表不出现在API中，旧六表不原地修改。命令新增execution_deadline_ms（主站依据当前已收P、配置斜率、2个遥测周期计算，限制10–60s）；task_id是本地应用序列，不在IEC报文中。
 
 
-0.2-power-evidence.2追加source_ghi_w_m2与optical_transmittance，区分历史小时均值和可选灰色层模型。新目录parquet-v02-power-v2、当前QC v02-power-v5（时间精度修正，旧版报告保留）；此前v1开发证据/报告保留在原目录，可用其冻结代码核验，不覆盖或补造旧样本字段。
+0.2-power-evidence.2追加source_ghi_w_m2与optical_transmittance，区分历史小时均值和可选灰色层模型。新目录parquet-v02-power-v2、早期验收QC v02-power-v5（时间精度修正，旧版报告保留；当前版本见后文）；此前v1开发证据/报告保留在原目录，可用其冻结代码核验，不覆盖或补造旧样本字段。
 
 ## V0.3 开发点表增量（配置contract_revision=2）
 
 pvcomm-v03继承既有点表，新增M_ME_NC_1 IOA1009=站点入线loading_percent（%），1010=变压器loading_percent（%），1011=入线首端p_from（kW，上游→下游为正）。只有实际到达主站的遥测进入M2，不能按Oracle补值。原0.1/0.2 Arrow表保持版本和字段；扩展数值仍进入统一协议对象表，馈线诊断原始事件位于truth，不能作为默认观测。场景scene.json和0.3 sim_elapsed_ms不包含初始化时间，UTC/monotonic映射独立保留。
+
+兼容性标识pandapower_three_site_v02及历史QC项three_station_business_loop保留名称，0.3实际站数和馈线成员由配置确定。Health.stage=V0.3-development是API软件能力元数据，不是实验标签或数据发布版本；一小时冻结29aa7e0仍保存其运行时历史Health字符串，不篡改旧证据。正式验收结论见对应报告。
 
 当前独立核验输出为qc/v03-power-v4（V0.3）、qc/v02-power-v6（V0.2）；内部协议版本v01-evidence-v4。旧版本目录与失败证据不改写。TCP后序完整APDU在前序缺口填补后才可交付，source_frame_refs包含该依赖帧，available_at不早于其时间；packet_index仍参与与TShark的严格对账，详ADR0009。
