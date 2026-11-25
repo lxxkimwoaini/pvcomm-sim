@@ -226,7 +226,7 @@ class RunRepository:
             protocol=protocol[-100:],
             protocol_status="parsed" if protocol_path.exists() else "not_yet_parsed",
             limitations=(
-                "V0.2 开发物理仿真；历史小时均值、pvlib/pandapower，非现场校准。"
+                "V0.2 开发物理仿真；历史小时背景及可选模型扰动、pvlib/pandapower，非现场校准。"
                 "所有曲线均为主站实际收到的同链路遥测，不是独立M3或Oracle真值。"
                 if (root / "power_config.json").exists()
                 else "V0.1 协议测试模型；固定可用功率，未接入气象或潮流；功率为主站收到的遥测。"

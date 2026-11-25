@@ -129,6 +129,20 @@ def test_ack_on_different_tcp_session_is_rejected() -> None:
     assert not audit(data)[0]["passed"]
 
 
+def test_physical_shortage_uses_reachable_power_only_in_oracle_audit() -> None:
+    data = fixture()
+    for row in data[0]:
+        if row["event_type"] == "master_observed_point" and row["ioa"] == 1001:
+            row["value"] = 10.0
+    assert not any(r["passed"] for r in audit(data))
+    assert all(
+        r["passed"]
+        for r in audit_commands(
+            *data, "PV01", 1, "rtu", reachable_power=lambda target, row: min(target, 10)
+        )
+    )
+
+
 def test_repeated_action_uses_new_application_task_id() -> None:
     import threading
     from pathlib import Path

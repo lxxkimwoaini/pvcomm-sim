@@ -15,7 +15,7 @@ from pvcomm.storage.parquet import read_jsonl
 from pvcomm.storage.power_parquet import verify_power_parquet
 from pvcomm.weather import HistoricalWeather
 
-VERSION = "v02-power-v1"
+VERSION = "v02-power-v2"
 TOLERANCE = 1e-6
 
 
@@ -57,7 +57,7 @@ def evaluate_power(root: Path) -> dict[str, Any]:
             "sampling": config.weather.sampling,
         },
     )
-    bounds, ramps, models, causal = True, True, True, True
+    bounds, ramps, models, causal, timing = True, True, True, True, True
     errors = []
     for device in config.devices:
         own = sorted(
@@ -100,10 +100,20 @@ def evaluate_power(root: Path) -> dict[str, Any]:
             elapsed = (
                 datetime.fromisoformat(row["source_weather_ts"]) - config.weather.source_start
             ).total_seconds()
+            mapped_elapsed = (row["model_mono_ns"] - manifest["clock_origin"]["ts_mono_ns"]) / 1e9
+            timing &= abs(mapped_elapsed - elapsed) <= 1e-6
             expected_weather = weather.sample(elapsed)
             models &= all(
                 abs(row[field] - getattr(expected_weather, field)) <= TOLERANCE
-                for field in ("ghi_w_m2", "dni_w_m2", "dhi_w_m2", "temp_air_c", "wind_speed_m_s")
+                for field in (
+                    "ghi_w_m2",
+                    "dni_w_m2",
+                    "dhi_w_m2",
+                    "temp_air_c",
+                    "wind_speed_m_s",
+                    "source_ghi_w_m2",
+                    "optical_transmittance",
+                )
             )
             expected = model.calculate(expected_weather)
             error = max(abs(row[field] - expected[field]) for field in expected)
@@ -121,7 +131,28 @@ def evaluate_power(root: Path) -> dict[str, Any]:
         models and bool(rows),
         {"max_absolute_error": max(errors, default=None)},
     )
-    check("accepted_commands_only", causal, "setpoint transitions require terminal accepted event")
+    accepted = [r for r in terminal if r["event_type"] == "terminal_command_accepted"]
+    model_accepts = [r for r in terminal if r["event_type"] == "terminal_model_target_accepted"]
+    causal &= (
+        len(accepted)
+        == len(model_accepts)
+        == 3 * (2 + int(config.repeat_command_after_s is not None))
+    )
+    for acceptance in accepted:
+        matches = [
+            e
+            for e in model_accepts
+            if e["station_id"] == acceptance["station_id"]
+            and e["target_kw"] == acceptance["target_kw"]
+            and 0 <= acceptance["ts_mono_ns"] - e["ts_mono_ns"] < 100_000_000
+        ]
+        causal &= len(matches) == 1
+    check(
+        "accepted_commands_only",
+        causal,
+        "model acceptance must pair with actual c104 terminal acceptance",
+    )
+    check("weather_monotonic_mapping", timing, {"source_time_tolerance_s": 1e-6})
     feeder = ThreeSiteFeeder(config.feeder, tuple(d.station_id for d in config.devices))
     groups: dict[int, dict[str, Any]] = {}
     for row in flow:
@@ -144,7 +175,9 @@ def evaluate_power(root: Path) -> dict[str, Any]:
             "max_absolute_error": max(flow_error, default=None),
         },
     )
-    check("power_arrow", verify_power_parquet(root), "0.2-power-evidence; Oracle-only typed tables")
+    check(
+        "power_arrow", verify_power_parquet(root), "0.2-power-evidence.2; Oracle-only typed tables"
+    )
     protocol = evaluate_run(root)
     check("independent_protocol_evidence", protocol["passed"], protocol)
     return {
@@ -153,7 +186,8 @@ def evaluate_power(root: Path) -> dict[str, Any]:
         "checks": checks,
         "passed": all(c["passed"] for c in checks.values()),
         "limitations": (
-            "Historical hourly means; no sub-hour cloud measurement or field calibration."
+            "Historical hourly background; optional modeled optical layer; "
+            "no measured sub-hour cloud truth."
         ),
     }
 

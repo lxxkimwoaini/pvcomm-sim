@@ -1,5 +1,45 @@
 {
   "$defs": {
+    "CloudShadow": {
+      "additionalProperties": false,
+      "properties": {
+        "center_s": {
+          "exclusiveMinimum": 0,
+          "title": "Center S",
+          "type": "number"
+        },
+        "half_width_m": {
+          "exclusiveMinimum": 0,
+          "title": "Half Width M",
+          "type": "number"
+        },
+        "model": {
+          "const": "advected_grey_optical_layer",
+          "title": "Model",
+          "type": "string"
+        },
+        "optical_depth": {
+          "exclusiveMinimum": 0,
+          "maximum": 10,
+          "title": "Optical Depth",
+          "type": "number"
+        },
+        "speed_m_s": {
+          "exclusiveMinimum": 0,
+          "title": "Speed M S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model",
+        "optical_depth",
+        "half_width_m",
+        "speed_m_s",
+        "center_s"
+      ],
+      "title": "CloudShadow",
+      "type": "object"
+    },
     "DeviceConfig": {
       "additionalProperties": false,
       "properties": {
@@ -442,6 +482,17 @@
           "default": 330.63,
           "title": "Altitude M",
           "type": "number"
+        },
+        "cloud_shadow": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CloudShadow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "directory": {
           "title": "Directory",

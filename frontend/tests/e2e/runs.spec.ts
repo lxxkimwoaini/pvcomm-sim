@@ -25,13 +25,11 @@ test('reads real evidence and replays only available observations', async ({
     'requires retained real c104 evidence; never substituted with mock data',
   )
   if (!root) return
-  const key = createHash('sha256')
-    .update('v01_case_001')
-    .digest('hex')
-    .slice(0, 16)
+  const runName = process.env.PVCOMM_E2E_RUN_NAME ?? 'v01_case_001'
+  const key = createHash('sha256').update(runName).digest('hex').slice(0, 16)
   const eventPath = join(
     root,
-    'v01_case_001',
+    runName,
     'observed',
     'master_events_master.jsonl',
   )
@@ -39,6 +37,7 @@ test('reads real evidence and replays only available observations', async ({
     event_id: string
     event_type: string
     ioa?: number
+    station_id?: string
     available_at: number
     value?: number
   }[] = readFileSync(eventPath, 'utf8')
@@ -67,7 +66,28 @@ test('reads real evidence and replays only available observations', async ({
     page.getByRole('heading', { name: '三站通信拓扑' }),
   ).toBeVisible()
   await expect(page.locator('.topology-cards .station-card')).toHaveCount(3)
-  await expect(page.locator('.power-reading').first()).toContainText('72.00')
+  const latestPower = [...observed]
+    .reverse()
+    .find(
+      (r) => r.event_type === 'master_observed_point' && r.ioa === 1001,
+    )?.value
+  expect(latestPower).toBeDefined()
+  for (const station of latest.stations) {
+    for (const measurement of station.measurements ?? []) {
+      const raw = observed.filter(
+        (r) =>
+          r.event_type === 'master_observed_point' &&
+          r.station_id === station.station_id &&
+          r.ioa === measurement.ioa,
+      )
+      expect(measurement.points.map((p: { value: number }) => p.value)).toEqual(
+        raw.slice(-600).map((r) => r.value),
+      )
+    }
+  }
+  await expect(page.locator('.power-reading').first()).toContainText(
+    (latest.stations[0].latest_power_kw as number).toFixed(2),
+  )
   await expect(page.locator('.power-chart canvas')).toHaveCount(2)
   const slider = page.getByRole('slider')
   await slider.focus()
@@ -76,7 +96,38 @@ test('reads real evidence and replays only available observations', async ({
   await slider.press('Home')
   await expect(page.locator('.power-reading').first()).toContainText('未知')
   await page.getByRole('button', { name: '跟随最新数据' }).click()
-  await expect(page.locator('.power-reading').first()).toContainText('72.00')
+  await expect(page.locator('.power-reading').first()).toContainText(
+    (latest.stations[0].latest_power_kw as number).toFixed(2),
+  )
+  if (runName.startsWith('v02_')) {
+    await expect(
+      page.getByRole('heading', { name: '光伏电气过程' }),
+    ).toBeVisible()
+    const received = latest.stations[0].measurements as {
+      ioa: number
+      points: { value: number }[]
+    }[]
+    for (const ioa of [1003, 1005, 1006, 1008]) {
+      const m = received.find((m) => m.ioa === ioa)
+      expect(m?.points.length).toBeGreaterThan(0)
+    }
+    const metric = page.getByRole('combobox', { name: '电气曲线指标' })
+    await page
+      .locator('.el-select')
+      .filter({ has: metric })
+      .locator('.el-select__wrapper')
+      .click()
+    await page.getByRole('option', { name: '辐照度 (W/m²)' }).click()
+    await expect(
+      page.getByRole('img', { name: '光伏电气遥测曲线' }).locator('canvas'),
+    ).toBeVisible()
+    await page
+      .locator('.el-select')
+      .filter({ has: metric })
+      .locator('.el-select__wrapper')
+      .click()
+    await page.getByRole('option', { name: '并网点线电压 (kV)' }).click()
+  }
   await page.screenshot({
     path: 'test-results/real-run-desktop.png',
     fullPage: true,

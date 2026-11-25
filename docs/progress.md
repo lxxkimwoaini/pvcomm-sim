@@ -162,3 +162,12 @@ V0.1 验收补齐启动：在 `feat/v01-acceptance` 上实施 `docs/plans/2026-1
 预检001实际失败：drvfs替换IPC文件瞬时ENOENT，manifest=failed，解析拒绝未完成运行；原目录保留。改为单写者追加完整JSONL并回归部分尾行；完整坏行仍失败。预检002实际90s completed，新增电气425行、潮流57行，真实PCAP+六表+业务独立QC通过，code_dirty=true诚实保留，不作为冻结最终验收。Arrow初次导出发现pa.bool名称错误，修复为bool_并新增读回/源哈希/拒绝覆盖测试通过；已生成六表未重建。
 
 实际普通测试91 passed/9 deselected，mypy60文件、Ruff通过；Arrow4 passed，科学2 passed（PVWatts独立公式、潮流符号/电压）；WSL真实V0.1回归3 passed/97 deselected，51.03s，持久outputs/v02_protocol_regression_001。总check最终前端结果及冻结三场景/重复同值命令/物理QC/UI还待记录。当前未宣布V0.2验收通过，不进入V0.3。
+
+## V0.2 历史三场景冻结验证及模型扰动准备（2026-11-25）
+
+- 代码 a4b7039ef2b9b657b67d7e408e6b8713ce045474，三份90s实时运行位于 outputs/v02_frozen_001，全部 completed、code_dirty=false、cleanup_errors=[]。晴朗/多云/小时边界 P0分别725/754/718包、363/378/363完整APDU、各987对象；解析率100%，四路捕获 dropped=0；日志映射P99分别50.007106/50.608219/45.546582ms。每运行9条不同task_id命令（各站限发、同值重复、解除），接受/确认/反馈与wire证据一对一通过。
+- v02-power-v1逐份独立QC通过；物理各431行，潮流60/60/57行（20/20/19次三站求解），pvlib与pandapower全量重算通过。原六表Arrow及新增Oracle表读回/哈希通过。冻结源码archive SHA256=38e8ae14db516cea3d8d2b5e1af7731f73bea7754d6b9e2010a80306e180b2d7，本地source.tar不入库。旧报告/契约不覆写。
+- c5c9464的CI45574379306实际success。b463e68的CI45577492912实际failure：遗漏提交三个配置，配置测试失败；补齐配置提交a4b7039后CI45577551377实际success，Ubuntu/Windows、Arrow、Physical models、Frontend/browser五job全部成功。没有把失败记录算作通过。
+- 本地最新check退出0：普通93 passed/9 deselected、mypy60文件、Ruff、schema/TS、ESLint/Prettier/vue-tsc、Vitest3与build通过；data4 passed/98 deselected、power2 passed/100 deselected。Vite约810kB的构建提示保留。真实V0.2 API主站测点与原始接收日志对账通过，Playwright2 passed/1 skipped（真实模式跳过空态），截图保留 outputs/v02_frozen_001/web-evidence。
+- 浏览器首次环境未同时设置PVCOMM_RUN_ROOT导致404，第二次点击隐藏的指标输入被组件外壳拦截；按trace修正为真实可见wrapper后通过，没有force或延长超时。未隐藏失败。
+- Oahu新NLR入口可下载，但原站禁止再分发与OEDI许可标记冲突，未接入/再分发；ADR0005追加实情。增加明确的灰色光学层平流模型，测试Beer–Lambert衰减和边界；它是历史小时背景上的物理简化扰动，不是实测秒级云影。当前新增source_ghi/透过率的Oracle契约0.2-power-evidence.2及QC v02-power-v2，与旧证据分目录。新模型真实运行尚待执行，暂不声明V0.2总验收通过。

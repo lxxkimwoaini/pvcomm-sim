@@ -6,7 +6,7 @@
 
 `uv sync --frozen` 安装轻量基础、dev、web 组；`uv sync --frozen --group protocol --group power` 另外安装 c104 2.2.1、pvlib 0.16.1、pandapower 3.5.6。后者在 Windows 3.11 已导入并完成 Client 构造、地外辐照计算和单母线潮流探针；不是协议或电气科研验收。pandapower 未装 numba，以 numba=False 的 CPU 路径做探针，不承诺性能。uv.lock 由 uv 解析，pnpm-lock.yaml 由 pnpm 解析。
 
-WSL2 Ubuntu 26.04 可启动，内核 6.6.87.2；默认 root、系统 Python 3.14.4、Docker daemon 29.5.2、ip/tc/make 已存在。没有 uv、tcpdump、TShark/dumpcap。Windows 原生没有 Docker/make/抓包工具。当前不创建 namespace、不修改宿主网络、不启动容器。WSL 的正式实验工具/隔离权限需在 V0.1 专项准备，不能将本机 Python 探针当作 Linux 兼容结果。
+初始化时检查：WSL2 Ubuntu 26.04 可启动，内核 6.6.87.2；默认 root、系统 Python 3.14.4、Docker daemon 29.5.2、ip/tc/make 已存在。没有 uv、tcpdump、TShark/dumpcap。Windows 原生没有 Docker/make/抓包工具。该初始化检查未创建 namespace、修改宿主网络或启动容器。WSL 的正式实验工具/隔离权限在 V0.1 专项准备中补齐，不能将本机 Python 探针当作 Linux 兼容结果。
 
 2026-11-25 已在该 Ubuntu 实例安装 tcpdump 4.99.6、TShark/Dumpcap 4.6.4、libpcap 开发包、build-essential 和 pkg-config；`apt-get update` 遇到 Docker 官方源一次 TLS reset，但 Ubuntu 官方源安装成功，Docker 源不是本次依赖。使用 Astral 安装器得到 uv 0.13.10（安装器未接受预期的 0.11.13 环境变量）；项目 Python 3.11.15 已由 uv 管理。Linux 项目环境放在仓库 `.venv-wsl/`，不覆盖 Windows `.venv`，该目录已加入 `.gitignore`。版本差异记录为环境事实，CI 仍固定 uv 0.11.13。
 
@@ -38,7 +38,7 @@ PVCOMM_ALLOW_LAB=1 .venv-wsl/bin/python -m pytest -m lab
 .venv-wsl/bin/python -m pvcomm.cli parse --run-dir outputs/new_isolated_run/v01_smoke_001
 ```
 
-`test-lab` 只负责真实协议集成测试；普通 `make test` 明确使用 `-m "not lab and not data"`。共享 checkout 中不可直接以默认 `uv run` 选择 WSL 环境；使用 `.venv-wsl/bin/python`，避免触碰 Windows `.venv`。
+`test-lab` 只负责真实协议集成测试；普通 `make test` 明确使用 `-m "not lab and not data and not power"`。共享 checkout 中不可直接以默认 `uv run` 选择 WSL 环境；使用 `.venv-wsl/bin/python`，避免触碰 Windows `.venv`。
 
 运行目录保留配置源文、有效配置、manifest、PCAP、tcpdump stderr/统计和两端应用证据。`observed/` 仅存主站记录，RTU APDU、终端事件和设备状态存 `truth/`；旧版回环记录中的混合文件不应用于研究特征。解析写新的版本目录，成功后原子提交；重跑同版本不会覆盖。取消 CLI 返回 130，保留 manifest 和部分证据。`--isolated` 的宿主路由与 namespace 清理由 lab 测试前后比对。
 
@@ -55,7 +55,7 @@ pnpm --dir frontend test:e2e
 
 普通 CI 对 Ubuntu/Windows 执行 frozen 安装、Ruff/mypy/pytest/schema；前端 job 检查锁文件、lint/格式/类型/单测/build、生成类型和 Chromium e2e。没有特权、NetEm、PCAP 或正式数据 QC。完整 CI 状态见 progress，不能由本地结果推断远程通过。
 
-main 初始提交后保持稳定，新任务使用 feat/fix/chore/docs 分支。每个验收切片更新进度、审查 diff 后 Conventional Commit，在授权私有 origin 推送；不自动合并未审核 PR。不要提交 data/outputs、PCAP、Parquet、凭据、模型权重；新增 fixture 必须记录来源/许可/测试用途。
+main 初始提交后保持稳定，新任务使用 feat/fix/chore/docs 分支。每个验收切片更新进度、审查 diff 后 Conventional Commit，在用户授权的 origin 推送（当前 PUBLIC）；不自动合并未审核 PR。不要提交 data/outputs、PCAP、Parquet、凭据、模型权重；新增 fixture 必须记录来源/许可/测试用途。
 
 ## 可选 Arrow 数据契约与真实 UI 验收
 
@@ -65,4 +65,6 @@ PowerShell 设置 PVCOMM_RUN_ROOT 与 PVCOMM_E2E_REAL_ROOT 为同一个真实验
 
 ## V0.2开发验证
 
-`uv run --frozen python scripts/dev.py power-test`运行可选科学依赖专项；data-test另含电气Arrow读回、源哈希与拒绝覆盖。普通test排除lab/data/power，CI分别安装可选组。真实运行命令见README；同路径禁止重跑。historical下载脚本只写data，保留原始响应与政策快照，不提交外部数据。新增QC为v02-power-v1，内部调用独立PCAP核验和v01-evidence-v2；旧QC不覆盖。
+`uv run --frozen python scripts/dev.py power-test`运行可选科学依赖专项；data-test另含电气Arrow读回、源哈希与拒绝覆盖。普通test排除lab/data/power，CI分别安装可选组。真实运行命令见README；同路径禁止重跑。historical下载脚本只写data，保留原始响应与政策快照，不提交外部数据。当前新增QC为v02-power-v2（此前历史三场景保留v1及其冻结源码，不以v2覆写），内部调用独立PCAP核验和v01-evidence-v2；旧QC不覆盖。
+
+真实 V0.2 浏览器验收另设置 `PVCOMM_E2E_RUN_NAME` 为运行目录名，例如 `v02_clear_001`；与两个运行根变量一起使用。新增 Oracle Arrow 契约为 `0.2-power-evidence.2`，输出 `parsed/parquet-v02-power-v2`；旧六表契约保持不变。

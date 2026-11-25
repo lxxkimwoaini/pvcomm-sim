@@ -97,6 +97,34 @@ def test_invalid_weather_is_not_filled_or_zeroed(tmp_path: Path, mutation: str) 
         HistoricalWeather(path, cfg)
 
 
+def test_advected_optical_layer_is_explicit_deterministic_and_bounded(tmp_path: Path) -> None:
+    import math
+
+    from pvcomm.config.power import CloudShadow
+
+    path, cfg = weather_fixture(tmp_path)
+    cfg = cfg.model_copy(
+        update={
+            "cloud_shadow": CloudShadow(
+                model="advected_grey_optical_layer",
+                optical_depth=1.5,
+                half_width_m=200.0,
+                speed_m_s=10.0,
+                center_s=45.0,
+            )
+        }
+    )
+    weather = HistoricalWeather(path, cfg)
+    assert weather.sample(25).optical_transmittance == 1
+    assert weather.sample(65).optical_transmittance == 1
+    center = weather.sample(45)
+    assert center.source_ghi_w_m2 == 1
+    assert center.ghi_w_m2 == pytest.approx(math.exp(-1.5))
+    assert center.temp_air_c == 1
+    assert weather.sample(45) == center
+    assert all(0 < weather.sample(t).optical_transmittance <= 1 for t in range(90))
+
+
 def test_power_config_rejects_mismatched_devices_and_non_utc() -> None:
     cfg = load_power_config(Path("configs/v0.2-clear.yaml"))
     raw = cfg.model_dump(mode="json")

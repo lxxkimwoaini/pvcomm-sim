@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.2-power-evidence",
+  "schema_version": "0.2-power-evidence.2",
   "scope": "Oracle",
   "tables": {
     "electrical_state": {
@@ -43,6 +43,10 @@
         "arrow_type": "int64",
         "nullable": false
       },
+      "optical_transmittance": {
+        "arrow_type": "float64",
+        "nullable": false
+      },
       "p_actual_kw": {
         "arrow_type": "float64",
         "nullable": false
@@ -77,6 +81,10 @@
       },
       "source": {
         "arrow_type": "string",
+        "nullable": false
+      },
+      "source_ghi_w_m2": {
+        "arrow_type": "float64",
         "nullable": false
       },
       "source_interval_start": {

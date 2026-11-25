@@ -24,7 +24,7 @@ def main() -> int:
         "v02-power.schema.json": V02Config.model_json_schema(),
         "openapi.json": create_app().openapi(),
         "v02-power-parquet.contract.json": {
-            "schema_version": "0.2-power-evidence",
+            "schema_version": "0.2-power-evidence.2",
             "scope": "Oracle",
             "tables": {
                 name: {

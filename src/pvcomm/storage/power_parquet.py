@@ -9,7 +9,7 @@ from typing import Any
 
 from pvcomm.storage.parquet import read_jsonl
 
-VERSION = "parquet-v02-power"
+VERSION = "parquet-v02-power-v2"
 ELECTRICAL_FIELDS = {
     "run_id": "string",
     "event_id": "string",
@@ -21,6 +21,8 @@ ELECTRICAL_FIELDS = {
     "source_weather_ts": "string",
     "source_interval_start": "string",
     "ghi_w_m2": "float64",
+    "source_ghi_w_m2": "float64",
+    "optical_transmittance": "float64",
     "dni_w_m2": "float64",
     "dhi_w_m2": "float64",
     "temp_air_c": "float64",
@@ -66,7 +68,7 @@ def schema(fields: dict[str, str]) -> Any:
             for name, kind in fields.items()
         ],
         metadata={
-            b"pvcomm_schema": b"0.2-power-evidence",
+            b"pvcomm_schema": b"0.2-power-evidence.2",
             b"scope": b"Oracle",
             b"units": b"P:kW,Q:kvar,S:kVA,voltage:line-line-kV,current:balanced-A,irradiance:W/m2",
             b"time": b"UTC-ns;monotonic-ns;source_weather_ts:ISO8601-UTC",

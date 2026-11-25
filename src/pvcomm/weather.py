@@ -30,6 +30,8 @@ class WeatherSample:
     dhi_w_m2: float
     temp_air_c: float
     wind_speed_m_s: float
+    source_ghi_w_m2: float = 0.0
+    optical_transmittance: float = 1.0
 
 
 class HistoricalWeather:
@@ -75,4 +77,25 @@ class HistoricalWeather:
         hour = timestamp.replace(minute=0, second=0, microsecond=0)
         if hour not in self.rows:
             raise ValueError("weather interval does not cover simulation time")
-        return WeatherSample(timestamp, hour, **self.rows[hour])
+        values = dict(self.rows[hour])
+        transmission = 1.0
+        shadow = self.config.cloud_shadow
+        if shadow is not None:
+            position = shadow.speed_m_s * (elapsed_s - shadow.center_s)
+            if abs(position) < shadow.half_width_m:
+                # A finite advected grey optical layer: Beer-Lambert I/I0=e^-tau.
+                # Smooth cosine-squared optical thickness, no random electrical data.
+                tau = (
+                    shadow.optical_depth
+                    * math.cos(math.pi * position / (2 * shadow.half_width_m)) ** 2
+                )
+                transmission = math.exp(-tau)
+            for field in ("ghi_w_m2", "dni_w_m2", "dhi_w_m2"):
+                values[field] *= transmission
+        return WeatherSample(
+            timestamp,
+            hour,
+            **values,
+            source_ghi_w_m2=self.rows[hour]["ghi_w_m2"],
+            optical_transmittance=transmission,
+        )

@@ -11,6 +11,14 @@ from pvcomm.config.lab import Positive, V01Config, V01Contract
 from pvcomm.config.service import MAX_CONFIG_BYTES, UniqueKeyLoader, check_yaml_tree
 
 
+class CloudShadow(V01Contract):
+    model: Literal["advected_grey_optical_layer"]
+    optical_depth: Annotated[float, Field(gt=0, le=10)]
+    half_width_m: Positive
+    speed_m_s: Positive
+    center_s: Positive
+
+
 class WeatherConfig(V01Contract):
     source_id: Literal["NASA_POWER_Hourly_huixian_20240601_30"]
     directory: str
@@ -20,6 +28,7 @@ class WeatherConfig(V01Contract):
     longitude: float = 113.8
     altitude_m: float = 330.63
     sampling: Literal["hourly_mean_zero_order_hold"] = "hourly_mean_zero_order_hold"
+    cloud_shadow: CloudShadow | None = None
 
     @model_validator(mode="after")
     def check_location_time(self) -> Self:
