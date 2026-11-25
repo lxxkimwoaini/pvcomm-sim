@@ -2,14 +2,15 @@
 
 import argparse
 import json
+import signal
 import sys
 from pathlib import Path
 
 from pvcomm import __version__
 from pvcomm.config import ConfigError, config_sha256, load_config
+from pvcomm.config.lab import load_v01_config, v01_config_sha256
 from pvcomm.logging import create_logger
 from pvcomm.pipeline.iec104_parser import parse_run
-from pvcomm.scenario.v01_models import load_v01_config, v01_config_sha256
 from pvcomm.scenario.v01_runner import V01Runner
 
 
@@ -28,6 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     run = commands.add_parser("run", help="run the V0.1 real IEC 104 local lab")
     run.add_argument("--config", type=Path, required=True)
     run.add_argument("--output-root", type=Path, required=True)
+    run.add_argument("--isolated", action="store_true", help="owned Linux namespace P0/P1 lab")
     for name in ("label", "qc", "split", "features", "benchmark"):
         reserved = commands.add_parser(name, help="not implemented in V0.0")
         reserved.add_argument("arguments", nargs=argparse.REMAINDER)
@@ -54,13 +56,29 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run":
         if unknown:
             parser.error(f"unrecognized arguments: {' '.join(unknown)}")
+        previous_sigterm = signal.getsignal(signal.SIGTERM)
+
+        def request_cancellation(signum: int, frame: object) -> None:
+            raise KeyboardInterrupt("laboratory run cancelled")
+
+        signal.signal(signal.SIGTERM, request_cancellation)
         try:
             lab_config = load_v01_config(args.config)
-            run_dir = V01Runner(lab_config, args.config, args.output_root).run()
-        except (OSError, ValueError, RuntimeError, TimeoutError) as exc:
+            if args.isolated:
+                from pvcomm.scenario.isolated_runner import run_isolated
+
+                run_dir = run_isolated(lab_config, args.config, args.output_root)
+            else:
+                run_dir = V01Runner(lab_config, args.config, args.output_root).run()
+        except (OSError, ValueError, RuntimeError, TimeoutError, ImportError) as exc:
             logger = create_logger("pvcomm.cli", sys.stderr)
             logger.error(str(exc), extra={"event": "run_failed"})
             return 1
+        except KeyboardInterrupt:
+            print("run cancelled; partial evidence retained", file=sys.stderr)
+            return 130
+        finally:
+            signal.signal(signal.SIGTERM, previous_sigterm)
         print(json.dumps({"status": "completed", "run_dir": str(run_dir)}))
         return 0
     if args.command == "parse":

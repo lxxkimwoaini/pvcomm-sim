@@ -5,20 +5,24 @@ explicit Linux lab command with c104 and tcpdump installed.
 """
 
 import json
+import os
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
 
+from pvcomm.config.lab import load_v01_config
 from pvcomm.pipeline.iec104_parser import parse_run
-from pvcomm.scenario.v01_models import load_v01_config
 from pvcomm.scenario.v01_runner import V01Runner
 
 
 @pytest.mark.lab
 def test_v01_three_station_real_runtime(tmp_path: Path) -> None:
+    if os.environ.get("PVCOMM_ALLOW_LAB") != "1" or sys.platform != "linux":
+        pytest.skip("requires PVCOMM_ALLOW_LAB=1 in the authorized Linux lab")
     if shutil.which("tcpdump") is None:
-        pytest.skip("tcpdump is required for the authorized Linux lab")
+        pytest.fail("authorized lab is missing tcpdump")
     config_path = Path("configs/v0.1-lab-smoke.yaml")
     config = load_v01_config(config_path)
     run_dir = V01Runner(config, config_path, tmp_path).run()
@@ -26,6 +30,8 @@ def test_v01_three_station_real_runtime(tmp_path: Path) -> None:
     assert manifest["status"] == "completed"
     assert manifest["pcap"]["primary"]["tcpdump_returncode"] == 0
     assert manifest["pcap"]["diagnostic"]["tcpdump_returncode"] == 0
+    assert manifest["pcap"]["primary"]["statistics"]["packets_dropped_by_kernel"] == 0
+    assert not (run_dir / "observed" / "events.jsonl").exists()
     master_events = [
         json.loads(line)
         for line in (run_dir / "observed" / "master_events.jsonl").read_text().splitlines()
@@ -40,3 +46,16 @@ def test_v01_three_station_real_runtime(tmp_path: Path) -> None:
     parse_summary = parse_run(run_dir)
     assert parse_summary["apdu_count"] > 0
     assert parse_summary["object_count"] > 0
+    assert parse_summary["packet_count"] > parse_summary["apdu_count"]
+    electrical_events = [
+        json.loads(line)
+        for line in (run_dir / "truth/electrical_state.jsonl").read_text().splitlines()
+    ]
+    for station in config.stations:
+        values = [
+            row["p_actual_kw"]
+            for row in electrical_events
+            if row["station_id"] == station.station_id
+        ]
+        assert min(values) == config.command_kw
+        assert values[-1] == station.initial_setpoint_kw

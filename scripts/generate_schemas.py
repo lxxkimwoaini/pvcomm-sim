@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from pvcomm.config import FoundationConfig
+from pvcomm.config.lab import V01Config
 from pvcomm.web.app import create_app
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,6 +17,7 @@ def main() -> int:
     args = parser.parse_args()
     contracts = {
         "foundation.schema.json": FoundationConfig.model_json_schema(),
+        "v01-lab.schema.json": V01Config.model_json_schema(),
         "openapi.json": create_app().openapi(),
     }
     for name, contract in contracts.items():

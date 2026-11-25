@@ -26,17 +26,20 @@ pnpm --dir frontend dev
 
 打开终端显示的本地前端地址，粘贴 `configs/foundation.yaml` 并校验。前端通过本机 Vite 代理调用真实后端，不生成任何遥测。网页关闭不影响独立后端。
 
-有 GNU make 时可用 `make bootstrap lint typecheck test web-test web-build schemas`。Windows 没有 make 时使用等价 `uv run python scripts/dev.py <target>`，完整说明见 [开发指南](docs/development.md)。`run/parse/label/qc/split/features/benchmark` 当前明确退出 3；`test-lab` 当前退出 3，不产生通过记录。
+有 GNU make 时可用 `make bootstrap lint typecheck test web-test web-build schemas`。Windows 没有 make 时使用等价 `uv run python scripts/dev.py <target>`，完整说明见 [开发指南](docs/development.md)。`run`/`parse` 已实现实验入口；`label/qc/split/features/benchmark` 尚未实现，明确退出 3。
 
 V0.1 仅在授权的 WSL Linux 实验环境运行，使用已安装的 `.venv-wsl`：
 
 ```sh
 .venv-wsl/bin/python -m pvcomm.cli validate-lab-config --config configs/v0.1-lab-smoke.yaml
-.venv-wsl/bin/python -m pvcomm.cli run --config configs/v0.1-lab-smoke.yaml --output-root outputs
-.venv-wsl/bin/python -m pvcomm.cli parse --run-dir outputs/v01_smoke_001
+PVCOMM_ALLOW_LAB=1 .venv-wsl/bin/python -m pytest -m lab
+.venv-wsl/bin/python -m pvcomm.cli run --isolated --config configs/v0.1-lab-smoke.yaml --output-root outputs/my_first_isolated
+.venv-wsl/bin/python -m pvcomm.cli parse --run-dir outputs/my_first_isolated/v01_smoke_001
 ```
 
-冒烟配置用于短时联调；30 分钟正常运行使用 `configs/v0.1-lab-30m.yaml`。输出目录、PCAP 和解析产物默认被 Git 忽略。
+冒烟配置用于短时联调。`--isolated` 创建仅本次运行拥有的 4 个网络命名空间及 3 对 veth，无默认路由；P0 位于主站，三份 P1 分别位于 RTU。退出后清理本次资源，取消保留部分证据。省略该标志执行回环开发模式；同一个 lo 上的两份捕获不能替代 P0/P1。当前实验端口仍为 25041–25043，非正式 2404 点表模板。
+
+30 分钟开发稳定性记录已产生，但尚未满足独立端点 30 分钟、对照、QC 和只读 Web 全部门禁。解析生成 `parsed/tshark-pdml-v2/` 下的三层 JSONL，保留全部 TCP 包、多个 APDU、对象、精确时间和重组引用；不是正式 Parquet 数据集。重复 run_id 或同版本解析目录会失败，须选新的输出位置，禁止删除旧记录后重复运行。输出目录、PCAP 和解析产物默认被 Git 忽略。
 
 ## 科研与开发边界
 

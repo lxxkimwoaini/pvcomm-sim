@@ -10,6 +10,8 @@ from typing import Annotated, Literal, Self
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from pvcomm.config.service import MAX_CONFIG_BYTES, UniqueKeyLoader, check_yaml_tree
+
 Identifier = Annotated[str, Field(pattern=r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")]
 Positive = Annotated[float, Field(gt=0, allow_inf_nan=False, strict=True)]
 
@@ -27,7 +29,16 @@ class V01StationConfig(V01Contract):
     available_kw: Positive
     initial_setpoint_kw: Positive
     ramp_kw_per_s: Positive
-    telemetry_period_s: Literal[2, 5, 10]
+    reactive_kvar: Annotated[float, Field(strict=True)] = 0.0
+    voltage_kv: Positive = 0.4
+    telemetry_period_s: Annotated[int, Field(strict=True, ge=2, le=10)]
+
+    @field_validator("telemetry_period_s")
+    @classmethod
+    def check_period(cls, value: int) -> int:
+        if value not in (2, 5, 10):
+            raise ValueError("telemetry_period_s must be 2, 5 or 10")
+        return value
 
     @model_validator(mode="after")
     def check_power_bounds(self) -> Self:
@@ -45,7 +56,7 @@ class V01Config(V01Contract):
     run_id: Identifier
     seed: Annotated[int, Field(strict=True, ge=0, le=2**32 - 1)]
     host: Literal["127.0.0.1"] = "127.0.0.1"
-    capture_interface: Identifier = "lo"
+    capture_interface: Literal["lo"] = "lo"
     capture_filter: str = "tcp"
     duration_s: Annotated[int, Field(strict=True, ge=5, le=86_400)]
     warmup_s: Annotated[int, Field(strict=True, ge=1)]
@@ -75,6 +86,8 @@ class V01Config(V01Contract):
             raise ValueError("station ports must be unique")
         if len({station.common_address for station in self.stations}) != len(self.stations):
             raise ValueError("station common addresses must be unique")
+        if len({station.station_id for station in self.stations}) != len(self.stations):
+            raise ValueError("station IDs must be unique")
         for station in self.stations:
             if self.command_kw > station.available_kw:
                 raise ValueError(f"command_kw exceeds available_kw for {station.station_id}")
@@ -83,7 +96,12 @@ class V01Config(V01Contract):
 
 def load_v01_config(path: Path) -> V01Config:
     try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        with path.open("rb") as stream:
+            content = stream.read(MAX_CONFIG_BYTES + 1)
+        if len(content) > MAX_CONFIG_BYTES:
+            raise ValueError("config exceeds maximum size")
+        raw = yaml.load(content.decode("utf-8"), Loader=UniqueKeyLoader)
+        check_yaml_tree(raw)
         return V01Config.model_validate(raw)
     except (OSError, yaml.YAMLError, TypeError, ValueError) as exc:
         raise ValueError(f"invalid V0.1 config {path}: {exc}") from exc
