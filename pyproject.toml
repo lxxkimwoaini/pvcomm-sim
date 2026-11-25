@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pvcomm-sim"
+version = "0.0.1"
+description = "Research infrastructure for photovoltaic and IEC 104 co-simulation"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = ["pydantic>=2.14,<3", "PyYAML>=6.0,<7"]
+
+[project.scripts]
+pvcomm = "pvcomm.cli:main"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14,<1",
+    "mypy>=1.19,<2",
+    "pytest>=9,<10",
+    "types-PyYAML>=6,<7",
+    "jsonschema>=4.25,<5",
+    "types-jsonschema>=4,<5",
+    "httpx2>=2.16.2,<3",
+]
+web = ["fastapi>=0.120,<1", "uvicorn>=0.38,<1"]
+protocol = ["c104==2.2.1"]
+power = ["pvlib==0.16.1", "pandapower==3.5.6"]
+
+[tool.uv]
+default-groups = ["dev", "web"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pvcomm"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src", "scripts", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = ["lab: requires explicitly authorized isolated Linux resources"]

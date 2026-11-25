@@ -1,0 +1,47 @@
+# Configuration validation example only; not an executable scenario or field data.
+schema_version: '0.0'
+purpose: foundation_validation
+parameter_basis: simulation_assumption
+run_id: foundation_001
+seed: 20261125
+clock:
+  mode: realtime
+  speed: 1.0
+  duration_s: 1800
+  warmup_s: 120
+  electrical_step_s: 1
+  powerflow_step_s: 5
+regions: [region_A]
+feeders: [feeder_A]
+device_profiles:
+  - profile_id: prototype_2s
+    telemetry_period_s: 2
+    ack_deadline_s: 3
+  - profile_id: prototype_5s
+    telemetry_period_s: 5
+    ack_deadline_s: 3
+  - profile_id: prototype_10s
+    telemetry_period_s: 10
+    ack_deadline_s: 3
+stations:
+  - station_id: PV01
+    region_id: region_A
+    feeder_id: feeder_A
+    device_profile: prototype_2s
+    common_address: 1
+    capacity_kw: 30
+    rated_kva: 33
+  - station_id: PV02
+    region_id: region_A
+    feeder_id: feeder_A
+    device_profile: prototype_5s
+    common_address: 2
+    capacity_kw: 100
+    rated_kva: 110
+  - station_id: PV03
+    region_id: region_A
+    feeder_id: feeder_A
+    device_profile: prototype_10s
+    common_address: 3
+    capacity_kw: 300
+    rated_kva: 330
