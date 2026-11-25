@@ -136,6 +136,7 @@ class FeederNetwork:
             else {"F1": RadialFeeder(config.feeder, tuple(d.station_id for d in config.devices))}
         )
         self.diagnostic_rows: dict[str, dict[str, float]] = {}
+        self.multisite = isinstance(config, V03Config) and config.contract_revision >= 2
 
     def solve(self, states: dict[str, dict[str, Any]]) -> dict[str, dict[str, float]]:
         result = {}
@@ -143,4 +144,18 @@ class FeederNetwork:
         for feeder_id, model in self.models.items():
             result.update(model.solve({s: states[s] for s in model.buses}))
             self.diagnostic_rows[feeder_id] = model.diagnostics()
+            if self.multisite:
+                for station, line in model.lines.items():
+                    result[station].update(
+                        {
+                            "line_loading_percent": float(
+                                model.net.res_line.at[line, "loading_percent"]
+                            ),
+                            "transformer_loading_percent": self.diagnostic_rows[feeder_id][
+                                "transformer_loading_percent"
+                            ],
+                            "line_p_from_kw": float(model.net.res_line.at[line, "p_from_mw"])
+                            * 1000,
+                        }
+                    )
         return result

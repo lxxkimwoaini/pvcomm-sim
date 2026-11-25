@@ -192,7 +192,7 @@ class PhysicalStationState:
             raise RuntimeError("physical feeder measurement is not ready")
         if time.monotonic_ns() - voltage["solved_mono_ns"] > 10_000_000_000:
             raise RuntimeError("physical feeder measurement is stale")
-        return {
+        readings: dict[int, float | bool] = {
             1002: self.inverter.reactive_kvar,
             1003: voltage["voltage_kv"],
             1004: voltage["current_a"],
@@ -200,6 +200,15 @@ class PhysicalStationState:
             1008: self.sample["p_avail_kw"],
             2001: self.inverter.running,
         }
+        if isinstance(self.config, V03Config) and self.config.contract_revision >= 2:
+            readings.update(
+                {
+                    1009: voltage["line_loading_percent"],
+                    1010: voltage["transformer_loading_percent"],
+                    1011: voltage["line_p_from_kw"],
+                }
+            )
+        return readings
 
 
 class FeederRuntime:

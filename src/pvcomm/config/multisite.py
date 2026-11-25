@@ -13,7 +13,7 @@ class SiteConfig(V01StationConfig):
     y_m: float
     feeder_id: Identifier
     address: str = Field(pattern=r"^10\.204\.(?:[0-9]{1,3})\.(?:[0-9]{1,3})$")
-    point_table: Literal["pvcomm-v02"] = "pvcomm-v02"
+    point_table: Literal["pvcomm-v02", "pvcomm-v03"] = "pvcomm-v03"
     telemetry_phase_s: Annotated[float, Field(ge=0)] = 0.0
     deadband_fraction: Annotated[float, Field(ge=0.005, le=0.02)] = 0.01
 
@@ -54,6 +54,7 @@ class DispatchTask(V01Contract):
 
 class V03Config(V01Contract):
     schema_version: Literal["0.3"]
+    contract_revision: Literal[1, 2] = 1
     purpose: Literal["multisite_power_protocol_development"]
     parameter_basis: Literal["simulation_assumption_not_field_calibrated"]
     protocol: MultisiteProtocol
@@ -85,6 +86,8 @@ class V03Config(V01Contract):
             raise ValueError("duplicate region/feeder ID")
         addresses = set()
         for device, site in zip(self.devices, lab.stations, strict=True):
+            if site.point_table != ("pvcomm-v03" if self.contract_revision == 2 else "pvcomm-v02"):
+                raise ValueError("point table must match V0.3 contract revision")
             if site.region_id not in regions or site.feeder_id not in feeders:
                 raise ValueError("unknown region/feeder reference")
             region_index = next(

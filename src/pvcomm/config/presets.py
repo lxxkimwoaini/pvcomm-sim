@@ -10,7 +10,9 @@ from pvcomm.config.power import load_power_config
 def configuration(count: int, duration: int, *, interruption: bool = False) -> dict[str, Any]:
     baseline = load_power_config(Path("configs/v0.2-clear.yaml"))
     data = baseline.model_dump(mode="json")
-    data.update(schema_version="0.3", purpose="multisite_power_protocol_development")
+    data.update(
+        schema_version="0.3", contract_revision=2, purpose="multisite_power_protocol_development"
+    )
     data.pop("feeder")
     lab = data["protocol"]
     lab.update(

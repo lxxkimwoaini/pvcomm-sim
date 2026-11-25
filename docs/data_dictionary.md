@@ -48,3 +48,7 @@ manifest 区分 `completed` 与 `qc_status=pending`，保存代码 SHA/dirty 标
 
 
 0.2-power-evidence.2追加source_ghi_w_m2与optical_transmittance，区分历史小时均值和可选灰色层模型。新目录parquet-v02-power-v2、当前QC v02-power-v5（时间精度修正，旧版报告保留）；此前v1开发证据/报告保留在原目录，可用其冻结代码核验，不覆盖或补造旧样本字段。
+
+## V0.3 开发点表增量（配置contract_revision=2）
+
+pvcomm-v03继承既有点表，新增M_ME_NC_1 IOA1009=站点入线loading_percent（%），1010=变压器loading_percent（%），1011=入线首端p_from（kW，上游→下游为正）。只有实际到达主站的遥测进入M2，不能按Oracle补值。原0.1/0.2 Arrow表保持版本和字段；扩展数值仍进入统一协议对象表，馈线诊断原始事件位于truth，不能作为默认观测。场景scene.json和0.3 sim_elapsed_ms不包含初始化时间，UTC/monotonic映射独立保留。

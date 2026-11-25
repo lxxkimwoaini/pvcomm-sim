@@ -464,6 +464,9 @@ class C104Master:
             (1004, c104.Type.M_ME_NC_1),
             (1005, c104.Type.M_ME_NC_1),
             (1008, c104.Type.M_ME_NC_1),
+            (1009, c104.Type.M_ME_NC_1),
+            (1010, c104.Type.M_ME_NC_1),
+            (1011, c104.Type.M_ME_NC_1),
             (1006, c104.Type.M_ME_NC_1),
             (2001, c104.Type.M_SP_NA_1),
         ):

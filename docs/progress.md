@@ -199,3 +199,5 @@ V0.1 验收补齐启动：在 `feat/v01-acceptance` 上实施 `docs/plans/2026-1
 首轮冻结834a7c0真实120s断联实验：outputs/v03_prerequisite_001/test_physics_continues_without0/v03_03_disconnect_001，completed且code_dirty=false，物理持续/恢复最新值断言通过，独立QC失败于PV01终端回调少一个停止期间S帧；P0/P1报文一致且无工具丢包。失败报告prerequisite-qc.json保留，不计通过。增加rtu_stopping精确边界，QC v3单列停止调用内的入站控制帧；边界外/I帧仍拒绝的回归通过，详ADR0006。普通107 passed/10 deselected、Ruff/mypy69通过；WSL power2 passed/114 deselected。834a7c0 push CI45604695138五job实际success。下一轮独立冻结重验不覆盖001。
 
 第二轮a15824f冻结三站断联：outputs/v03_prerequisite_002/test_physics_continues_without0/v03_03_disconnect_001，真实test1 passed，143.21s；completed/code_dirty=false/cleanup=[]，物理继续、云影变化、恢复最新遥测、独立协议/物理/Arrow全部通过。第一轮失败保留。下一切片增加空间平流、每站历史背景覆盖、独立馈线诊断、周期/死区上送、分站并行命令及区域分批容量/主站可观测资源分配，新增0.3规模配置/资源采样；普通113 passed/10 deselected、mypy73、Ruff通过，真实新功能尚待逐级验证。详ADR0007。
+
+新增独立tick/空间模型/死区报告后的第三轮f9afe25真实三站断联test1 passed/146.28s，outputs/v03_prerequisite_003；仍为冻结code_dirty=false。三区独立聚合通信和物理QC通过。后续revision2增加通过真实通信进入M2的线路/变压器负载及入线功率点，保持revision1复现；普通113 passed、Ruff/mypy73通过。将基于独立冻结checkout进行3/10/20/30逐级测试，开发UI不得修改运行中的冻结源码。

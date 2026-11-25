@@ -532,8 +532,11 @@
           "type": "number"
         },
         "point_table": {
-          "const": "pvcomm-v02",
-          "default": "pvcomm-v02",
+          "default": "pvcomm-v03",
+          "enum": [
+            "pvcomm-v02",
+            "pvcomm-v03"
+          ],
           "title": "Point Table",
           "type": "string"
         },
@@ -697,6 +700,15 @@
   },
   "additionalProperties": false,
   "properties": {
+    "contract_revision": {
+      "default": 1,
+      "enum": [
+        1,
+        2
+      ],
+      "title": "Contract Revision",
+      "type": "integer"
+    },
     "devices": {
       "items": {
         "$ref": "#/$defs/DeviceConfig"

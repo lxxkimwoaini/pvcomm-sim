@@ -1,4 +1,5 @@
 schema_version: '0.3'
+contract_revision: 2
 purpose: multisite_power_protocol_development
 parameter_basis: simulation_assumption_not_field_calibrated
 protocol:
@@ -33,7 +34,7 @@ protocol:
     y_m: 0.0
     feeder_id: F1
     address: 10.204.1.2
-    point_table: pvcomm-v02
+    point_table: pvcomm-v03
     telemetry_phase_s: 0.0
     deadband_fraction: 0.01
   - station_id: PV02
@@ -51,7 +52,7 @@ protocol:
     y_m: 0.0
     feeder_id: F2
     address: 10.204.2.2
-    point_table: pvcomm-v02
+    point_table: pvcomm-v03
     telemetry_phase_s: 1.0
     deadband_fraction: 0.01
   - station_id: PV03
@@ -69,7 +70,7 @@ protocol:
     y_m: 0.0
     feeder_id: F3
     address: 10.204.3.2
-    point_table: pvcomm-v02
+    point_table: pvcomm-v03
     telemetry_phase_s: 0.0
     deadband_fraction: 0.01
 weather:
