@@ -146,9 +146,17 @@ def run_isolated(
                 root / f"raw/pcap/{name}.pcap",
                 config.capture_filter,
                 command_prefix=network.prefix(namespace),
+                native_spool=isinstance(power, V03Config),
+                immediate_mode=not isinstance(power, V03Config),
             )
             captures.append(capture)
             capture.start()
+        if isinstance(power, V03Config):
+            manifest["capture_spools"] = [str(c.active_path) for c in captures]
+            manifest["capture_persistence"] = (
+                "native_linux_spool_verified_then_persistent_run_directory"
+            )
+            save_manifest()
         rtu_processes = [
             launch(f"rtu{i}", namespace) for i, namespace in enumerate(network.rtus, start=1)
         ]
