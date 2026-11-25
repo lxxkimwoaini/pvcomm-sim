@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { ElAlert, ElButton, ElInput, ElTag } from 'element-plus'
 import { getHealth, validateConfig, type ValidationResult } from './api/client'
+import RunWorkbench from './components/RunWorkbench.vue'
 
 const serviceStatus = ref('尚未检查')
 const serviceError = ref('')
@@ -9,6 +10,7 @@ const yamlText = ref('')
 const pending = ref(false)
 const result = ref<ValidationResult | null>(null)
 const validationError = ref('')
+const page = ref<'config' | 'runs'>('config')
 
 async function refreshHealth() {
   serviceError.value = ''
@@ -51,20 +53,23 @@ onMounted(refreshHealth)
         <span class="brand-mark" aria-hidden="true">PV</span>
         <span>PVComm <small>联合仿真实验平台</small></span>
       </a>
-      <ElTag type="info" effect="plain">V0.0 · 工程基础</ElTag>
+      <ElTag type="info" effect="plain">V0.1 · 协议实验</ElTag>
     </header>
 
     <div class="workspace">
       <aside class="sidebar">
         <p class="nav-label">实验准备</p>
-        <div class="nav-current">配置校验</div>
-        <p class="phase-note">协议运行与数据监测将在 V0.1 接入。</p>
+        <button class="nav-current" @click="page = 'config'">配置校验</button>
+        <button class="nav-current" @click="page = 'runs'">运行与回放</button>
+        <p class="phase-note">
+          只读监测真实 IEC 104 实验。运行由 CLI 独立管理。
+        </p>
         <div class="mode-note">
           主实验规划<br /><strong>M2 业务感知</strong>
         </div>
       </aside>
 
-      <main>
+      <main v-if="page === 'config'">
         <div class="page-heading">
           <div>
             <p class="eyebrow">PROJECT FOUNDATION</p>
@@ -147,6 +152,7 @@ onMounted(refreshHealth)
           PVComm · 业务约束下的分布式光伏通信异常检测 · 本地科研工作台
         </footer>
       </main>
+      <main v-else><RunWorkbench /></main>
     </div>
   </div>
 </template>

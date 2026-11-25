@@ -49,6 +49,13 @@ class V01StationConfig(V01Contract):
         return self
 
 
+class InterruptionConfig(V01Contract):
+    station_id: Identifier
+    start_s: Annotated[int, Field(strict=True, ge=1)]
+    duration_s: Literal[5, 20, 60]
+    planned: bool
+
+
 class V01Config(V01Contract):
     schema_version: Literal["0.1"]
     purpose: Literal["iec104_lab"]
@@ -58,6 +65,8 @@ class V01Config(V01Contract):
     host: Literal["127.0.0.1"] = "127.0.0.1"
     capture_interface: Literal["lo"] = "lo"
     capture_filter: str = "tcp"
+    topology: Literal["loopback", "isolated"] = "loopback"
+    interruption: InterruptionConfig | None = None
     duration_s: Annotated[int, Field(strict=True, ge=5, le=86_400)]
     warmup_s: Annotated[int, Field(strict=True, ge=1)]
     command_after_s: Annotated[int, Field(strict=True, ge=1)]
@@ -82,7 +91,9 @@ class V01Config(V01Contract):
             raise ValueError("release_after_s must be less than duration_s")
         if self.command_kw <= 0:
             raise ValueError("command_kw must be positive")
-        if len({station.port for station in self.stations}) != len(self.stations):
+        if self.topology == "loopback" and len({station.port for station in self.stations}) != len(
+            self.stations
+        ):
             raise ValueError("station ports must be unique")
         if len({station.common_address for station in self.stations}) != len(self.stations):
             raise ValueError("station common addresses must be unique")
@@ -91,6 +102,17 @@ class V01Config(V01Contract):
         for station in self.stations:
             if self.command_kw > station.available_kw:
                 raise ValueError(f"command_kw exceeds available_kw for {station.station_id}")
+        if self.interruption is not None:
+            event = self.interruption
+            if self.topology != "isolated":
+                raise ValueError("interruption requires isolated topology")
+            if event.station_id not in {s.station_id for s in self.stations}:
+                raise ValueError("interruption references unknown station")
+            if (
+                event.start_s <= self.release_after_s
+                or event.start_s + event.duration_s + 10 >= self.duration_s
+            ):
+                raise ValueError("interruption requires released power and recovery observation")
         return self
 
 

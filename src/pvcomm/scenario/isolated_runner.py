@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -18,6 +19,7 @@ from pvcomm.capture.tcpdump import TcpdumpCapture
 from pvcomm.clock import ClockOrigin
 from pvcomm.config.lab import V01Config, v01_config_sha256
 from pvcomm.network.isolated import IsolatedNetwork
+from pvcomm.storage.events import RunRecorder
 
 
 def run_isolated(config: V01Config, source: Path, output_root: Path) -> Path:
@@ -71,6 +73,7 @@ def run_isolated(config: V01Config, source: Path, output_root: Path) -> Path:
     processes: list[subprocess.Popen[bytes]] = []
     logs: list[TextIO] = []
     failures: list[str] = []
+    controller = RunRecorder(root, config.run_id, suffix="_controller", origin=origin)
 
     def launch(role: str, namespace: str) -> subprocess.Popen[bytes]:
         log = (root / f"{role}.stderr.log").open("x", encoding="utf-8")
@@ -123,6 +126,8 @@ def run_isolated(config: V01Config, source: Path, output_root: Path) -> Path:
         save_manifest()
         master = launch("master", network.master)
         deadline = time.monotonic() + config.duration_s + 30
+        interrupted = False
+        resumed = False
         while master.poll() is None:
             if any(process.poll() is not None for process in processes[:-1]):
                 raise RuntimeError("RTU process exited during experiment")
@@ -130,6 +135,27 @@ def run_isolated(config: V01Config, source: Path, output_root: Path) -> Path:
                 raise RuntimeError("capture process exited during experiment")
             if time.monotonic() > deadline:
                 raise TimeoutError("master exceeded configured runtime and startup allowance")
+            event = config.interruption
+            ready = root / "master.ready"
+            if event is not None and ready.exists():
+                elapsed = time.monotonic() - float(ready.read_text(encoding="ascii"))
+                index = next(
+                    i for i, s in enumerate(config.stations) if s.station_id == event.station_id
+                )
+                worker = processes[index]
+                if elapsed >= event.start_s and not interrupted:
+                    worker.send_signal(signal.SIGUSR1)
+                    controller.record_event(
+                        "terminal_interruption_requested",
+                        {"station_id": event.station_id, "planned": event.planned},
+                    )
+                    interrupted = True
+                if elapsed >= event.start_s + event.duration_s and interrupted and not resumed:
+                    worker.send_signal(signal.SIGUSR2)
+                    controller.record_event(
+                        "terminal_recovery_requested", {"station_id": event.station_id}
+                    )
+                    resumed = True
             time.sleep(0.1)
         if master.returncode:
             raise RuntimeError(f"master returned {master.returncode}; see master.stderr.log")
@@ -173,6 +199,7 @@ def run_isolated(config: V01Config, source: Path, output_root: Path) -> Path:
                 failures.append(str(exc))
         for log in logs:
             log.close()
+        controller.close()
         try:
             network.close()
         except Exception as exc:

@@ -21,6 +21,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Runs */
+        get: operations["runs_api_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_key}/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Snapshot */
+        get: operations["snapshot_api_runs__run_key__snapshot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scenarios/validate": {
         parameters: {
             query?: never;
@@ -42,6 +76,29 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** EventView */
+        EventView: {
+            /** Action */
+            action?: string | null;
+            /** Available At */
+            available_at: string;
+            /** Event Id */
+            event_id: string;
+            /** Event Type */
+            event_type: string;
+            /** Ioa */
+            ioa?: number | null;
+            /** Positive Confirmation */
+            positive_confirmation?: boolean | null;
+            /** State */
+            state?: string | null;
+            /** Station Id */
+            station_id: string | null;
+            /** Target Kw */
+            target_kw?: number | null;
+            /** Value */
+            value?: number | boolean | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -67,6 +124,112 @@ export interface components {
              * @constant
              */
             status: "ok";
+        };
+        /** Point */
+        Point: {
+            /** Available At */
+            available_at: string;
+            /** Sim Elapsed Ms */
+            sim_elapsed_ms: number;
+            /** Value */
+            value: number;
+        };
+        /** ProtocolView */
+        ProtocolView: {
+            /** Apdu Id */
+            apdu_id: string;
+            /** Available At */
+            available_at: string;
+            /** Ca */
+            ca: number | null;
+            /** Cot */
+            cot: number | null;
+            /** Frame Type */
+            frame_type: string;
+            /** Recv Seq */
+            recv_seq: number | null;
+            /** Send Seq */
+            send_seq: number | null;
+            /** Type Id */
+            type_id: number | null;
+        };
+        /** RunList */
+        RunList: {
+            /** Runs */
+            runs?: components["schemas"]["RunSummary"][];
+        };
+        /** RunSnapshot */
+        RunSnapshot: {
+            /** Cursor Utc Ns */
+            cursor_utc_ns: string;
+            /** Events */
+            events: components["schemas"]["EventView"][];
+            /** First Available At */
+            first_available_at: string;
+            /** Last Available At */
+            last_available_at: string;
+            /**
+             * Limitations
+             * @default V0.1 协议测试模型；固定可用功率，未接入气象或潮流；功率为主站收到的遥测。
+             */
+            limitations: string;
+            /**
+             * Mode
+             * @default M2
+             * @constant
+             */
+            mode: "M2";
+            /** Protocol */
+            protocol: components["schemas"]["ProtocolView"][];
+            /**
+             * Protocol Status
+             * @enum {string}
+             */
+            protocol_status: "parsed" | "not_yet_parsed";
+            /** Run Key */
+            run_key: string;
+            /**
+             * Source
+             * @default real_c104_protocol_simulation
+             * @constant
+             */
+            source: "real_c104_protocol_simulation";
+            /** Stations */
+            stations: components["schemas"]["StationView"][];
+        };
+        /** RunSummary */
+        RunSummary: {
+            /** Run Key */
+            run_key: string;
+            /**
+             * Source
+             * @default real_c104_protocol_simulation
+             * @constant
+             */
+            source: "real_c104_protocol_simulation";
+            /** Status */
+            status: string;
+        };
+        /** StationView */
+        StationView: {
+            /** Capacity Kw */
+            capacity_kw: number;
+            /** Common Address */
+            common_address: number;
+            /** Connection State */
+            connection_state: string | null;
+            /** Latest Power Kw */
+            latest_power_kw: number | null;
+            /** Power */
+            power: components["schemas"]["Point"][];
+            /** Power Available At */
+            power_available_at: string | null;
+            /** Region Id */
+            region_id: string;
+            /** Station Id */
+            station_id: string;
+            /** Telemetry Period S */
+            telemetry_period_s: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -126,6 +289,60 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Health"];
+                };
+            };
+        };
+    };
+    runs_api_runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunList"];
+                };
+            };
+        };
+    };
+    snapshot_api_runs__run_key__snapshot_get: {
+        parameters: {
+            query?: {
+                at_ns?: number | null;
+                mode?: "M2";
+            };
+            header?: never;
+            path: {
+                run_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

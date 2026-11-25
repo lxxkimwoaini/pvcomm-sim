@@ -2,6 +2,13 @@ import type { components } from '../types/api.generated'
 
 export type Health = components['schemas']['Health']
 export type ValidationResult = components['schemas']['ValidationResult']
+export type RunList = components['schemas']['RunList']
+export type RunSnapshot = components['schemas']['RunSnapshot']
+export const getRuns = () => request<RunList>('/api/runs')
+export const getSnapshot = (key: string, atNs?: string) =>
+  request<RunSnapshot>(
+    `/api/runs/${encodeURIComponent(key)}/snapshot?mode=M2${atNs ? `&at_ns=${encodeURIComponent(atNs)}` : ''}`,
+  )
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   let response: Response

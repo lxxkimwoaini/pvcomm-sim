@@ -228,3 +228,11 @@ footer {
     flex-wrap: wrap;
   }
 }
+.sidebar button.nav-current {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  margin-bottom: 8px;
+  cursor: pointer;
+  font: inherit;
+}

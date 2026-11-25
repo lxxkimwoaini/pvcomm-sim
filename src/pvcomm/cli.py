@@ -26,11 +26,14 @@ def main(argv: list[str] | None = None) -> int:
     validate_lab.add_argument("--config", type=Path, required=True)
     parse = commands.add_parser("parse", help="parse a V0.1 PCAP with TShark")
     parse.add_argument("--run-dir", type=Path, required=True)
+    parse.add_argument("--parquet", action="store_true", help="also export versioned Arrow tables")
+    qc = commands.add_parser("qc", help="independent V0.1 raw-evidence verification")
+    qc.add_argument("--run-dir", type=Path, required=True)
     run = commands.add_parser("run", help="run the V0.1 real IEC 104 local lab")
     run.add_argument("--config", type=Path, required=True)
     run.add_argument("--output-root", type=Path, required=True)
     run.add_argument("--isolated", action="store_true", help="owned Linux namespace P0/P1 lab")
-    for name in ("label", "qc", "split", "features", "benchmark"):
+    for name in ("label", "split", "features", "benchmark"):
         reserved = commands.add_parser(name, help="not implemented in V0.0")
         reserved.add_argument("arguments", nargs=argparse.REMAINDER)
     args, unknown = parser.parse_known_args(argv)
@@ -86,12 +89,28 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(f"unrecognized arguments: {' '.join(unknown)}")
         try:
             summary = parse_run(args.run_dir)
-        except (OSError, ValueError, RuntimeError) as exc:
+            if args.parquet:
+                from pvcomm.storage.parquet import export_parquet
+
+                summary["parquet"] = export_parquet(args.run_dir)
+        except (OSError, ValueError, RuntimeError, ImportError) as exc:
             logger = create_logger("pvcomm.cli", sys.stderr)
             logger.error(str(exc), extra={"event": "parse_failed"})
             return 1
         print(json.dumps(summary, sort_keys=True))
         return 0
+    if args.command == "qc":
+        if unknown:
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}")
+        from pvcomm.qc.v01 import qc_run
+
+        try:
+            report = qc_run(args.run_dir)
+        except (OSError, ValueError, RuntimeError, ImportError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(json.dumps(report, sort_keys=True))
+        return 0 if report["passed"] else 1
     if args.command != "validate-config":
         print(f"{args.command}: not implemented in V0.0; no experiment executed", file=sys.stderr)
         return 3

@@ -1,6 +1,6 @@
 # PVComm 开发进度
 
-日期：2026-11-25（Asia/Shanghai）。当前阶段：**V0.0 通过；V0.1 已有真实独立端点短时闭环，整阶段未验收**。两个 30 分钟回环稳定性运行已完成，但不等同于独立 P0/P1 的正式验收。初始只有 AGENTS.md 和 V1.2/V1.3 方案；无既有实验。本文件只记录实际执行，不将计划标为完成。
+日期：2026-11-25（Asia/Shanghai）。当前阶段：**V0.0 通过；V0.1 首周协议开发门禁通过（2026-11-25）**。两个 30 分钟回环稳定性运行已完成，但不等同于独立 P0/P1 的正式验收。初始只有 AGENTS.md 和 V1.2/V1.3 方案；无既有实验。本文件只记录实际执行，不将计划标为完成。
 
 ## 已执行
 
@@ -112,6 +112,8 @@ V0.0 本地检查、暂存审查、私有仓库创建/推送/SHA 核验与远程
 
 ## GitHub
 
+V0.1 验收补齐启动：在 `feat/v01-acceptance` 上实施 `docs/plans/2026-11-25-v01-acceptance.md`。增加独立端点 2404 配置、实际协议参数记录和单站受控停止/恢复。普通回归 58 passed、3 lab deselected；Ruff/mypy（38 文件）通过。90 s 维护预检 `outputs/v01_pair_preflight_001/v01_case_001` 实际 completed，已观测停止、重连和恢复总召唤；该预检 code_dirty=true，不计入冻结版本正式验收。数据导出依赖 pyarrow 23.0.1 已由 uv 正常解析写入锁文件，后续单独验证。
+
 仓库：https://github.com/lxxkimwoaini/pvcomm-sim 。所有者 lxxkimwoaini，visibility=PRIVATE，defaultBranchRef=main，viewerPermission=ADMIN。`gh repo create pvcomm-sim --private --source=. --remote=origin --push` 实际退出 0。
 
 - 首次提交：`25bf8c4848d110f771af14cff20090fbefb377ea`，`chore: initialize PVComm research foundation`。
@@ -119,3 +121,28 @@ V0.0 本地检查、暂存审查、私有仓库创建/推送/SHA 核验与远程
 - `git ls-remote --heads origin main` 与首次本地 HEAD 均为上述 SHA；推送后 `git status -sb` 为 `main...origin/main`，工作区干净。
 - GitHub CI run `45539355121`：https://github.com/lxxkimwoaini/pvcomm-sim/actions/runs/45539355121 ，实际 conclusion=success；Python (ubuntu-latest)、Python (windows-latest)、Frontend and browser 三个 job 全部 success。CI 检查的代码 SHA 为上述首次提交；本验收记录随后以仅文档提交入库，避免自引用尚未产生的本提交 SHA。
 - `uv run --frozen python scripts/dev.py test-lab` 实际退出 3，提示实验 harness 尚未实现；不是通过或已执行特权测试。
+
+## V0.1 验收补齐：独立 QC、Arrow 与 M2 Web（2026-11-25）
+
+- 冻结运行提交 `0847def76bab3082f20e7535cb1b9f01c5589f42`。正常独立端点 1800s 运行在 15:10 启动，当前仍在进行，尚不标记整阶段通过。
+- 新增独立 classic-PCAP/TCP 重组、完整 APDU 与 TShark 比对、双端与回调逐字节对应、P99、6条命令确认期限及功率反馈核验。新增可选 Arrow 六表、源/产物哈希与严格 schema 核验，CLI parse --parquet 和 qc，普通 CI 新增数据契约 job。
+- 新增实际 M2 运行 API/Vue 工作台，因果纳秒游标、3站拓扑/曲线/事件/P0列表；服务端拒绝 Oracle、真值和任意路径。ADR0003记录证据边界、测试模型参数及关闭尾帧。
+- Windows `scripts/dev.py check` 实际退出0：64 passed、6 deselected；Ruff、mypy46文件、schema/TS、ESLint/Prettier/vue-tsc、Vitest3项和构建通过。`data-test` 最终3 passed；首次新增测试发现列表子字段 item/element 的严格 schema 不一致，修复显式 element 后通过。
+- 真实根 Playwright 最终2 passed/1 skipped：真实配置和保留 c104 数据流程通过，空态因真实模式跳过；含选择运行、原始数据比对、回放、390px、离线与恢复。首次点击隐藏 combobox 被可见标签遮挡，改为真实选择框外壳；移动图表 ResizeObserver 尚未完成时曾瞬时溢出，图表容器约束与等待可测尺寸后通过，未延长超时或强制点击。
+- 维护 `v01_case_001` 与中断 `v01_case_002` completed，90s；P0分别620/611包、351/349完整APDU、578/574对象，解析率100%，4路内核丢包0。日志映射P99=6.045663/3.987475ms；每运行6条命令期限内确认与实际反馈，恢复核验通过。报告实际写入各自 qc/v01-evidence-v1，重复写拒绝。
+- 维护首次全回调对应失败，经原始字节定位2条I和2条S是业务结束后的关闭尾部。ADR0003公开覆盖边界；全部帧仍留在解析分母和双端核验中，未声称全时段主站回调覆盖。
+- 原两对照 manifest code_dirty=true，未改写；source-provenance旁证核对91个快照文件与Git blob完全一致，3份运行源配置与快照一致；archive SHA256=0daf969a550c75c511ee86a310fce2ec9a3b85b7515e20de1dc7bcfb761425d7。配对共享条件一致，保留group和source组审计；均仅开发证据，不创建正式划分。
+- Vite实际构建JS约808kB，保留>500kB构建提示；尚无30站资源测试，属于V0.3范围。剩余：正常1800s解析/QC、Linux lab回归、远程CI和逐门禁总报告。
+
+## V0.1 最终门禁（2026-11-25 15:40后）
+
+- 真实独立端点1800s配置运行completed、code_dirty=false、cleanup_errors=[]，实际业务区间1799.997721735s；P0=11831包/6123完整APDU/10848对象，完整解析率100%，四路内核丢包0；三站各2041 APDU与P1/终端回调逐字节对账。
+- 正常运行parse --parquet与qc均实际退出0；P99=4.325865ms、max=208.659407ms（极端点保留）；6命令确认期限/设定值与实际反馈通过；6表类型、行数、源/产物哈希通过。机器汇总保留在outputs/v01_frozen_acceptance_001/acceptance-v01.json，原始manifest不改写。
+- WSL真协议lab回归3 passed/67 deselected，51.51s，输出outputs/v01_lab_acceptance_002；包括取消与清理。最终ip netns list为空、无worker残留；真实正常运行M2 API、最新功率及纳秒因果游标再次实测通过。
+- 协议/对照冻结SHA0847def；QC/API/UI代码SHA60cdbae2c9ef533166952547f16ca950a47f2d76，已推送origin/feat/v01-acceptance。PR #2为OPEN、base=fix/v01-evidence-integrity，依赖PR #1，未合并。仓库仍PRIVATE、默认main。
+- 60cdbae的push CI45569491739与PR CI45569549685实际success，均4个job全部success；普通CI64项、Arrow3项、Vitest3项、浏览器2 passed/1 skipped，真实证据用例只在本地授权数据模式运行。
+- 逐门禁实测、指令和证据路径见docs/reports/2026-11-25-v01-acceptance.md。V0.1只完成协议开发验收，不代表正式物理模型、数据集或V0.4标签管线。下一任务：V0.2气象输入、物理参数与潮流模型设计和验证。此后仅文档提交单独记录，不混用代码测试SHA。
+
+## 仓库可见性变更（2026-11-25）
+
+用户明确要求改为公开仓库。核实当前账号 lxxkimwoaini 对目标仓库具有 ADMIN 权限后，`gh repo edit lxxkimwoaini/pvcomm-sim --visibility public --accept-visibility-change-consequences` 实际退出0；随后 `gh repo view` 核验 visibility=PUBLIC，地址 https://github.com/lxxkimwoaini/pvcomm-sim 。此前 PRIVATE 记录是历史状态。本次仅更新仓库设置和进度记录，diff检查通过，不涉及代码测试；未将既往CI结果算作本次文档提交的CI结果。
