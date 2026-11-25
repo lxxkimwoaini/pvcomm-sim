@@ -1,5 +1,41 @@
 {
   "$defs": {
+    "InterruptionConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_s": {
+          "enum": [
+            5,
+            20,
+            60
+          ],
+          "title": "Duration S",
+          "type": "integer"
+        },
+        "planned": {
+          "title": "Planned",
+          "type": "boolean"
+        },
+        "start_s": {
+          "minimum": 1,
+          "title": "Start S",
+          "type": "integer"
+        },
+        "station_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Station Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "station_id",
+        "start_s",
+        "duration_s",
+        "planned"
+      ],
+      "title": "InterruptionConfig",
+      "type": "object"
+    },
     "V01StationConfig": {
       "additionalProperties": false,
       "properties": {
@@ -113,6 +149,17 @@
       "title": "Host",
       "type": "string"
     },
+    "interruption": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InterruptionConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "parameter_basis": {
       "const": "simulation_assumption",
       "title": "Parameter Basis",
@@ -152,6 +199,15 @@
       "minItems": 3,
       "title": "Stations",
       "type": "array"
+    },
+    "topology": {
+      "default": "loopback",
+      "enum": [
+        "loopback",
+        "isolated"
+      ],
+      "title": "Topology",
+      "type": "string"
     },
     "warmup_s": {
       "minimum": 1,

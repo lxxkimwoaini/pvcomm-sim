@@ -61,6 +61,8 @@ class V01Runner:
             raise FileExistsError(f"run directory already exists: {self.run_dir}")
 
     def run(self) -> Path:
+        if self.config.topology != "loopback":
+            raise ValueError("isolated configuration requires --isolated")
         if sys.platform != "linux":
             raise RuntimeError("IEC 104 laboratory runs require authorized Linux")
         # Dependency failures must precede creation of an apparent run directory.

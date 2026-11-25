@@ -112,6 +112,8 @@ V0.0 本地检查、暂存审查、私有仓库创建/推送/SHA 核验与远程
 
 ## GitHub
 
+V0.1 验收补齐启动：在 `feat/v01-acceptance` 上实施 `docs/plans/2026-11-25-v01-acceptance.md`。增加独立端点 2404 配置、实际协议参数记录和单站受控停止/恢复。普通回归 58 passed、3 lab deselected；Ruff/mypy（38 文件）通过。90 s 维护预检 `outputs/v01_pair_preflight_001/v01_case_001` 实际 completed，已观测停止、重连和恢复总召唤；该预检 code_dirty=true，不计入冻结版本正式验收。数据导出依赖 pyarrow 23.0.1 已由 uv 正常解析写入锁文件，后续单独验证。
+
 仓库：https://github.com/lxxkimwoaini/pvcomm-sim 。所有者 lxxkimwoaini，visibility=PRIVATE，defaultBranchRef=main，viewerPermission=ADMIN。`gh repo create pvcomm-sim --private --source=. --remote=origin --push` 实际退出 0。
 
 - 首次提交：`25bf8c4848d110f771af14cff20090fbefb377ea`，`chore: initialize PVComm research foundation`。

@@ -296,6 +296,24 @@ class C104Master:
             if connection is None:
                 raise RuntimeError(f"failed to create connection for {station_config.station_id}")
             self._connections[station_config.station_id] = connection
+            parameters = connection.protocol_parameters
+            self._record_event(
+                "master_protocol_parameters",
+                {
+                    "station_id": station_config.station_id,
+                    **{
+                        name: getattr(parameters, name)
+                        for name in (
+                            "send_window_size",
+                            "receive_window_size",
+                            "connection_timeout",
+                            "message_timeout",
+                            "confirm_interval",
+                            "keep_alive_interval",
+                        )
+                    },
+                },
+            )
             self._install_connection_callbacks(station_config, connection)
             station = connection.add_station(common_address=station_config.common_address)
             if station is None:
@@ -390,6 +408,29 @@ class C104Master:
             )
             if not result:
                 raise RuntimeError(f"interrogation failed for {station_config.station_id}")
+
+    def recover(self, station_id: str) -> None:
+        connection = self._connections[station_id]
+        deadline = time.monotonic() + 15
+        while connection.state != self._c104.ConnectionState.OPEN:
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"station did not recover: {station_id}")
+            time.sleep(0.05)
+        station = next(s for s in self._stations if s.station_id == station_id)
+        result = connection.interrogation(
+            common_address=station.common_address,
+            cause=self._c104.Cot.ACTIVATION,
+            wait_for_response=True,
+        )
+        self._record_event(
+            "master_recovery_interrogation",
+            {
+                "station_id": station_id,
+                "success": result,
+            },
+        )
+        if not result:
+            raise RuntimeError("recovery interrogation failed")
 
     def send_setpoint(
         self, station_config: V01StationConfig, target_kw: float, action: str

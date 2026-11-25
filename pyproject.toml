@@ -26,6 +26,9 @@ dev = [
 web = ["fastapi>=0.120,<1", "uvicorn>=0.38,<1"]
 protocol = ["c104==2.2.1"]
 power = ["pvlib==0.16.1", "pandapower==3.5.6"]
+data = [
+    "pyarrow>=23,<24",
+]
 
 [tool.uv]
 default-groups = ["dev", "web"]
