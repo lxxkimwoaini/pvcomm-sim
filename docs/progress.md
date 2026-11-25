@@ -1,6 +1,6 @@
 # PVComm 开发进度
 
-日期：2026-11-25（Asia/Shanghai）。当前阶段：**V0.0 通过；V0.1 首周协议开发门禁通过（2026-11-25）**。两个 30 分钟回环稳定性运行已完成，但不等同于独立 P0/P1 的正式验收。初始只有 AGENTS.md 和 V1.2/V1.3 方案；无既有实验。本文件只记录实际执行，不将计划标为完成。
+日期：2026-11-25（Asia/Shanghai）。当前阶段：**V0.0、V0.1及V0.2三站开发验收通过（2026-11-25）；未推进V0.3**。两个 30 分钟回环稳定性运行已完成，但不等同于独立 P0/P1 的正式验收。初始只有 AGENTS.md 和 V1.2/V1.3 方案；无既有实验。本文件只记录实际执行，不将计划标为完成。
 
 ## 已执行
 
@@ -175,3 +175,11 @@ V0.1 验收补齐启动：在 `feat/v01-acceptance` 上实施 `docs/plans/2026-1
 ### 快速扰动核验的时间精度修正
 
 云影001（7410fe7）与002（44adf12）均真实90s completed、协议QC通过，但独立物理QC v2/v3失败：ISO source_weather_ts微秒化后重算秒级光学层，GHI/POA出现约3.2e-5数值偏差。临时v4将模型/天气容差改为1e-4，003（76e73ad）通过；该放宽不作为最终验收依据。最终v5改用已保留model_mono_ns与clock_origin精确映射重算，源ISO时间仅检查1µs映射误差，物理/天气原1e-6容差恢复。原始证据和各版失败报告全部保留，最终v5结果另记。新增纳秒回放回归。此修正不改变运行物理轨迹、协议参数或标签。
+
+## V0.2 最终三站开发门禁（2026-11-25）
+
+最终代码/QC da7b5262c24e0ae5c991692b5cc0f8f23fd69f21；cloud_frozen_003运行代码76e73ad、code_dirty=false、completed、cleanup_errors=[]。独立v5在原1e-6天气/物理门槛下passed=true，pvlib及pandapower重算误差0，单调纳秒映射回归通过；此前临时放宽的v4不作为验收依据。P0=726包/363APDU/987对象，四路dropped=0，P99=61.827776ms，9条真实不同任务逐项闭环通过；电气431行、20次三站潮流全部收敛。历史晴朗/多云/小时边界三份v1报告及冻结代码保留。详细复现、SHA与失败记录见docs/reports/2026-11-25-v02-acceptance.md。
+
+最终check退出0（94 passed/9 deselected、Ruff/mypy60/schema/前端质量/Vitest3/build）；data4 passed/99 deselected，power2 passed/101 deselected。云影真实浏览器2 passed/1 skipped（空态），逐值对账与移动回放通过。独立负测试副本故意越界后物理/QC源哈希拒绝，原始证据不改。ip netns list为空，没有实际worker残留。
+
+远程仍为 https://github.com/lxxkimwoaini/pvcomm-sim 、lxxkimwoaini所有、PUBLIC、默认main。功能分支已推送；da7b526的CI45582627395实际success，Ubuntu/Windows Python、Arrow、Physical models、Frontend/browser五job全部success。76e73ad的CI45581377368因长行Ruff失败，最终已按原标准修复；不隐瞒失败。PR #1/#2保持OPEN且未合并。本阶段通过开发门禁，不代表正式研究参数冻结、现场校准、秒级实测云影或正式数据集发布。下一步按堆叠顺序审核PR，并确定后续校准/阶段范围；不自动进入30站或训练。

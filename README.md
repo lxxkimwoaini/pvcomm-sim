@@ -75,7 +75,7 @@ V0.1 逐门禁实测见 [验收报告](docs/reports/2026-11-25-v01-acceptance.md
 
 ## V0.2 开发物理闭环（0.2.0.dev0）
 
-新增历史 NASA POWER 小时气象、pvlib POA/温度/PVWatts AC、逆变器 P/Q/斜率约束及 pandapower 三站径向潮流。参数为开发仿真假设，未现场校准；固定 available_kw 路径仍只用于 V0.1 协议回归。详细设计与门禁见 [V0.2计划](docs/plans/2026-11-25-v02.md) 和 [ADR0005](docs/decisions/0005-v02-physical-model.md)。当前阶段是否完成以 progress 的最新实测记录为准。
+新增历史 NASA POWER 小时气象、pvlib POA/温度/PVWatts AC、逆变器 P/Q/斜率约束及 pandapower 三站径向潮流。参数为开发仿真假设，未现场校准；固定 available_kw 路径仍只用于 V0.1 协议回归。详细设计与门禁见 [V0.2计划](docs/plans/2026-11-25-v02.md) 和 [ADR0005](docs/decisions/0005-v02-physical-model.md)。**V0.2 三站开发验收通过**，实测和边界见 [V0.2验收报告](docs/reports/2026-11-25-v02-acceptance.md)。
 
 ```sh
 # 仓库根目录，输入仅下载至 Git 忽略的 data；已有目录拒绝覆盖。

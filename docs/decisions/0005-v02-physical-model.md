@@ -30,3 +30,6 @@ drvfs预检发现替换已存在IPC路径可能瞬时不可读，首轮失败运
 补充秒级模型切片：新NLR域名入口实际可下载Oahu 201003.zip（本地26,242,811字节，SHA6ce110233785bd150f5de698729465a41a41eb192ffc66216d3b0aa9cfa02fd2），但原站sitehome明确“data and any subset may not be publically redistributed”，与OEDI CC BY4.0标记冲突。因此不解析进平台、不再分发，也不据此声称真实云影验收。输入保留在忽略目录作来源审计，不删除用户数据。
 
 为验证物理快速变化，采用显式可选 `advected_grey_optical_layer`：以10m/s平流、半宽200m、中心45s的有限层，光学厚度tau(x)=1.5 cos²(pi*x/400)（|x|<200m，其外0），透过率T=exp(-tau)。在真实晴朗历史背景上GHI/DNI/DHI同时乘T，温度/风保留原背景。它是简化灰色消光层近似，未建多次散射、云边增强或实际云微物理，不能解释为Oahu/辉县实测云影。source_ghi与透过率均写Oracle表，保留真实来源与模型变换；M2只见实际IEC遥测。此开发切片不修改正式气象分布/场景参数、标签或数据划分，后续正式实验需校准。模型基于Beer–Lambert光学消光和已声明平流边界，禁止将此层衍生曲线称为真实历史秒级数据。
+
+
+独立重算精度决策：运行模型基于保留的单调纳秒原点，source_weather_ts的ISO表示只有微秒精度。秒级扰动下用ISO反推elapsed导致约3.3e-5的POA偏差；v2/v3失败报告保留。临时v4的1e-4容差不用于最终验收，v5恢复原1e-6并用(model_mono_ns−clock_origin.ts_mono_ns)/1e9重算；ISO仅用于1µs映射一致性检查。最终云影证据全量重算误差0，不改变运行数据或物理/QC门槛。版本目录保留所有历史，不以新通过报告覆盖失败报告。

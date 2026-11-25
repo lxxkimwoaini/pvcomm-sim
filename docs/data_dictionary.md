@@ -47,4 +47,4 @@ manifest 区分 `completed` 与 `qc_status=pending`，保存代码 SHA/dirty 标
 实验IOA扩展：1004电流A、1005 GHI W/m²、1008可用AC功率kW，均M_ME_NC_1。1006目标是接受设定值，不是实际出力；所有M2曲线仅投影master_observed_point并按available_at截断。新真值表不出现在API中，旧六表不原地修改。命令新增execution_deadline_ms（主站依据当前已收P、配置斜率、2个遥测周期计算，限制10–60s）；task_id是本地应用序列，不在IEC报文中。
 
 
-0.2-power-evidence.2追加source_ghi_w_m2与optical_transmittance，区分历史小时均值和可选灰色层模型。新目录parquet-v02-power-v2、新QC v02-power-v2；此前v1开发证据/报告保留在原目录，可用其冻结代码核验，不覆盖或补造旧样本字段。
+0.2-power-evidence.2追加source_ghi_w_m2与optical_transmittance，区分历史小时均值和可选灰色层模型。新目录parquet-v02-power-v2、当前QC v02-power-v5（时间精度修正，旧版报告保留）；此前v1开发证据/报告保留在原目录，可用其冻结代码核验，不覆盖或补造旧样本字段。
