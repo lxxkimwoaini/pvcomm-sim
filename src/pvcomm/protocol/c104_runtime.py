@@ -249,6 +249,8 @@ class C104Master:
         self.client = c104.Client(tick_rate_ms=100, command_timeout_ms=3000)
         self._connections: dict[str, Any] = {}
         self._remote_stations: dict[str, Any] = {}
+        self._command_lock = threading.Lock()
+        self._command_sequence = 0
 
     def _install_connection_callbacks(
         self, station_config: V01StationConfig, connection: Any
@@ -435,12 +437,21 @@ class C104Master:
     def send_setpoint(
         self, station_config: V01StationConfig, target_kw: float, action: str
     ) -> None:
+        # IEC 104 does not carry task_id. Serialize local callers, including
+        # repeated values/actions, until the protocol confirmation returns.
+        with self._command_lock:
+            self._send_setpoint(station_config, target_kw, action)
+
+    def _send_setpoint(
+        self, station_config: V01StationConfig, target_kw: float, action: str
+    ) -> None:
         station = self._remote_stations[station_config.station_id]
         point = station.get_point(io_address=3001)
         if point is None:
             raise RuntimeError(f"command point missing for {station_config.station_id}")
         point.value = target_kw
-        task_id = f"{station_config.station_id}-{action}"
+        self._command_sequence += 1
+        task_id = f"{station_config.station_id}-{self._command_sequence:09d}-{action}"
         self._record_event(
             "master_command_sent",
             {

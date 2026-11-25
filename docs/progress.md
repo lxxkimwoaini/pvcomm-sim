@@ -146,3 +146,9 @@ V0.1 验收补齐启动：在 `feat/v01-acceptance` 上实施 `docs/plans/2026-1
 ## 仓库可见性变更（2026-11-25）
 
 用户明确要求改为公开仓库。核实当前账号 lxxkimwoaini 对目标仓库具有 ADMIN 权限后，`gh repo edit lxxkimwoaini/pvcomm-sim --visibility public --accept-visibility-change-consequences` 实际退出0；随后 `gh repo view` 核验 visibility=PUBLIC，地址 https://github.com/lxxkimwoaini/pvcomm-sim 。此前 PRIVATE 记录是历史状态。本次仅更新仓库设置和进度记录，diff检查通过，不涉及代码测试；未将既往CI结果算作本次文档提交的CI结果。
+
+## V0.2 前置审查与关联修复（2026-11-25）
+
+分支 feat/v02-power-cosimulation 从9b2de32堆叠，PR #1→#2均OPEN且未合并。计划 docs/plans/2026-11-25-v02.md、审查报告 docs/reports/2026-11-25-pr01-pr02-review.md、ADR0004。修复重复action任务ID、同值接受/反馈复用、跨任务/会话及时间边界；独立QC版本v01-evidence-v2，旧产物未改。
+
+实际 Ruff退出0、mypy48文件通过；pytest -m "not lab and not data" 80 passed/6 deselected，专项22 passed。WSL对保留正常1800s/维护/中断执行新版qc_run，三份报告passed=true。新代码真实重复命令实验尚未执行，V0.2物理模块尚未实现；不重报V0.1长运行或本分支CI通过。
