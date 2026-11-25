@@ -1,6 +1,6 @@
 # PVComm 开发进度
 
-日期：2026-11-25（Asia/Shanghai）。当前阶段：**V0.0 通过；V0.1 已有真实独立端点短时闭环，整阶段未验收**。两个 30 分钟回环稳定性运行已完成，但不等同于独立 P0/P1 的正式验收。初始只有 AGENTS.md 和 V1.2/V1.3 方案；无既有实验。本文件只记录实际执行，不将计划标为完成。
+日期：2026-11-25（Asia/Shanghai）。当前阶段：**V0.0 通过；V0.1 首周协议开发门禁通过（2026-11-25）**。两个 30 分钟回环稳定性运行已完成，但不等同于独立 P0/P1 的正式验收。初始只有 AGENTS.md 和 V1.2/V1.3 方案；无既有实验。本文件只记录实际执行，不将计划标为完成。
 
 ## 已执行
 
@@ -133,3 +133,12 @@ V0.1 验收补齐启动：在 `feat/v01-acceptance` 上实施 `docs/plans/2026-1
 - 维护首次全回调对应失败，经原始字节定位2条I和2条S是业务结束后的关闭尾部。ADR0003公开覆盖边界；全部帧仍留在解析分母和双端核验中，未声称全时段主站回调覆盖。
 - 原两对照 manifest code_dirty=true，未改写；source-provenance旁证核对91个快照文件与Git blob完全一致，3份运行源配置与快照一致；archive SHA256=0daf969a550c75c511ee86a310fce2ec9a3b85b7515e20de1dc7bcfb761425d7。配对共享条件一致，保留group和source组审计；均仅开发证据，不创建正式划分。
 - Vite实际构建JS约808kB，保留>500kB构建提示；尚无30站资源测试，属于V0.3范围。剩余：正常1800s解析/QC、Linux lab回归、远程CI和逐门禁总报告。
+
+## V0.1 最终门禁（2026-11-25 15:40后）
+
+- 真实独立端点1800s配置运行completed、code_dirty=false、cleanup_errors=[]，实际业务区间1799.997721735s；P0=11831包/6123完整APDU/10848对象，完整解析率100%，四路内核丢包0；三站各2041 APDU与P1/终端回调逐字节对账。
+- 正常运行parse --parquet与qc均实际退出0；P99=4.325865ms、max=208.659407ms（极端点保留）；6命令确认期限/设定值与实际反馈通过；6表类型、行数、源/产物哈希通过。机器汇总保留在outputs/v01_frozen_acceptance_001/acceptance-v01.json，原始manifest不改写。
+- WSL真协议lab回归3 passed/67 deselected，51.51s，输出outputs/v01_lab_acceptance_002；包括取消与清理。最终ip netns list为空、无worker残留；真实正常运行M2 API、最新功率及纳秒因果游标再次实测通过。
+- 协议/对照冻结SHA0847def；QC/API/UI代码SHA60cdbae2c9ef533166952547f16ca950a47f2d76，已推送origin/feat/v01-acceptance。PR #2为OPEN、base=fix/v01-evidence-integrity，依赖PR #1，未合并。仓库仍PRIVATE、默认main。
+- 60cdbae的push CI45569491739与PR CI45569549685实际success，均4个job全部success；普通CI64项、Arrow3项、Vitest3项、浏览器2 passed/1 skipped，真实证据用例只在本地授权数据模式运行。
+- 逐门禁实测、指令和证据路径见docs/reports/2026-11-25-v01-acceptance.md。V0.1只完成协议开发验收，不代表正式物理模型、数据集或V0.4标签管线。下一任务：V0.2气象输入、物理参数与潮流模型设计和验证。此后仅文档提交单独记录，不混用代码测试SHA。
