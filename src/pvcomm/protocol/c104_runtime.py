@@ -79,6 +79,7 @@ class C104StationEndpoint:
         record_event: RecordEvent,
         record_raw: RecordRaw,
         state: StationModel | None = None,
+        logical_elapsed: Callable[[float], float] | None = None,
     ) -> None:
         c104 = importlib.import_module("c104")
         self._c104 = c104
@@ -86,6 +87,11 @@ class C104StationEndpoint:
         self._record_event = record_event
         self._record_raw = record_raw
         self._lock = threading.Lock()
+        self._logical_elapsed = logical_elapsed
+        self._active = False
+        self._next_report_s = float(getattr(config, "telemetry_phase_s", 0))
+        self._last_sent_power: float | None = None
+        self._last_sent_running: bool | None = None
         now = time.monotonic()
         self.state: StationModel = state or StationState(
             config=config,
@@ -154,6 +160,15 @@ class C104StationEndpoint:
                 raise RuntimeError(f"failed to bind physical point {ioa}")
         self._refresh_telemetry()
         self._install_callbacks()
+        if logical_elapsed is not None:
+            for point in (
+                self.power_point,
+                self.reactive_point,
+                self.voltage_point,
+                self.status_point,
+                *self.extra_points.values(),
+            ):
+                point.report_ms = 0
 
     def _refresh_telemetry(self) -> None:
         points = {
@@ -167,8 +182,48 @@ class C104StationEndpoint:
 
     def tick(self) -> None:
         with self._lock:
-            self.state.advance(time.monotonic())
+            now = time.monotonic()
+            self.state.advance(now)
+            self.power_point.value = self.state.actual_kw
             self._refresh_telemetry()
+            if self._logical_elapsed is not None and self._active:
+                elapsed = self._logical_elapsed(now)
+                periodic = elapsed >= self._next_report_s and elapsed > 0
+                event = self._last_sent_power is not None and abs(
+                    self.state.actual_kw - self._last_sent_power
+                ) >= self.config.capacity_kw * float(
+                    getattr(self.config, "deadband_fraction", 0.01)
+                )
+                running = bool(self.status_point.value)
+                state_changed = (
+                    self._last_sent_running is not None and running != self._last_sent_running
+                )
+                if periodic or event or state_changed:
+                    cause = self._c104.Cot.PERIODIC if periodic else self._c104.Cot.SPONTANEOUS
+                    for point in (
+                        self.power_point,
+                        self.reactive_point,
+                        self.voltage_point,
+                        self.status_point,
+                        *self.extra_points.values(),
+                    ):
+                        point.transmit(cause=cause)
+                    self._last_sent_power, self._last_sent_running = self.state.actual_kw, running
+                    self._record_event(
+                        "terminal_telemetry_report",
+                        {
+                            "station_id": self.config.station_id,
+                            "reason": "periodic"
+                            if periodic
+                            else "state_change"
+                            if state_changed
+                            else "power_deadband",
+                            "scene_elapsed_s": elapsed,
+                        },
+                    )
+                if periodic:
+                    while self._next_report_s <= elapsed:
+                        self._next_report_s += self.config.telemetry_period_s
 
     def _install_callbacks(self) -> None:
         c104 = self._c104
@@ -212,7 +267,8 @@ class C104StationEndpoint:
         def on_before_power_transmit(point: Any) -> None:
             now = time.monotonic()
             with self._lock:
-                self.state.advance(now)
+                if self._logical_elapsed is None:
+                    self.state.advance(now)
                 point.value = self.state.actual_kw
                 self._refresh_telemetry()
                 actual = self.state.actual_kw
@@ -266,6 +322,7 @@ class C104StationEndpoint:
 
     def start(self) -> None:
         self.server.start()
+        self._active = True
         self._record_event(
             "rtu_started",
             {
@@ -276,6 +333,8 @@ class C104StationEndpoint:
         )
 
     def stop(self) -> None:
+        self._active = False
+        self._record_event("rtu_stopping", {"station_id": self.config.station_id})
         self.server.stop()
         self._record_event("rtu_stopped", {"station_id": self.config.station_id})
 
@@ -290,6 +349,7 @@ class C104Master:
         record_event: RecordEvent,
         record_raw: RecordRaw,
         station_hosts: dict[str, str] | None = None,
+        managed_lifecycle: bool = False,
     ) -> None:
         c104 = importlib.import_module("c104")
         self._c104 = c104
@@ -298,11 +358,17 @@ class C104Master:
         self._stations = stations
         self._record_event = record_event
         self._record_raw = record_raw
+        self._managed_lifecycle = managed_lifecycle
+        self._lifecycle_condition = threading.Condition()
+        self._callback_states: dict[str, str] = {}
         self.client = c104.Client(tick_rate_ms=100, command_timeout_ms=3000)
         self._connections: dict[str, Any] = {}
         self._remote_stations: dict[str, Any] = {}
         self._command_lock = threading.Lock()
+        self._station_locks = {s.station_id: threading.Lock() for s in stations}
         self._command_sequence = 0
+        self._observations: dict[tuple[str, int], tuple[float, float]] = {}
+        self._observation_lock = threading.Lock()
 
     def _install_connection_callbacks(
         self, station_config: V01StationConfig, connection: Any
@@ -314,6 +380,9 @@ class C104Master:
                 "master_connection_state",
                 {"station_id": station_config.station_id, "state": state.name},
             )
+            with self._lifecycle_condition:
+                self._callback_states[station_config.station_id] = state.name
+                self._lifecycle_condition.notify_all()
 
         _set_callback_annotations(
             on_state_change,
@@ -345,7 +414,7 @@ class C104Master:
             connection = self.client.add_connection(
                 ip=self._station_hosts.get(station_config.station_id, self._host),
                 port=station_config.port,
-                init=c104.Init.ALL,
+                init=c104.Init.NONE if self._managed_lifecycle else c104.Init.ALL,
             )
             if connection is None:
                 raise RuntimeError(f"failed to create connection for {station_config.station_id}")
@@ -402,6 +471,9 @@ class C104Master:
             (1004, c104.Type.M_ME_NC_1),
             (1005, c104.Type.M_ME_NC_1),
             (1008, c104.Type.M_ME_NC_1),
+            (1009, c104.Type.M_ME_NC_1),
+            (1010, c104.Type.M_ME_NC_1),
+            (1011, c104.Type.M_ME_NC_1),
             (1006, c104.Type.M_ME_NC_1),
             (2001, c104.Type.M_SP_NA_1),
         ):
@@ -418,6 +490,11 @@ class C104Master:
                 previous_info: Any,
                 message: Any,
             ) -> Any:
+                with self._observation_lock:
+                    self._observations[(station_config.station_id, point.io_address)] = (
+                        float(point.value),
+                        time.monotonic(),
+                    )
                 self._record_event(
                     "master_observed_point",
                     {
@@ -463,6 +540,19 @@ class C104Master:
                     "success": result,
                 },
             )
+            if self._managed_lifecycle:
+                # Init.ALL executes synchronous GI/clock waits on c104's raw
+                # callback scheduler. Explicit initialization here leaves that
+                # scheduler available to timestamp actual callbacks promptly.
+                synced = connection.clock_sync(
+                    common_address=station_config.common_address, wait_for_response=True
+                )
+                self._record_event(
+                    "master_clock_synchronization",
+                    {"station_id": station_config.station_id, "success": synced},
+                )
+                if not synced:
+                    raise RuntimeError(f"clock synchronization failed: {station_config.station_id}")
             if not result:
                 raise RuntimeError(f"interrogation failed for {station_config.station_id}")
 
@@ -490,15 +580,25 @@ class C104Master:
             raise RuntimeError("recovery interrogation failed")
 
     def send_setpoint(
-        self, station_config: V01StationConfig, target_kw: float, action: str
+        self,
+        station_config: V01StationConfig,
+        target_kw: float,
+        action: str,
+        *,
+        dispatch_id: str | None = None,
     ) -> None:
         # IEC 104 does not carry task_id. Serialize local callers, including
         # repeated values/actions, until the protocol confirmation returns.
-        with self._command_lock:
-            self._send_setpoint(station_config, target_kw, action)
+        with self._station_locks[station_config.station_id]:
+            self._send_setpoint(station_config, target_kw, action, dispatch_id=dispatch_id)
 
     def _send_setpoint(
-        self, station_config: V01StationConfig, target_kw: float, action: str
+        self,
+        station_config: V01StationConfig,
+        target_kw: float,
+        action: str,
+        *,
+        dispatch_id: str | None = None,
     ) -> None:
         station = self._remote_stations[station_config.station_id]
         point = station.get_point(io_address=3001)
@@ -516,8 +616,9 @@ class C104Master:
             ),
         )
         point.value = target_kw
-        self._command_sequence += 1
-        task_id = f"{station_config.station_id}-{self._command_sequence:09d}-{action}"
+        with self._command_lock:
+            self._command_sequence += 1
+            task_id = f"{station_config.station_id}-{self._command_sequence:09d}-{action}"
         self._record_event(
             "master_command_sent",
             {
@@ -526,6 +627,7 @@ class C104Master:
                 "target_kw": target_kw,
                 "action": action,
                 "task_id": task_id,
+                "dispatch_id": dispatch_id,
                 "deadline_ms": 3000,
                 "execution_deadline_ms": math.ceil(execution_s * 1000),
             },
@@ -539,12 +641,52 @@ class C104Master:
                 "ioa": 3001,
                 "target_kw": target_kw,
                 "positive_confirmation": result,
+                "dispatch_id": dispatch_id,
                 "execution_reached": None,
             },
         )
         if not result:
             raise RuntimeError(f"command was not accepted for {station_config.station_id}")
 
+    def available_power(self, station_config: V01StationConfig) -> float:
+        with self._observation_lock:
+            sample = self._observations.get((station_config.station_id, 1008))
+        if (
+            sample is None
+            or time.monotonic() - sample[1] > station_config.telemetry_period_s * 2 + 1
+        ):
+            raise RuntimeError(
+                f"missing/stale observed availability for {station_config.station_id}"
+            )
+        return sample[0]
+
     def stop(self) -> None:
-        self.client.stop()
+        try:
+            if self._managed_lifecycle:
+                self._quiesce_connections()
+        finally:
+            self.client.stop()
         self._record_event("master_stopped", {})
+
+    def _wait_callback_states(self, stations: list[str], expected: str) -> None:
+        with self._lifecycle_condition:
+            if not self._lifecycle_condition.wait_for(
+                lambda: all(self._callback_states.get(s) == expected for s in stations),
+                timeout=3,
+            ):
+                raise TimeoutError(f"protocol lifecycle callbacks did not reach {expected}")
+
+    def _quiesce_connections(self) -> None:
+        """Drain ordered STOPDT and CLOSED callbacks before stopping c104."""
+        self._record_event("master_quiescing", {})
+        opened = []
+        for station, connection in self._connections.items():
+            if connection.state.name == "OPEN":
+                if not connection.mute():
+                    raise RuntimeError(f"STOPDT request failed: {station}")
+                opened.append(station)
+        self._wait_callback_states(opened, "OPEN_MUTED")
+        for connection in self._connections.values():
+            connection.disconnect()
+        self._wait_callback_states(list(self._connections), "CLOSED")
+        self._record_event("master_quiesced", {})

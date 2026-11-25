@@ -2,12 +2,16 @@
 
 import importlib
 import math
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pvcomm.config.multisite import V03Config
+    from pvcomm.config.power import V02Config
 
 from pvcomm.config.power import FeederConfig
 
 
-class ThreeSiteFeeder:
+class RadialFeeder:
     def __init__(self, config: FeederConfig, stations: tuple[str, ...]) -> None:
         self.pp = importlib.import_module("pandapower")
         self.config = config
@@ -29,10 +33,11 @@ class ThreeSiteFeeder:
         )
         self.buses: dict[str, int] = {}
         self.generators: dict[str, int] = {}
+        self.lines: dict[str, int] = {}
         previous = lv
         for station in stations:
             bus = self.pp.create_bus(self.net, vn_kv=config.lv_kv, name=station)
-            self.pp.create_line_from_parameters(
+            self.lines[station] = self.pp.create_line_from_parameters(
                 self.net,
                 previous,
                 bus,
@@ -54,7 +59,7 @@ class ThreeSiteFeeder:
 
     def solve(self, states: dict[str, dict[str, Any]]) -> dict[str, dict[str, float]]:
         if set(states) != set(self.buses):
-            raise ValueError("feeder requires all three station states")
+            raise ValueError("feeder requires all configured station states")
         for station, index in self.generators.items():
             p, q = states[station]["p_actual_kw"], states[station]["q_actual_kvar"]
             if not all(math.isfinite(v) for v in (p, q)):
@@ -77,4 +82,80 @@ class ThreeSiteFeeder:
                 "voltage_kv": voltage,
                 "current_a": apparent / (math.sqrt(3) * voltage),
             }
+        return result
+
+    def diagnostics(self) -> dict[str, float]:
+        """Positive external-grid P is import; negative P is reverse flow.
+
+        Balance includes line and transformer copper/iron losses as returned
+        by pandapower. Limits are reported separately from solver validity.
+        """
+        grid_p = float(self.net.res_ext_grid.p_mw.sum()) * 1000
+        grid_q = float(self.net.res_ext_grid.q_mvar.sum()) * 1000
+        loss_p = float(self.net.res_line.pl_mw.sum() + self.net.res_trafo.pl_mw.sum()) * 1000
+        loss_q = float(self.net.res_line.ql_mvar.sum() + self.net.res_trafo.ql_mvar.sum()) * 1000
+        return {
+            "bus_min_pu": float(self.net.res_bus.vm_pu.min()),
+            "bus_max_pu": float(self.net.res_bus.vm_pu.max()),
+            "line_max_loading_percent": float(self.net.res_line.loading_percent.max()),
+            "transformer_loading_percent": float(self.net.res_trafo.loading_percent.max()),
+            "grid_p_kw": grid_p,
+            "grid_q_kvar": grid_q,
+            "loss_p_kw": loss_p,
+            "loss_q_kvar": loss_q,
+            "balance_p_kw": grid_p
+            + float(self.net.res_sgen.p_mw.sum() - self.net.res_load.p_mw.sum()) * 1000
+            - loss_p,
+            "balance_q_kvar": grid_q
+            + float(self.net.res_sgen.q_mvar.sum() - self.net.res_load.q_mvar.sum()) * 1000
+            - loss_q,
+        }
+
+
+class ThreeSiteFeeder(RadialFeeder):
+    """Compatibility name for the accepted V0.2 radial feeder."""
+
+
+class FeederNetwork:
+    """Independent equivalent electrical feeders; unrelated to region routing."""
+
+    def __init__(self, config: "V02Config | V03Config") -> None:
+        from pvcomm.config.multisite import V03Config
+
+        self.models = (
+            {
+                f.feeder_id: RadialFeeder(
+                    f.parameters,
+                    tuple(
+                        s.station_id for s in config.protocol.stations if s.feeder_id == f.feeder_id
+                    ),
+                )
+                for f in config.feeders
+            }
+            if isinstance(config, V03Config)
+            else {"F1": RadialFeeder(config.feeder, tuple(d.station_id for d in config.devices))}
+        )
+        self.diagnostic_rows: dict[str, dict[str, float]] = {}
+        self.multisite = isinstance(config, V03Config) and config.contract_revision >= 2
+
+    def solve(self, states: dict[str, dict[str, Any]]) -> dict[str, dict[str, float]]:
+        result = {}
+        self.diagnostic_rows = {}
+        for feeder_id, model in self.models.items():
+            result.update(model.solve({s: states[s] for s in model.buses}))
+            self.diagnostic_rows[feeder_id] = model.diagnostics()
+            if self.multisite:
+                for station, line in model.lines.items():
+                    result[station].update(
+                        {
+                            "line_loading_percent": float(
+                                model.net.res_line.at[line, "loading_percent"]
+                            ),
+                            "transformer_loading_percent": self.diagnostic_rows[feeder_id][
+                                "transformer_loading_percent"
+                            ],
+                            "line_p_from_kw": float(model.net.res_line.at[line, "p_from_mw"])
+                            * 1000,
+                        }
+                    )
         return result

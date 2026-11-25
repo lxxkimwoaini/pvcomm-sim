@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import platform
 import shutil
 import signal
 import subprocess
@@ -16,19 +18,26 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from pvcomm.capture.tcpdump import TcpdumpCapture
-from pvcomm.clock import ClockOrigin
+from pvcomm.clock import ClockOrigin, SceneClock
 from pvcomm.config.lab import V01Config, v01_config_sha256
+from pvcomm.config.multisite import V03Config
 from pvcomm.config.power import V02Config
 from pvcomm.network.isolated import IsolatedNetwork
+from pvcomm.network.regional import RegionalNetwork
+from pvcomm.scenario.resources import ResourceSampler
 from pvcomm.storage.events import RunRecorder
 
 
 def run_isolated(
-    config: V01Config, source: Path, output_root: Path, *, power: V02Config | None = None
+    config: V01Config,
+    source: Path,
+    output_root: Path,
+    *,
+    power: V02Config | V03Config | None = None,
 ) -> Path:
     if sys.platform != "linux":
         raise RuntimeError("isolated IEC 104 laboratory run requires Linux")
-    for name in ("ip", "tcpdump", "tshark"):
+    for name in ("ip", "tcpdump", "tshark", *(("tc",) if isinstance(power, V03Config) else ())):
         if shutil.which(name) is None:
             raise RuntimeError(f"lab tool is unavailable: {name}")
     dependencies = {name: version(name) for name in ("c104", "pydantic", "PyYAML")}
@@ -36,7 +45,7 @@ def run_isolated(
     root.mkdir(parents=True, exist_ok=False)
     (root / "scenario.yaml").write_bytes(source.read_bytes())
     (root / "effective_config.json").write_text(config.model_dump_json(indent=2), encoding="utf-8")
-    network = IsolatedNetwork()
+    network = RegionalNetwork(power) if isinstance(power, V03Config) else IsolatedNetwork()
     origin = ClockOrigin.capture()
     metadata = {"clock_origin": asdict(origin), "addresses": network.addresses}
     (root / "runtime.json").write_text(json.dumps(metadata), encoding="utf-8")
@@ -71,13 +80,31 @@ def run_isolated(
         temp.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         temp.replace(root / "manifest.json")
 
+    if isinstance(network, RegionalNetwork):
+        manifest["network"]["regions"] = network.regions
+        manifest["network"]["topology"] = "region_bridge_aggregation_and_site_access"
+        manifest["environment"] = {
+            "platform": platform.platform(),
+            "python": sys.version,
+            "cpu_count": os.cpu_count(),
+            "tc": subprocess.check_output(["tc", "-V"], text=True).strip(),
+            "meminfo": Path("/proc/meminfo").read_text(),
+            "output_filesystem": subprocess.check_output(["df", "-T", str(root)], text=True),
+        }
     save_manifest()
     captures: list[TcpdumpCapture] = []
     processes: list[subprocess.Popen[bytes]] = []
     logs: list[TextIO] = []
     failures: list[str] = []
-    controller = RunRecorder(root, config.run_id, suffix="_controller", origin=origin)
+    controller = RunRecorder(
+        root,
+        config.run_id,
+        suffix="_controller",
+        origin=origin,
+        scene_clock=SceneClock(root / "scene.json") if isinstance(power, V03Config) else None,
+    )
     feeder = None
+    resources = ResourceSampler(root, origin) if isinstance(power, V03Config) else None
 
     def launch(role: str, namespace: str) -> subprocess.Popen[bytes]:
         log = (root / f"{role}.stderr.log").open("x", encoding="utf-8")
@@ -116,6 +143,9 @@ def run_isolated(
                 power.model_dump_json().encode()
             ).hexdigest()
         network.create()
+        if isinstance(network, RegionalNetwork):
+            manifest["network"]["netem_initial"] = network.shaping_evidence()
+            save_manifest()
         capture_specs = [
             ("primary", network.master, "any"),
             *(
@@ -129,14 +159,24 @@ def run_isolated(
                 root / f"raw/pcap/{name}.pcap",
                 config.capture_filter,
                 command_prefix=network.prefix(namespace),
+                native_spool=isinstance(power, V03Config),
+                immediate_mode=not isinstance(power, V03Config),
             )
             captures.append(capture)
             capture.start()
+        if isinstance(power, V03Config):
+            manifest["capture_spools"] = [str(c.active_path) for c in captures]
+            manifest["capture_persistence"] = (
+                "native_linux_spool_verified_then_persistent_run_directory"
+            )
+            save_manifest()
         rtu_processes = [
             launch(f"rtu{i}", namespace) for i, namespace in enumerate(network.rtus, start=1)
         ]
         deadline = time.monotonic() + (30 if power is not None else 8)
-        while not all((root / f"rtu{i}.ready").exists() for i in range(1, 4)):
+        while not all(
+            (root / f"rtu{i}.ready").exists() for i in range(1, len(config.stations) + 1)
+        ):
             if any(p.poll() is not None for p in rtu_processes) or time.monotonic() > deadline:
                 raise RuntimeError("RTUs not ready; see endpoint stderr logs")
             if feeder is not None:
@@ -149,6 +189,11 @@ def run_isolated(
         interrupted = False
         resumed = False
         while master.poll() is None:
+            if resources is not None:
+                resources.sample(
+                    [p.pid for p in processes]
+                    + [c.process_id for c in captures if c.process_id is not None]
+                )
             if feeder is not None:
                 feeder.step()
             if any(process.poll() is not None for process in processes[:-1]):
@@ -157,6 +202,23 @@ def run_isolated(
                 raise RuntimeError("capture process exited during experiment")
             if time.monotonic() > deadline:
                 raise TimeoutError("master exceeded configured runtime and startup allowance")
+            if (
+                isinstance(power, V03Config)
+                and (root / "master.initialized").exists()
+                and not (root / "scene.json").exists()
+            ):
+                start_ns = time.monotonic_ns() + 500_000_000
+                scene = {
+                    "start_mono_ns": start_ns,
+                    "start_utc_ns": origin.utc_ns(start_ns),
+                    "weather_source_start": power.weather.source_start.isoformat(),
+                    "rate": 1.0,
+                }
+                stage = root / "scene.json.tmp"
+                stage.write_text(json.dumps(scene), encoding="utf-8")
+                stage.rename(root / "scene.json")
+                manifest["scene_clock"] = scene
+                save_manifest()
             event = config.interruption
             ready = root / "master.ready"
             if event is not None and ready.exists():
@@ -222,6 +284,11 @@ def run_isolated(
         for log in logs:
             log.close()
         controller.close()
+        if isinstance(network, RegionalNetwork) and network.shaped:
+            try:
+                manifest["network"]["netem_final"] = network.shaping_evidence()
+            except Exception as exc:
+                failures.append(f"NetEm final evidence: {exc}")
         try:
             network.close()
         except Exception as exc:

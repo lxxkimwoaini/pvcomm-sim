@@ -187,3 +187,82 @@ V0.1 验收补齐启动：在 `feat/v01-acceptance` 上实施 `docs/plans/2026-1
 ### V0.2 审核交付与远程核验
 
 验收文档提交bfab4859ab2ede3975547d389e28bd2f79d07c7b已推送；其push CI45583409443及PR CI45583485587均实际success，各五job全部成功。草稿PR #3：https://github.com/lxxkimwoaini/pvcomm-sim/pull/3 ，OPEN、isDraft=true，base=feat/v01-acceptance、head=feat/v02-power-cosimulation；依赖#2、#2依赖#1，均未合并或代用户批准。git ls-remote与本地bfab485一致，工作区干净。全分支55文件路径/凭据模式检查及本地文档链接检查通过，无data/outputs/PCAP/Parquet/外部输入入库。此补记仅文档，不把上述代码/CI SHA混称为补记本身SHA。
+
+## V0.3 启动与前置切片（2026-11-25）
+
+读取AGENTS、V1.3、V0.2报告/进度及ADR0001–0005；基线e4e14b9，当前feat/v03-multisite。核查PR #1→#2→#3仍OPEN（#3 draft），不合并；远程PUBLIC和main不变。环境Git2.52、gh2.102、uv0.11.13、Python3.11.15、Node24.14、pnpm11.5，WSL抓包/命名空间与科学依赖可用。计划docs/plans/2026-11-25-v03.md，ADR0006记录场景屏障及增量读取。
+
+新增严格0.3配置、配置驱动区域聚合/站点接入资源、通用馈线适配；尚未做规模验收。0.1/0.2原配置不改。修正IPC为最多128KiB尾读；M2投影采用只读observed的临时SQLite增量索引，每次只摄入完整新增行，Windows退出连接回归通过。新增宿主映射与场景起点分离，0.3初始化时气象逻辑固定0，主站/RTU准备后屏障启动1×。新增物理电压/热限/功率平衡/反向潮流/Q斜率/快照时序QC；电气越限不推断通信标签。事务保留严格成功标准，另报告拒绝/超时/缺反馈，不将失败当成功。
+
+实际本地普通pytest106 passed/10 deselected，mypy69文件通过；Ruff检查/格式化执行后须最终检查；schema已生成0.3。初次新增SQLite测试揭示Windows退出句柄问题已修复；并站fixture的CA引用错误已修正，不调整验收门槛。真实断联120s回归已编写但此记录时尚未执行，V0.3未验收。下一步冻结代码后运行tests/lab/test_v03_prerequisites.py，持久化outputs，检查物理连续、恢复最新遥测、真实双端PCAP及独立QC；通过后方可扩大站点规模。
+
+首轮冻结834a7c0真实120s断联实验：outputs/v03_prerequisite_001/test_physics_continues_without0/v03_03_disconnect_001，completed且code_dirty=false，物理持续/恢复最新值断言通过，独立QC失败于PV01终端回调少一个停止期间S帧；P0/P1报文一致且无工具丢包。失败报告prerequisite-qc.json保留，不计通过。增加rtu_stopping精确边界，QC v3单列停止调用内的入站控制帧；边界外/I帧仍拒绝的回归通过，详ADR0006。普通107 passed/10 deselected、Ruff/mypy69通过；WSL power2 passed/114 deselected。834a7c0 push CI45604695138五job实际success。下一轮独立冻结重验不覆盖001。
+
+第二轮a15824f冻结三站断联：outputs/v03_prerequisite_002/test_physics_continues_without0/v03_03_disconnect_001，真实test1 passed，143.21s；completed/code_dirty=false/cleanup=[]，物理继续、云影变化、恢复最新遥测、独立协议/物理/Arrow全部通过。第一轮失败保留。下一切片增加空间平流、每站历史背景覆盖、独立馈线诊断、周期/死区上送、分站并行命令及区域分批容量/主站可观测资源分配，新增0.3规模配置/资源采样；普通113 passed/10 deselected、mypy73、Ruff通过，真实新功能尚待逐级验证。详ADR0007。
+
+新增独立tick/空间模型/死区报告后的第三轮f9afe25真实三站断联test1 passed/146.28s，outputs/v03_prerequisite_003；仍为冻结code_dirty=false。三区独立聚合通信和物理QC通过。后续revision2增加通过真实通信进入M2的线路/变压器负载及入线功率点，保持revision1复现；普通113 passed、Ruff/mypy73通过。将基于独立冻结checkout进行3/10/20/30逐级测试，开发UI不得修改运行中的冻结源码。
+
+e27c44b冻结checkout outputs/v03_source_s1，3站120s真实运行outputs/v03_scale_s1/v03_03_normal_001，completed/clean、全QC通过（2344完整APDU、2785包、2137对象）；10站120s completed且物理/调控闭环通过，但P0工具丢包54，独立协议QC失败，目录保留，不进入20站。规模脚本首尝试被PowerShell展开Bash变量，未产生运行证据；后续显式参数调用。新增ADR0008抓包原生Linux spool/核对哈希后归档，关闭V0.3 immediate模式，门槛不改；待冻结重验10站。普通113 passed/10 deselected，Ruff/mypy73通过。
+
+
+### V0.3 工作台、正常设备操作及规模门禁跟踪
+
+a2187a6十站第二轮120s全QC通过（outputs/v03_scale_s2/v03_10_normal_001），6830完整APDU、8009包、6250对象，11路dropped=0。二十站同冻结代码120s completed/clean/cleanup=[]且21路dropped=0，但日志对齐P99=164.241582ms（max310.274496ms）失败；outputs/v03_scale_s2/v03_20_normal_001保留，不进入30站。对照目录改用WSL持久Linux文件系统/var/lib/pvcomm/runs/v03_scale_s3，仅验证存储开销影响，结果待核验。a2187a6 push CI45610679904实际success。
+
+工作台新增配置双拓扑、区域覆盖率/聚合、空间遥测、调控确认状态、原始回调统计、基础设施资源独立端点、100条联合游标分页及最多120点极值/首尾/缺口保留。M2不读truth补齐；新契约回归验证时间因果/并列事件分页/资源隔离/重复证据409及曲线峰值。新增显式正常本地enable操作，不改已接受设定值及connected/faulted；30站候选310s停机、330s恢复，由真实遥信上送，独立QC v03-power-v2保留旧报告。此功能真实验收尚待30站短运行。
+
+普通检查已实际116 passed/10 deselected（新增设备操作单测后待最终总检）、mypy74文件、Ruff/schema、前端类型/Vitest3/build通过；Vite约817kB提示保留。发现并修复测试类型注解及package.json格式失败，没有降低检查。包更新0.3.0.dev0，README/CLI明确V0.3开发状态与未验收，不重标旧版本证据。PR #1/#2/#3仍OPEN、#3 draft，未合并。
+
+
+二十站Linux持久目录对照a2187a6，/var/lib/pvcomm/runs/v03_scale_s3/v03_20_normal_001，120s completed/clean、全部QC通过：12849完整APDU=100%、21路dropped=0、日志P99=14.146801ms/max38.434775ms，cleanup=[]。后续规模验收使用同一Linux存储环境。普通最终117 passed/10 deselected、mypy77、Ruff通过。工作台首次10站浏览器失败定位为1s轮询频繁disabled关闭选择菜单；修正前台选择与后台轮询隔离、generation保护过期响应，重验结果另记。
+
+真实10站浏览器复验2 passed/1 skipped（空态），逐值对账、物理指标切换、因果游标、桌面/移动与离线恢复通过。保留最初菜单关闭及忙时回放丢失失败记录，修复实际UI竞态。
+
+
+工作台/正常操作提交55a2d1b已推送，CI45613146105实际success。冻结checkout=/var/lib/pvcomm/sources/v03-s4，30站360秒预检=/var/lib/pvcomm/runs/v03_scale_s4/v03_30_normal_001运行中。独立Web测量预检outputs/v03_web_preflight_002已实际完成off/live/replay 30秒负载流程（仅测量脚本预检，不替代1h门禁）：WSL localhost真实API、Windows Chromium/Vite，保留请求端到端时间/服务时间/字节、Linux API及Windows进程树CPU/内存、浏览器CDP指标和截图，无fatal错误。脚本尚需与最终冻结SHA一起正式运行。
+
+新增正常设备状态变化触发潮流补算（不等待5秒周期），调度回归通过。普通119 passed/10 deselected、mypy79/Ruff/格式通过；WSL科学及Arrow6 passed/121 deselected；旧V0.1真实协议/隔离/取消清理回归3 passed/47.66s，持久目录/var/lib/pvcomm/runs/v03_legacy_regression_001。没有重报旧30分钟/90秒实验。当前仍未通过V0.3门禁。
+
+
+30站360s预检55a2d1b全QC通过：/var/lib/pvcomm/runs/v03_scale_s4/v03_30_normal_001，41138完整APDU=100%、31路dropped=0、P99=3.335434ms/max56.908908ms，90命令正确认/接受/反馈独占证据通过，2次本地状态变化真实收到（8.683161/58.346122ms）。正常资源不足2044.4795kW明确保留；completed/clean/cleanup=[]。真实30站Web2 passed/1 skipped（空态），18.4秒真实M2/指标/回放/移动验证通过。
+
+方案6.1正常链路补齐：新增每区域/站点可选双向NetEm，开发配置合计名义10/40/100ms、抖动3/8/20ms、显式分方向seed，0额外丢包；全部仿真假设，非现场参数。独立probe实际确认内核支持seed，自动清理。ADR0009记录版本/参数及按规模重验要求；QC升v03-power-v3单独目录。0.1/0.2不受影响。当前120普通passed、mypy79/Ruff/schema及前端检查实际通过，新增NetEm真实规模结果待记录，仍未通过1h门禁。
+
+
+NetEm首轮三站4cea408运行completed，独立QC v3失败于重组归属帧（matched1090/2344），自动停止规模脚本；路径v03_scale_s5原始PCAP/解析/失败报告保留。定位独立TCP核验器未把补齐前序缺口的帧计入后序完整PDU的依赖时间，修复后续TCP在线因果边界，协议字段和packet_index严格对账不改。新增完整APDU乱序回归；版本v01-evidence-v4/v03-power-v4，待原证据重验。普通122 passed/10 deselected，mypy80、Ruff通过。新增NetEm读回错误seed拒绝回归，tc预检查移到创建运行目录前。V0.2原三站90秒新代码回归4cea408已真实completed，parse/Arrow/QC退出0，目录/var/lib/pvcomm/runs/v03_v02_regression_001/v02_clear_001，保留V0.2复现能力。
+
+### NetEm逐级实测与生命周期修正
+
+6e42aa9的CI45616151461实际success。新冻结源码`/var/lib/pvcomm/sources/v03-s6`对S5三站原始PCAP执行v4 QC，全部通过：2344完整APDU严格对账，0工具丢失，P99=3.970862ms/max426.785181ms；旧v3失败不覆盖。运行代码4cea408和核验代码6e42aa9分别记录。十站S6（120s）全部QC通过：6772完整APDU=100%、11路0drop、P99=73.565552ms/max1251.581420ms。二十站S6（120s）completed、物理及解析通过，但日志P99=860.012185ms/max2128.690613ms、PV15少一个入站S回调，独立QC失败；自动停止，不进入30站。
+
+逐帧及c104 v2.2.1源码核对后，修正V0.3初始化/停止生命周期，详ADR0010；保留原V0.1/V0.2默认。新源码待实际逐级重验。测量脚本增加真实DOM游标/功率时间、近似绘制时间和干净代码要求，实时与回放年龄分开。预检003因重复辅助输出目录失败，记录保留；独立测量编号修正后004完成30秒真实off/live/replay，无fatal，不能作为一小时验收。Windows总check实际122普通测试、mypy80、Ruff/schema/前端质量/Vitest3/build通过；随后新增测量汇总4项单元测试通过，生命周期回归及最终总检另记。当前V0.3仍未通过。
+
+生命周期修正后的Windows完整check退出0：129 passed/10 deselected、mypy81、Ruff/format/schema、前端ESLint（仍2条缩进warning）/Prettier/vue-tsc/Vitest3/build通过，Vite817kB提示保留。首次类型检查发现单元替身lambda依赖append返回值，改为显式返回bool后通过，未删测试。该普通check不计真实协议验收。
+
+76a3d2c冻结源码`/var/lib/pvcomm/sources/v03-s7`逐级重验启动。三站120s全QC通过，P99=23.281709ms/max601.993079ms；正在十站。真实30站浏览器初轮等待选项超时，保留outputs/v03-prehour-e2e.log及失败上下文；改为先等待首次真实快照已显示、跟随按钮可用，再操作下拉框（不延长测试期限、不force点击），复验2 passed/1 skipped、22.2s。测量harness采用同一就绪边界。预检005真实30秒三时段完成、无errors，实际请求live9/replay2、API资源每阶段10样本，汇总明确acceptance=false（standalone且不足1h、无新实时功率），不冒充正式验收。
+
+### 最终逐级与一小时实测、交付一致性修正
+
+S7的3/10/20/30站全部QC通过，完整APDU分别2267/6654/12736/40855，解析率均100%；日志P99分别23.281709/3.845138/3.867107/3.788537ms，工具丢失均0、cleanup=[]。30站短运行含30秒Web预检006，不能把整个360s当无Web对照。76a3d2c的CI45618961711、29aa7e0的CI45619736287实际success，各五job成功。
+
+最终冻结29aa7e0b17c094e13692166f2ddd7fcc62d01cb0，源码/var/lib/pvcomm/sources/v03-hour-s8。最终真实回归/var/lib/pvcomm/runs/v03_final_regression_s8：断联1 passed/138.17s；V0.1协议及清理3 passed/45.05s；V0.2 90s run/parse/Arrow/QC均退出0；科学与Arrow6 passed/133 deselected/9.21s。上述实验未并行运行命名空间任务。
+
+一小时证据/var/lib/pvcomm/runs/v03_hour_s8/v03_30_normal_001，业务起点北京时间2026-11-25 21:22:08.701296625，实际3599.999549616s、completed/clean/cleanup=[]。run墙钟3637.690s（含初始化/停止），parse235.614s、独立QC223.299s、性能汇总0.632s，均退出0。333021完整APDU全部匹配；31路捕获及66个NetEm qdisc丢失0；P99=3.747593ms/max476.711026ms；90命令全部accepted_complete，物理108664样本、740次三馈线潮流/22200站点行全量重算误差0。Web三阶段真实完成，1197实时请求、238回放请求均200；9550新功率显示样本P95=1469ms/P99=1555ms/max2601ms，performance-report.web_measurement.passed=true。
+
+备份outputs/v03_hour_s8_backup共394文件、1390074210字节，复制文件逐一与原件SHA256一致，原件保留；备份清单与冻结源码tar同目录。冻结源码tar SHA256=a24c40860d717bc242e13b8924367a25eda69ff4cb5034ac2dc88315594ad7e5。正式数据集尚未发布，不将不同输出根的同名开发run_id混合。
+
+交付检查发现Health.stage及API/架构文档仍为V0.2，修正为V0.3-development并重新生成OpenAPI/TS、同步契约和UI测试；冻结运行源码未改。完整check退出0：129 passed/10 deselected，mypy81、Ruff/format/schema/前端质量/Vitest3/build通过，保留2条HTML缩进warning和817kB构建提示。最终一小时历史UI初两次综合测试触及默认30s总限：日志outputs/v03-final-real-e2e.log及-002.log，失败上下文分别复制outputs/v03-final-ui-failure-001/002。测试改为一次站点/IOA索引和每曲线聚合不匹配点断言，仍核对全部显示点，不改30s或断言语义；003实际2 passed/1 skipped、26.3s，其中真实数据操作23.4s、27183点核对。最后web-test再次退出0。该测试修正不改生产业务。最终详细报告与远程交付核验随后补齐，不进入V0.4。
+
+### V0.3开发验收结论与资源估算
+
+V0.3开发门禁通过，详见docs/reports/2026-11-25-v03-acceptance.md；README、计划、API/架构/数据字典及开发指南已同步。交付一致性修正提交f157172334b3962b79982984429d6b32beb7b5e6已推送，其CI45636936098实际success、五job成功；一小时运行/QC/性能仍明确归属29aa7e0，不冒称f157172实跑。PR #1→#2→#3仍OPEN、#3 draft，未合并。
+
+三时段仿真单核CPU均值47.787/43.997/43.398%，RSS最大6.115/6.197/6.275GiB；Linux API CPU均值实时40.605/回放7.479%、RSS最大122.527/124.953MiB，Windows测量子树CPU均值32.533/10.215%、WorkingSet最大1.248/1.279GiB，共享页会重复计。三时段为顺序工程诊断，不能作随机因果结论。电气间隔各站P99最大1005.623ms、最长1027.296ms；求解周期P95=61.138ms/max113.787ms。母线0.999745–1.008135pu、线路17.596%/变压器33.961%最大；P/Q平衡误差最大1.221214e-5kW/1.178254e-5kvar，快照跨度1004.846ms/龄期1105.074ms最大，无无效或电气越限，反送作为工况保留。
+
+保留数据1383250188B/h，其中PCAP129133060B、Parquet50170860B；按720×1.5约1.494TB（备份另计）。解析临时PDML观测为11275084964B，成功后既有流程清理，峰值空间另预留；没有将该单文件值冒充全流程磁盘峰值。720个同负载一小时单元串行连同实测初始化/解析/QC线性约819.45h；8实例90h未测，不承诺。现有C/E空闲不足正式数据与备份需求；现场校准、并发验证、正式参数冻结、720h批量、V0.4/训练均未开展。
+
+### V0.3远程审核交付核验
+
+验收文档提交8bc6489b6060ed1576710feb61702088a846bfc6已推送，git ls-remote与本地SHA一致；push CI45638703911及pull_request CI45638866871均实际success，Ubuntu/Windows Python、Arrow、Physical models、Frontend/browser五job全部成功。草稿PR #4：https://github.com/lxxkimwoaini/pvcomm-sim/pull/4 ，OPEN/isDraft=true，base=feat/v02-power-cosimulation，head=feat/v03-multisite。22:55北京时间复核#1→#2→#3→#4仍全OPEN，#3/#4 draft，未自动合并或改写历史；远程仍为lxxkimwoaini/pvcomm-sim、PUBLIC、默认main。
+
+交付检查：29份Markdown的22个本地文件链接无断链，CLI实际版本0.3.0.dev0、30站配置校验退出0，diff检查通过，变更路径无data/outputs/PCAP/Parquet，非忽略项目文件未发现高风险凭据模式。本机8000/5173无监听；WSL实验namespace列表为空，宿主两个Docker网桥veth不属于本次资源，已保留。所有复制证据原件仍在，最终成功UI证据另存outputs/v03-final-ui-passed-003。此补记仅文档，不把8bc6489的CI结果混称为补记本身CI；最终分支CI以远程实际状态及交付回复为准。

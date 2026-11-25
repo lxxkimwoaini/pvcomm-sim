@@ -1,6 +1,63 @@
 {
   "components": {
     "schemas": {
+      "DispatchView": {
+        "additionalProperties": false,
+        "properties": {
+          "allocated_kw": {
+            "title": "Allocated Kw",
+            "type": "number"
+          },
+          "available_at": {
+            "title": "Available At",
+            "type": "string"
+          },
+          "dispatch_id": {
+            "title": "Dispatch Id",
+            "type": "string"
+          },
+          "failed_transmissions": {
+            "title": "Failed Transmissions",
+            "type": "integer"
+          },
+          "positive_confirmations": {
+            "title": "Positive Confirmations",
+            "type": "integer"
+          },
+          "regions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Regions",
+            "type": "array"
+          },
+          "requested_kw": {
+            "title": "Requested Kw",
+            "type": "number"
+          },
+          "stations": {
+            "title": "Stations",
+            "type": "integer"
+          },
+          "unallocated_kw": {
+            "title": "Unallocated Kw",
+            "type": "number"
+          }
+        },
+        "required": [
+          "dispatch_id",
+          "available_at",
+          "regions",
+          "requested_kw",
+          "allocated_kw",
+          "unallocated_kw",
+          "stations",
+          "positive_confirmations",
+          "failed_transmissions"
+        ],
+        "title": "DispatchView",
+        "type": "object"
+      },
       "EventView": {
         "additionalProperties": false,
         "properties": {
@@ -106,6 +163,57 @@
         "title": "EventView",
         "type": "object"
       },
+      "EventsPage": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor_utc_ns": {
+            "title": "Cursor Utc Ns",
+            "type": "string"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/EventView"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "next_before_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before Id"
+          },
+          "next_before_ns": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before Ns"
+          },
+          "run_key": {
+            "title": "Run Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_key",
+          "cursor_utc_ns",
+          "events",
+          "next_before_ns",
+          "next_before_id"
+        ],
+        "title": "EventsPage",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -129,8 +237,8 @@
             "type": "boolean"
           },
           "stage": {
-            "const": "V0.2-development",
-            "default": "V0.2-development",
+            "const": "V0.3-development",
+            "default": "V0.3-development",
             "title": "Stage",
             "type": "string"
           },
@@ -194,6 +302,11 @@
           "available_at": {
             "title": "Available At",
             "type": "string"
+          },
+          "gap_before": {
+            "default": false,
+            "title": "Gap Before",
+            "type": "boolean"
           },
           "sim_elapsed_ms": {
             "title": "Sim Elapsed Ms",
@@ -296,6 +409,131 @@
         "title": "ProtocolView",
         "type": "object"
       },
+      "RegionView": {
+        "additionalProperties": false,
+        "properties": {
+          "capacity_coverage_fraction": {
+            "title": "Capacity Coverage Fraction",
+            "type": "number"
+          },
+          "observed_power_kw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Power Kw"
+          },
+          "open_connections": {
+            "title": "Open Connections",
+            "type": "integer"
+          },
+          "region_id": {
+            "title": "Region Id",
+            "type": "string"
+          },
+          "stations": {
+            "title": "Stations",
+            "type": "integer"
+          },
+          "valid_power_stations": {
+            "title": "Valid Power Stations",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "region_id",
+          "stations",
+          "open_connections",
+          "valid_power_stations",
+          "capacity_coverage_fraction",
+          "observed_power_kw"
+        ],
+        "title": "RegionView",
+        "type": "object"
+      },
+      "ResourceView": {
+        "additionalProperties": false,
+        "properties": {
+          "cpu_percent_one_core": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpu Percent One Core"
+          },
+          "disk_read_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disk Read Bytes"
+          },
+          "disk_write_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disk Write Bytes"
+          },
+          "rss_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rss Bytes"
+          },
+          "scope": {
+            "const": "infrastructure_only_not_M2_features",
+            "default": "infrastructure_only_not_M2_features",
+            "title": "Scope",
+            "type": "string"
+          },
+          "ts_utc_ns": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ts Utc Ns"
+          },
+          "utc_mapping_drift_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utc Mapping Drift Ms"
+          }
+        },
+        "title": "ResourceView",
+        "type": "object"
+      },
       "RunList": {
         "additionalProperties": false,
         "properties": {
@@ -316,6 +554,13 @@
           "cursor_utc_ns": {
             "title": "Cursor Utc Ns",
             "type": "string"
+          },
+          "dispatches": {
+            "items": {
+              "$ref": "#/components/schemas/DispatchView"
+            },
+            "title": "Dispatches",
+            "type": "array"
           },
           "events": {
             "items": {
@@ -350,6 +595,13 @@
             "title": "Protocol",
             "type": "array"
           },
+          "protocol_statistics": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Protocol Statistics",
+            "type": "object"
+          },
           "protocol_status": {
             "enum": [
               "parsed",
@@ -357,6 +609,13 @@
             ],
             "title": "Protocol Status",
             "type": "string"
+          },
+          "regions": {
+            "items": {
+              "$ref": "#/components/schemas/RegionView"
+            },
+            "title": "Regions",
+            "type": "array"
           },
           "run_key": {
             "title": "Run Key",
@@ -436,6 +695,50 @@
             ],
             "title": "Connection State"
           },
+          "device_running": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Running"
+          },
+          "device_status_available_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Status Available At"
+          },
+          "electrical_parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Electrical Parent"
+          },
+          "feeder_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feeder Id"
+          },
           "latest_power_kw": {
             "anyOf": [
               {
@@ -472,6 +775,11 @@
             ],
             "title": "Power Available At"
           },
+          "power_fresh": {
+            "default": false,
+            "title": "Power Fresh",
+            "type": "boolean"
+          },
           "region_id": {
             "title": "Region Id",
             "type": "string"
@@ -483,6 +791,28 @@
           "telemetry_period_s": {
             "title": "Telemetry Period S",
             "type": "integer"
+          },
+          "x_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "X M"
+          },
+          "y_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Y M"
           }
         },
         "required": [
@@ -588,10 +918,49 @@
   },
   "info": {
     "title": "PVComm foundation API",
-    "version": "0.2.0.dev0"
+    "version": "0.3.0.dev0"
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/diagnostics/runs/{run_key}/resources": {
+      "get": {
+        "operationId": "resources_api_diagnostics_runs__run_key__resources_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_key",
+            "required": true,
+            "schema": {
+              "title": "Run Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resources"
+      }
+    },
     "/api/health": {
       "get": {
         "operationId": "health_api_health_get",
@@ -626,6 +995,113 @@
           }
         },
         "summary": "Runs"
+      }
+    },
+    "/api/runs/{run_key}/events": {
+      "get": {
+        "operationId": "events_api_runs__run_key__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_key",
+            "required": true,
+            "schema": {
+              "title": "Run Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "at_ns",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "At Ns",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_ns",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Ns"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "const": "M2",
+              "default": "M2",
+              "title": "Mode",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventsPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Events"
       }
     },
     "/api/runs/{run_key}/snapshot": {

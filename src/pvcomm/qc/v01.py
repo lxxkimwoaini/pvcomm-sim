@@ -10,17 +10,19 @@ import hashlib
 import json
 import math
 import tempfile
+from bisect import bisect_right
 from collections import Counter, defaultdict, deque
 from pathlib import Path
 from typing import Any
 
 from pvcomm.config.lab import load_v01_config, v01_config_sha256
+from pvcomm.config.multisite import V03Config
 from pvcomm.pipeline.iec104_parser import PARSER_VERSION
 from pvcomm.qc.commands import audit_commands
 from pvcomm.qc.pcap import read_apdus
 from pvcomm.storage.parquet import read_jsonl, verify_parquet
 
-QC_VERSION = "v01-evidence-v2"
+QC_VERSION = "v01-evidence-v4"
 SIGNATURE = (
     "src_ip",
     "dst_ip",
@@ -47,6 +49,16 @@ def shutdown_capture_tail(row: dict[str, Any], master: list[dict[str, Any]]) -> 
     stopped = [r["ts_event_utc_ns"] for r in master if r["event_type"] == "master_stopped"]
     return bool(
         finished and stopped and finished[0] <= row["available_at"] <= stopped[0] + 100_000_000
+    )
+
+
+def endpoint_stop_control(
+    row: dict[str, Any], address: str, windows: list[tuple[int, int]]
+) -> bool:
+    return bool(
+        row["dst_ip"] == address
+        and row["frame_type"] in ("S", "U")
+        and any(start <= row["available_at"] < end for start, end in windows)
     )
 
 
@@ -80,7 +92,7 @@ def evaluate_run(run_dir: Path) -> dict[str, Any]:
         checks[name] = {"passed": bool(passed), "evidence": evidence}
 
     captures = manifest.get("captures", [])
-    hashes_valid = len(captures) == 4
+    hashes_valid = len(captures) == 1 + len(config.stations)
     independent: dict[str, dict[str, Any]] = {}
     for capture in captures:
         path = run_dir / capture["path"]
@@ -100,7 +112,7 @@ def evaluate_run(run_dir: Path) -> dict[str, Any]:
     )
     check(
         "zero_capture_drops",
-        len(captures) == 4
+        len(captures) == 1 + len(config.stations)
         and all(
             c["exit_code"] == 0 and c["statistics"].get("packets_dropped_by_kernel") == 0
             for c in captures
@@ -207,11 +219,43 @@ def evaluate_run(run_dir: Path) -> dict[str, Any]:
             ("rtu_send" if r["src_ip"] == address else "rtu_receive", r["data_hex"])
             for r in p1["apdus"]
         )
+        # lib60870 can close its application reader while TCP still receives a
+        # final S/U control frame. Retain and report only missing controls whose
+        # PCAP time is strictly inside an explicitly logged server.stop call.
+        # I frames, sends, extra callbacks, and controls outside it still fail.
+        lifecycle = sorted(
+            (
+                r
+                for r in terminal
+                if r.get("station_id") == station.station_id
+                and r["event_type"] in ("rtu_stopping", "rtu_stopped")
+            ),
+            key=lambda r: r["ts_mono_ns"],
+        )
+        stop_windows = [
+            (a["ts_event_utc_ns"], b["ts_event_utc_ns"])
+            for a, b in zip(lifecycle, lifecycle[1:], strict=False)
+            if a["event_type"] == "rtu_stopping" and b["event_type"] == "rtu_stopped"
+        ]
+        missing = p1_counts - terminal_counts
+        lifecycle_controls = []
+        for row in p1["apdus"]:
+            key = ("rtu_send" if row["src_ip"] == address else "rtu_receive", row["data_hex"])
+            if missing[key] and endpoint_stop_control(row, address, stop_windows):
+                missing[key] -= 1
+                lifecycle_controls.append(
+                    {
+                        "packet_index": row["packet_index"],
+                        "available_at": row["available_at"],
+                        "data_hex": row["data_hex"],
+                    }
+                )
         endpoint_evidence[station.station_id] = {
             "p0_apdus": len(station_p0),
             "p1_apdus": len(p1["apdus"]),
             "same_bytes": same,
-            "terminal_callback_match": terminal_counts == p1_counts,
+            "terminal_callback_match": not +missing and not +(terminal_counts - p1_counts),
+            "lifecycle_transport_controls": lifecycle_controls,
             "incomplete_bytes": p1["incomplete_byte_count"],
         }
     check(
@@ -223,14 +267,20 @@ def evaluate_run(run_dir: Path) -> dict[str, Any]:
         endpoint_evidence,
     )
 
+    power_config = None
     expected_commands = 2
     if (run_dir / "power_config.json").exists():
-        from pvcomm.config.power import V02Config
+        from pvcomm.config.power import power_document
 
-        power_config = V02Config.model_validate_json((run_dir / "power_config.json").read_text())
+        power_config = power_document(run_dir / "power_config.json")
         expected_commands += int(power_config.repeat_command_after_s is not None)
     business = {}
     for station in config.stations:
+        station_expected = (
+            sum(station.region_id in t.region_ids for t in power_config.dispatch_tasks)
+            if isinstance(power_config, V03Config) and power_config.dispatch_tasks
+            else expected_commands
+        )
         observations = [r for r in master if r.get("station_id") == station.station_id]
         seen = {r["ioa"] for r in observations if r["event_type"] == "master_observed_point"}
         gi = {r["cot"] for r in parsed if r["type_id"] == 100 and r["ca"] == station.common_address}
@@ -241,20 +291,25 @@ def evaluate_run(run_dir: Path) -> dict[str, Any]:
             if r["event_type"] == "terminal_command_accepted"
             and r["station_id"] == station.station_id
         ]
-
-        def reachable_power(target: float, row: dict[str, Any]) -> float | None:
-            physical = [
+        physical_states = sorted(
+            (
                 s
                 for s in states
                 if s.get("source") == "pvlib_pvwatts_inverter_v02"
-                and s["station_id"] == row["station_id"]
-                and s["model_mono_ns"] <= row["ts_mono_ns"]
-            ]
-            return (
-                min(target, max(physical, key=lambda sample: sample["model_mono_ns"])["p_avail_kw"])
-                if physical
-                else None
-            )
+                and s["station_id"] == station.station_id
+            ),
+            key=lambda s: s["model_mono_ns"],
+        )
+        physical_times = [s["model_mono_ns"] for s in physical_states]
+
+        def reachable_power(
+            target: float,
+            row: dict[str, Any],
+            physical_times: list[int] = physical_times,
+            physical_states: list[dict[str, Any]] = physical_states,
+        ) -> float | None:
+            index = bisect_right(physical_times, row["ts_mono_ns"]) - 1
+            return min(target, physical_states[index]["p_avail_kw"]) if index >= 0 else None
 
         targets = audit_commands(
             master,
@@ -272,7 +327,7 @@ def evaluate_run(run_dir: Path) -> dict[str, Any]:
             "commands": targets,
             "passed": {1001, 1002, 1003, 1006, 2001}.issubset(seen)
             and {6, 7, 10}.issubset(gi)
-            and len(commands) == len(accepted) == expected_commands
+            and len(commands) == len(accepted) == station_expected
             and all(t["passed"] for t in targets),
         }
     check("three_station_business_loop", all(r["passed"] for r in business.values()), business)

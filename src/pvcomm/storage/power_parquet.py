@@ -88,6 +88,8 @@ def export_power_parquet(root: Path) -> dict[str, Any]:
         root / "power_config.json",
         root / "truth/weather/weather.json",
         root / "truth/weather/source.json",
+        *sorted((root / "truth/weather").glob("*/weather.json")),
+        *sorted((root / "truth/weather").glob("*/source.json")),
     ]
     rows = {
         "electrical_state": [

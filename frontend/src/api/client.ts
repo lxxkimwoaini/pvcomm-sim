@@ -4,6 +4,21 @@ export type Health = components['schemas']['Health']
 export type ValidationResult = components['schemas']['ValidationResult']
 export type RunList = components['schemas']['RunList']
 export type RunSnapshot = components['schemas']['RunSnapshot']
+export type EventsPage = components['schemas']['EventsPage']
+export type ResourceView = components['schemas']['ResourceView']
+export const getResources = (key: string) =>
+  request<ResourceView>(
+    `/api/diagnostics/runs/${encodeURIComponent(key)}/resources`,
+  )
+export const getEvents = (
+  key: string,
+  at: string,
+  before: string,
+  beforeId: string,
+) =>
+  request<EventsPage>(
+    `/api/runs/${encodeURIComponent(key)}/events?at_ns=${at}&before_ns=${before}&before_id=${encodeURIComponent(beforeId)}`,
+  )
 export const getRuns = () => request<RunList>('/api/runs')
 export const getSnapshot = (key: string, atNs?: string) =>
   request<RunSnapshot>(

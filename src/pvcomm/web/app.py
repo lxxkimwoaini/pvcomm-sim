@@ -3,6 +3,8 @@
 import json
 import os
 import sys
+import time
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Literal
 
@@ -12,7 +14,7 @@ from fastapi.exceptions import RequestValidationError
 from pvcomm import __version__
 from pvcomm.config import ConfigError, config_sha256, validate_yaml
 from pvcomm.logging import create_logger
-from pvcomm.web.runs import RunList, RunRepository, RunSnapshot
+from pvcomm.web.runs import EventsPage, ResourceView, RunList, RunRepository, RunSnapshot
 from pvcomm.web.schemas import Health, ValidationRequest, ValidationResult
 
 
@@ -20,6 +22,15 @@ def create_app(run_root: Path | None = None) -> FastAPI:
     app = FastAPI(title="PVComm foundation API", version=__version__)
     repository = RunRepository(run_root or Path(os.environ.get("PVCOMM_RUN_ROOT", "outputs")))
     logger = create_logger("pvcomm.web.runs", sys.stderr)
+
+    @app.middleware("http")
+    async def request_timing(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        started = time.perf_counter()
+        response = await call_next(request)
+        response.headers["X-Process-Time-Ms"] = f"{(time.perf_counter() - started) * 1000:.3f}"
+        return response
 
     @app.get("/api/runs", response_model=RunList)
     def runs() -> RunList:
@@ -54,9 +65,41 @@ def create_app(run_root: Path | None = None) -> FastAPI:
             media_type="application/json",
         )
 
+    @app.get("/api/runs/{run_key}/events", response_model=EventsPage)
+    def events(
+        run_key: str,
+        at_ns: int = Query(ge=0),
+        before_ns: int | None = Query(default=None, ge=0),
+        before_id: str | None = Query(default=None, min_length=1, max_length=256),
+        limit: int = Query(default=100, ge=1, le=100),
+        mode: Literal["M2"] = "M2",
+    ) -> EventsPage:
+        if (before_ns is None) != (before_id is None):
+            raise HTTPException(status_code=422, detail="分页游标必须同时包含时间和事件ID")
+        try:
+            return repository.event_page(
+                run_key,
+                at_ns,
+                (before_ns, before_id) if before_ns is not None and before_id is not None else None,
+                limit,
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="运行不存在") from exc
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=409, detail="观测证据不可读取") from exc
+
     @app.get("/api/health", response_model=Health)
     def health() -> Health:
         return Health()
+
+    @app.get("/api/diagnostics/runs/{run_key}/resources", response_model=ResourceView)
+    def resources(run_key: str) -> ResourceView:
+        try:
+            return repository.resources(run_key)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="运行不存在") from exc
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=409, detail="资源诊断不可读取") from exc
 
     @app.post("/api/scenarios/validate", response_model=ValidationResult)
     def validate(request: ValidationRequest) -> ValidationResult:

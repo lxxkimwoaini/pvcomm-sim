@@ -10,39 +10,39 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from pvcomm.clock import ClockOrigin
-from pvcomm.config.power import DeviceConfig, V02Config
+from pvcomm.clock import ClockOrigin, SceneClock
+from pvcomm.config.multisite import V03Config
+from pvcomm.config.power import DeviceConfig, V02Config, WeatherConfig
 from pvcomm.power.device import Inverter
-from pvcomm.power.feeder import ThreeSiteFeeder
+from pvcomm.power.feeder import FeederNetwork
 from pvcomm.power.solar import SolarModel
 from pvcomm.protocol.c104_runtime import RecordEvent
-from pvcomm.weather import HistoricalWeather
+from pvcomm.storage.jsonl import MAX_SNAPSHOT_BYTES, last_complete_record
+from pvcomm.weather import HistoricalWeather, station_weather
 
 
 def append_snapshot(path: Path, value: dict[str, Any]) -> None:
     # Append-only IPC works on drvfs too: replace-over-existing may expose a
     # transient missing pathname to a concurrent WSL reader. A partial tail
     # never replaces the last complete record; completed malformed rows fail.
+    encoded = json.dumps(value, allow_nan=False) + "\n"
+    if len(encoded.encode("utf-8")) > MAX_SNAPSHOT_BYTES:
+        raise ValueError("IPC snapshot exceeds maximum size")
     with path.open("a", encoding="utf-8") as stream:
-        stream.write(json.dumps(value, allow_nan=False) + "\n")
+        stream.write(encoded)
         stream.flush()
 
 
 def read_snapshot(path: Path) -> dict[str, Any] | None:
-    try:
-        content = path.read_bytes()
-    except FileNotFoundError:
-        return None
-    complete = content[: content.rfind(b"\n") + 1].splitlines()
-    return dict(json.loads(complete[-1])) if complete else None
+    return last_complete_record(path)
 
 
-def prepare_power(root: Path, config: V02Config) -> None:
-    source = Path(config.weather.directory).resolve()
-    weather = HistoricalWeather(source / "weather.json", config.weather)
-    weather.sample(config.protocol.duration_s + 120)
+def prepare_weather(destination: Path, config: WeatherConfig, duration_s: int) -> None:
+    source = Path(config.directory).resolve()
+    weather = HistoricalWeather(source / "weather.json", config)
+    weather.sample(duration_s + 120)
     metadata = json.loads((source / "source.json").read_text(encoding="utf-8"))
-    if metadata["canonical_sha256"] != config.weather.sha256:
+    if metadata["canonical_sha256"] != config.sha256:
         raise ValueError("weather provenance disagrees with configured hash")
     raw = (source / "raw.json").read_bytes()
     if hashlib.sha256(raw).hexdigest() != metadata["files"]["raw.json"]["sha256"]:
@@ -52,9 +52,8 @@ def prepare_power(root: Path, config: V02Config) -> None:
         sort_keys=True,
         separators=(",", ":"),
     ).encode()
-    if hashlib.sha256(canonical).hexdigest() != config.weather.sha256:
+    if hashlib.sha256(canonical).hexdigest() != config.sha256:
         raise ValueError("canonical weather differs from retained raw source")
-    destination = root / "truth/weather"
     destination.mkdir(parents=True)
     for name in (
         "raw.json",
@@ -65,6 +64,24 @@ def prepare_power(root: Path, config: V02Config) -> None:
         "policy.html",
     ):
         shutil.copyfile(source / name, destination / name)
+
+
+def weather_directory(root: Path, config: V02Config | V03Config, station_id: str) -> Path:
+    base = root / "truth/weather"
+    return (
+        base / station_id
+        if isinstance(config, V03Config) and station_id in config.weather_by_station
+        else base
+    )
+
+
+def prepare_power(root: Path, config: V02Config | V03Config) -> None:
+    prepare_weather(root / "truth/weather", config.weather, config.protocol.duration_s)
+    if isinstance(config, V03Config):
+        for station_id, weather in config.weather_by_station.items():
+            prepare_weather(
+                root / "truth/weather" / station_id, weather, config.protocol.duration_s
+            )
     (root / "power_config.json").write_text(config.model_dump_json(indent=2), encoding="utf-8")
     (root / "truth/ipc").mkdir()
 
@@ -75,7 +92,7 @@ class PhysicalStationState:
     def __init__(
         self,
         root: Path,
-        config: V02Config,
+        config: V02Config | V03Config,
         device: DeviceConfig,
         origin: ClockOrigin,
         record_event: RecordEvent,
@@ -84,22 +101,38 @@ class PhysicalStationState:
         self.config = config
         self.device = device
         self.origin = origin
+        self.scene_clock = (
+            SceneClock(root / "scene.json") if isinstance(config, V03Config) else None
+        )
         self._record = record_event
-        self.weather = HistoricalWeather(root / "truth/weather/weather.json", config.weather)
-        self.solar = SolarModel(device, config.weather)
+        self._applied_operations = 0
+        self._operations = (
+            [op for op in config.device_operations if op.station_id == device.station_id]
+            if isinstance(config, V03Config)
+            else []
+        )
+        weather_config = station_weather(config, device.station_id)
+        self.weather = HistoricalWeather(
+            weather_directory(root, config, device.station_id) / "weather.json", weather_config
+        )
+        self.solar = SolarModel(device, weather_config)
         now = time.monotonic()
         available = self.solar.calculate(self.weather.sample(self.elapsed(now)))["p_avail_kw"]
         self.inverter = Inverter(
             device,
             device.initial_setpoint_kw,
             min(available, device.initial_setpoint_kw),
-            last_update_mono=now,
+            last_update_mono=self.elapsed(now) if self.scene_clock is not None else now,
         )
         self.sample: dict[str, Any] = {}
         self.advance(now)
 
     def elapsed(self, now: float) -> float:
-        return (int(now * 1e9) - self.origin.ts_mono_ns) / 1e9
+        return (
+            self.scene_clock.elapsed(int(now * 1e9))
+            if self.scene_clock is not None
+            else (int(now * 1e9) - self.origin.ts_mono_ns) / 1e9
+        )
 
     @property
     def accepted_setpoint_kw(self) -> float:
@@ -114,9 +147,25 @@ class PhysicalStationState:
         return self.inverter.command_count
 
     def advance(self, now: float) -> None:
-        weather = self.weather.sample(self.elapsed(now))
+        elapsed = self.elapsed(now)
+        for operation in self._operations[self._applied_operations :]:
+            if elapsed < operation.at_s:
+                break
+            # A local operation changes enablement only, never a remote setpoint,
+            # connectivity or fault status. It remains separate Oracle evidence.
+            self.inverter.config = self.inverter.config.model_copy(
+                update={"enabled": operation.enabled}
+            )
+            self._applied_operations += 1
+            self._record(
+                "terminal_local_device_operation",
+                {**operation.model_dump(), "applied_scene_s": elapsed},
+            )
+        weather = self.weather.sample(elapsed)
         solar = self.solar.calculate(weather)
-        self.inverter.advance(solar["p_avail_kw"], now)
+        self.inverter.advance(
+            solar["p_avail_kw"], self.elapsed(now) if self.scene_clock is not None else now
+        )
         values = {
             **{
                 k: v.isoformat() if hasattr(v, "isoformat") else v
@@ -130,6 +179,7 @@ class PhysicalStationState:
             "running": self.inverter.running,
             "connected": self.device.connected,
             "faulted": self.device.faulted,
+            "enabled": self.inverter.config.enabled,
             "command_count": self.command_count,
             "model_mono_ns": int(now * 1e9),
             "constraint_reason": self.inverter.constraint_reason,
@@ -163,7 +213,7 @@ class PhysicalStationState:
             raise RuntimeError("physical feeder measurement is not ready")
         if time.monotonic_ns() - voltage["solved_mono_ns"] > 10_000_000_000:
             raise RuntimeError("physical feeder measurement is stale")
-        return {
+        readings: dict[int, float | bool] = {
             1002: self.inverter.reactive_kvar,
             1003: voltage["voltage_kv"],
             1004: voltage["current_a"],
@@ -171,14 +221,25 @@ class PhysicalStationState:
             1008: self.sample["p_avail_kw"],
             2001: self.inverter.running,
         }
+        if isinstance(self.config, V03Config) and self.config.contract_revision >= 2:
+            readings.update(
+                {
+                    1009: voltage["line_loading_percent"],
+                    1010: voltage["transformer_loading_percent"],
+                    1011: voltage["line_p_from_kw"],
+                }
+            )
+        return readings
 
 
 class FeederRuntime:
-    def __init__(self, root: Path, config: V02Config, record_event: RecordEvent) -> None:
+    def __init__(
+        self, root: Path, config: V02Config | V03Config, record_event: RecordEvent
+    ) -> None:
         self.root, self.config, self.record = root, config, record_event
-        self.model = ThreeSiteFeeder(config.feeder, tuple(d.station_id for d in config.devices))
+        self.model = FeederNetwork(config)
         self.last_solve = 0.0
-        self.last_commands: tuple[int, ...] = ()
+        self.last_commands: tuple[tuple[int, bool, bool, bool], ...] = ()
 
     def step(self) -> bool:
         paths = [self.root / f"truth/ipc/{d.station_id}.jsonl" for d in self.config.devices]
@@ -191,7 +252,10 @@ class FeederRuntime:
             if sample is not None
         }
         now = time.monotonic()
-        commands = tuple(s["command_count"] for s in states.values())
+        commands = tuple(
+            (s["command_count"], s["running"], s["connected"], s["faulted"])
+            for s in states.values()
+        )
         if commands == self.last_commands and now - self.last_solve < self.config.powerflow_step_s:
             return True
         if any(now * 1e9 - s["model_mono_ns"] > 3_000_000_000 for s in states.values()):
@@ -202,6 +266,28 @@ class FeederRuntime:
             self.record("terminal_powerflow_failed", {"error": str(exc), "converged": False})
             raise
         stamp = time.monotonic_ns()
+        if isinstance(self.config, V03Config):
+            for feeder_id, diagnostic in self.model.diagnostic_rows.items():
+                self.record(
+                    "terminal_feeder_diagnostics",
+                    {
+                        "feeder_id": feeder_id,
+                        "solved_mono_ns": stamp,
+                        "solve_duration_ms": (stamp / 1e9 - now) * 1000,
+                        "snapshot_span_ms": (
+                            max(s["model_mono_ns"] for s in states.values())
+                            - min(s["model_mono_ns"] for s in states.values())
+                        )
+                        / 1e6,
+                        "calculation_valid": True,
+                        **diagnostic,
+                        "reverse_flow": diagnostic["grid_p_kw"] < 0,
+                        "electrical_limit_violation": diagnostic["bus_min_pu"] < 0.9
+                        or diagnostic["bus_max_pu"] > 1.1
+                        or diagnostic["line_max_loading_percent"] > 100
+                        or diagnostic["transformer_loading_percent"] > 100,
+                    },
+                )
         for station, result in results.items():
             row = {
                 **result,

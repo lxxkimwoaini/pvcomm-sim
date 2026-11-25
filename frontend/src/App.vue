@@ -53,7 +53,7 @@ onMounted(refreshHealth)
         <span class="brand-mark" aria-hidden="true">PV</span>
         <span>PVComm <small>联合仿真实验平台</small></span>
       </a>
-      <ElTag type="info" effect="plain">V0.2 开发 · 联合仿真</ElTag>
+      <ElTag type="info" effect="plain">V0.3 开发 · 多站联合仿真</ElTag>
     </header>
 
     <div class="workspace">

@@ -65,6 +65,17 @@ PowerShell 设置 PVCOMM_RUN_ROOT 与 PVCOMM_E2E_REAL_ROOT 为同一个真实验
 
 ## V0.2开发验证
 
-`uv run --frozen python scripts/dev.py power-test`运行可选科学依赖专项；data-test另含电气Arrow读回、源哈希与拒绝覆盖。普通test排除lab/data/power，CI分别安装可选组。真实运行命令见README；同路径禁止重跑。historical下载脚本只写data，保留原始响应与政策快照，不提交外部数据。当前新增QC为v02-power-v5（此前历史三场景保留v1及其冻结源码，不以新契约覆写），内部调用独立PCAP核验和v01-evidence-v2；旧QC不覆盖。
+`uv run --frozen python scripts/dev.py power-test`运行可选科学依赖专项；data-test另含电气Arrow读回、源哈希与拒绝覆盖。普通test排除lab/data/power，CI分别安装可选组。真实运行命令见README；同路径禁止重跑。historical下载脚本只写data，保留原始响应与政策快照，不提交外部数据。V0.2早期验收QC为v02-power-v5（此前历史三场景保留v1及其冻结源码，不以新契约覆写），当时内部协议核验为v01-evidence-v2；当前版本见下文，旧QC不覆盖。
 
 真实 V0.2 浏览器验收另设置 `PVCOMM_E2E_RUN_NAME` 为运行目录名，例如 `v02_clear_001`；与两个运行根变量一起使用。新增 Oracle Arrow 契约为 `0.2-power-evidence.2`，输出 `parsed/parquet-v02-power-v2`；旧六表契约保持不变。
+
+
+## V0.3 开发验证
+
+当前包0.3.0.dev0；V0.1/V0.2旧冻结配置和六表Arrow保留。0.3新revision2点表增加1009线路负载%、1010变压器负载%、1011线路上游流入kW，均由RTU真实协议上送；revision1仍可复现。局部坐标/空间模型、容量/倾角/逆变器/斜率/周期配置有意异质，非现场标定。正常本地enable操作显式配置并单独记录，不修改远程已接受目标，不冒充通信故障或远程调控。
+
+M2事件索引采用临时SQLite、追加字节摄入和联合时间/ID索引；IPC固定尾读；快照每条测量最多600个原始点，多站显示缩减为最多120个保留极值/首尾/间隙的点。`GET /api/runs/{key}/events`固定at_ns，before_ns/before_id配对，limit≤100；不能用未来观测回填。`GET /api/diagnostics/runs/{key}/resources`为单独基础设施诊断，不进入M2快照。真实浏览器验证额外设置PVCOMM_E2E_STATIONS=30；各根目录和实际运行名必须一致。
+
+当前独立QC版本：V0.2 v02-power-v6；V0.3 v03-power-v4，内部协议核验v01-evidence-v4。历史v1/v2/v3及失败报告保持原样，不覆盖。v4修正TCP前序缺口补齐时的后序完整APDU可用时间/归属帧，不删除严格比较项。normal_device_operations及物理/电气诊断保持原门槛。Windows与WSL解释器/虚拟环境继续分离。V0.3通过与否须依据完整规模/1h/界面资源实测，不能由单测或CI替代。
+
+`frontend/scripts/measure-v03.mjs`在实际页面记录请求耗时、服务耗时和DOM更新后两次animation frame的近似绘制时间；DOM属性仅包含已有M2游标及功率接收时间。实时显示延迟统计每站初始快照之后、新显示的最近功率观测相对主站available_at的时间，不将2/5/10s采样间隔误算为网页延迟；回放旧样本单独标记。该测量不是传感器端到端延迟或显示硬件扫描测量。

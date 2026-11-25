@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
-from pvcomm.clock import ClockOrigin
+from pvcomm.clock import ClockOrigin, SceneClock
 
 
 class RunRecorder:
@@ -19,8 +19,10 @@ class RunRecorder:
         *,
         suffix: str = "",
         origin: ClockOrigin | None = None,
+        scene_clock: SceneClock | None = None,
     ) -> None:
         self.origin = origin or ClockOrigin.capture()
+        self.scene_clock = scene_clock
         self.run_id = run_id
         self._endpoint = suffix or "local"
         self._lock = threading.Lock()
@@ -55,7 +57,9 @@ class RunRecorder:
                 "ts_event": datetime.fromtimestamp(utc // 1_000_000_000, UTC).isoformat(),
                 "ts_event_utc_ns": utc,
                 "ts_mono_ns": mono,
-                "sim_elapsed_ms": self.origin.elapsed_ms(mono),
+                "sim_elapsed_ms": int(self.scene_clock.elapsed(mono) * 1000)
+                if self.scene_clock is not None
+                else self.origin.elapsed_ms(mono),
             }
             if observed:
                 record["available_at"] = utc

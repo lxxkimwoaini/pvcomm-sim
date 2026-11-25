@@ -111,3 +111,91 @@ def test_new_physical_curves_require_received_telemetry_and_respect_cursor(tmp_p
     assert values[1005] == 700
     assert values[1008] == 24
     assert all(not m["points"] for m in latest["stations"][1]["measurements"])
+
+
+def test_event_keyset_ties_and_protocol_statistics_are_causal(tmp_path: Path) -> None:
+    run = fixture_run(tmp_path)
+    at = 1795590000000000009
+    path = run / "observed/master_events_master.jsonl"
+    template = json.loads(path.read_text().splitlines()[-1])
+    with path.open("a") as stream:
+        for i in range(12):
+            stream.write(json.dumps({**template, "event_id": f"tie{i:02}"}) + "\n")
+    raw = run / "observed/master_apdu_events_master.jsonl"
+    raw.write_text(
+        "".join(
+            json.dumps(
+                {
+                    "event_id": f"raw{i}",
+                    "available_at": stamp,
+                    "direction": "master_receive",
+                    "length": 7,
+                    "data_hex": "SECRET",
+                }
+            )
+            + "\n"
+            for i, stamp in enumerate((at - 1, at + 1))
+        )
+    )
+    client = TestClient(create_app(tmp_path))
+    key = client.get("/api/runs").json()["runs"][0]["run_key"]
+    response = client.get(f"/api/runs/{key}/snapshot?at_ns={at}")
+    assert response.status_code == 200
+    assert response.json()["protocol_statistics"]["master_receive_callbacks"] == 1
+    assert response.json()["protocol_statistics"]["master_receive_bytes"] == 7
+    assert "SECRET" not in response.text
+    seen: list[str] = []
+    params: dict[str, int | str] = {"at_ns": at, "limit": 4}
+    while True:
+        page = client.get(f"/api/runs/{key}/events", params=params).json()
+        seen.extend(e["event_id"] for e in page["events"])
+        if page["next_before_ns"] is None:
+            break
+        params.update(before_ns=page["next_before_ns"], before_id=page["next_before_id"])
+    assert len(seen) == len(set(seen)) == 14
+    assert client.get(f"/api/runs/{key}/events?at_ns={at}&before_ns=1").status_code == 422
+    assert client.get(f"/api/runs/{key}/events?at_ns={at}&limit=101").status_code == 422
+
+
+def test_resources_are_separate_and_duplicate_evidence_returns_conflict(tmp_path: Path) -> None:
+    run = fixture_run(tmp_path)
+    (run / "resources.jsonl").write_text(
+        json.dumps(
+            {
+                "cpu_percent_one_core": 12.5,
+                "rss_bytes": 123,
+                "ts_utc_ns": 1234,
+                "electrical_truth": "SECRET",
+            }
+        )
+        + "\n"
+    )
+    client = TestClient(create_app(tmp_path))
+    key = client.get("/api/runs").json()["runs"][0]["run_key"]
+    response = client.get(f"/api/diagnostics/runs/{key}/resources")
+    assert response.status_code == 200
+    assert response.json()["cpu_percent_one_core"] == 12.5
+    assert "SECRET" not in response.text
+    assert "cpu_percent" not in client.get(f"/api/runs/{key}/snapshot").text
+    path = run / "observed/master_events_master.jsonl"
+    with path.open("a") as stream:
+        stream.write(path.read_text().splitlines()[0] + "\n")
+    assert client.get(f"/api/runs/{key}/snapshot").status_code == 409
+
+
+def test_device_status_is_received_independently_of_connection_and_respects_cursor(
+    tmp_path: Path,
+) -> None:
+    run = fixture_run(tmp_path)
+    path = run / "observed/master_events_master.jsonl"
+    row = json.loads(path.read_text().splitlines()[-1])
+    with path.open("a") as stream:
+        stream.write(json.dumps({**row, "event_id": "status", "ioa": 2001, "value": False}) + "\n")
+    client = TestClient(create_app(tmp_path))
+    key = client.get("/api/runs").json()["runs"][0]["run_key"]
+    old = client.get(f"/api/runs/{key}/snapshot?at_ns=1795590000000000001").json()
+    assert old["stations"][0]["device_running"] is None
+    current = client.get(f"/api/runs/{key}/snapshot").json()
+    assert current["stations"][0]["device_running"] is False
+    assert current["stations"][0]["connection_state"] is None
+    assert current["stations"][1]["device_running"] is None

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,11 +22,22 @@ class TcpdumpCapture:
     capture_filter: str
     command_prefix: tuple[str, ...] = ()
     buffer_kib: int = 16384
+    native_spool: bool = False
+    immediate_mode: bool = True
+    _spool: Path | None = field(default=None, init=False)
     _process: subprocess.Popen[str] | None = field(default=None, init=False)
     _ready: threading.Event = field(default_factory=threading.Event, init=False)
     _reader: threading.Thread | None = field(default=None, init=False)
     _lines: list[str] = field(default_factory=list, init=False)
     stats: dict[str, int | None] = field(default_factory=dict, init=False)
+
+    @property
+    def process_id(self) -> int | None:
+        return self._process.pid if self._process is not None else None
+
+    @property
+    def active_path(self) -> Path:
+        return self._spool or self.output_path
 
     def start(self) -> None:
         if sys.platform != "linux":
@@ -33,11 +47,12 @@ class TcpdumpCapture:
         if self.output_path.exists():
             raise FileExistsError(f"capture already exists: {self.output_path}")
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
+        if self.native_spool:
+            self._spool = Path(tempfile.mkdtemp(prefix="pvcomm-pcap-")) / self.output_path.name
         command = [
             *self.command_prefix,
             "tcpdump",
             "-n",
-            "--immediate-mode",
             "-B",
             str(self.buffer_kib),
             "-i",
@@ -46,8 +61,10 @@ class TcpdumpCapture:
             "0",
             "-U",
             "-w",
-            str(self.output_path),
+            str(self._spool or self.output_path),
         ]
+        if self.immediate_mode:
+            command.insert(len(self.command_prefix) + 1, "--immediate-mode")
         command.extend(("--", self.capture_filter))
         self._process = subprocess.Popen(
             command,
@@ -90,6 +107,22 @@ class TcpdumpCapture:
             self._reader.join(timeout=5)
         if process.stderr is not None:
             process.stderr.close()
+        if self._spool is not None and self._spool.exists():
+            # Finalize once, after capture exit. On a failed copy retain the
+            # native spool; never remove the sole surviving PCAP evidence.
+            with self._spool.open("rb") as source, self.output_path.open("xb") as destination:
+                shutil.copyfileobj(source, destination)
+            if self.output_path.stat().st_size != self._spool.stat().st_size:
+                raise RuntimeError(f"capture spool copy incomplete: {self._spool}")
+            with self._spool.open("rb") as source, self.output_path.open("rb") as destination:
+                if (
+                    hashlib.file_digest(source, "sha256").digest()
+                    != hashlib.file_digest(destination, "sha256").digest()
+                ):
+                    raise RuntimeError(f"capture spool hash mismatch: {self._spool}")
+            self._spool.unlink()
+            self._spool.parent.rmdir()
+            self._spool = None
         stderr = "".join(self._lines)
         self.stats["buffer_size_kib"] = self.buffer_kib
         for key, phrase in (
