@@ -155,20 +155,26 @@ class V01Runner:
         }
         self._write_manifest(manifest)
         recorder = RunRecorder(self.run_dir, self.config, self.config_source)
-        capture = TcpdumpCapture(
+        primary_capture = TcpdumpCapture(
             interface=self.config.capture_interface,
             output_path=self.run_dir / "raw" / "pcap" / "primary_loopback.pcap",
             capture_filter=self.config.capture_filter,
         )
+        diagnostic_capture = TcpdumpCapture(
+            interface=self.config.capture_interface,
+            output_path=self.run_dir / "raw" / "pcap" / "diagnostic_loopback.pcap",
+            capture_filter=self.config.capture_filter,
+        )
+        captures = (primary_capture, diagnostic_capture)
         endpoints: list[C104StationEndpoint] = []
         master: C104Master | None = None
-        capture_returncode: int | None = None
         try:
             manifest["status"] = "validating"
             self._write_manifest(manifest)
-            capture.start()
+            for capture in captures:
+                capture.start()
             time.sleep(0.2)
-            if not capture.process_running:
+            if not all(capture.process_running for capture in captures):
                 raise RuntimeError("tcpdump exited before the IEC 104 run started")
             self._timeline_start = time.monotonic()
             manifest["status"] = "running"
@@ -208,14 +214,22 @@ class V01Runner:
                 master.stop()
             for endpoint in reversed(endpoints):
                 endpoint.stop()
-            capture_returncode = capture.stop()
+            capture_results: dict[str, dict[str, object]] = {}
+            for capture_name, capture in zip(("primary", "diagnostic"), captures, strict=True):
+                returncode = capture.stop()
+                capture_results[capture_name] = {
+                    "path": f"raw/pcap/{capture_name}_loopback.pcap",
+                    "sha256": _sha256(capture.output_path)
+                    if capture.output_path.exists()
+                    else None,
+                    "size_bytes": capture.output_path.stat().st_size
+                    if capture.output_path.exists()
+                    else 0,
+                    "tcpdump_returncode": returncode,
+                }
             manifest["pcap"] = {
-                "path": "raw/pcap/primary_loopback.pcap",
-                "sha256": _sha256(capture.output_path) if capture.output_path.exists() else None,
-                "size_bytes": capture.output_path.stat().st_size
-                if capture.output_path.exists()
-                else 0,
-                "tcpdump_returncode": capture_returncode,
+                "primary": capture_results["primary"],
+                "diagnostic": capture_results["diagnostic"],
             }
             manifest["finished_at"] = datetime.now(UTC).isoformat()
             self._write_manifest(manifest)

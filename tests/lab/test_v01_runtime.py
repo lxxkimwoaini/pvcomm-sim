@@ -24,7 +24,8 @@ def test_v01_three_station_real_runtime(tmp_path: Path) -> None:
     run_dir = V01Runner(config, config_path, tmp_path).run()
     manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["status"] == "completed"
-    assert manifest["pcap"]["tcpdump_returncode"] == 0
+    assert manifest["pcap"]["primary"]["tcpdump_returncode"] == 0
+    assert manifest["pcap"]["diagnostic"]["tcpdump_returncode"] == 0
     master_events = [
         json.loads(line)
         for line in (run_dir / "observed" / "master_events.jsonl").read_text().splitlines()
