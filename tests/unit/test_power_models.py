@@ -198,3 +198,30 @@ def test_ipc_partial_tail_never_replaces_last_complete_snapshot(tmp_path: Path) 
         stream.write(b"corrupt\n")
     with pytest.raises(ValueError):
         read_snapshot(path)
+
+
+def test_weather_replay_uses_retained_monotonic_precision(tmp_path: Path) -> None:
+    from pvcomm.config.power import CloudShadow
+
+    path, cfg = weather_fixture(tmp_path)
+    cfg = cfg.model_copy(
+        update={
+            "cloud_shadow": CloudShadow(
+                model="advected_grey_optical_layer",
+                optical_depth=1.5,
+                half_width_m=200.0,
+                speed_m_s=10.0,
+                center_s=45.0,
+            )
+        }
+    )
+    weather = HistoricalWeather(path, cfg)
+    origin_ns, model_ns = 1_234_567_890, 35_483_024_679
+    elapsed = (model_ns - origin_ns) / 1e9
+    original = weather.sample(elapsed)
+    replay = weather.sample((model_ns - origin_ns) / 1e9)
+    assert replay == original
+    # ISO datetime retains microseconds, not the nanoseconds used by the model.
+    rounded_elapsed = (original.source_weather_ts - cfg.source_start).total_seconds()
+    assert rounded_elapsed != elapsed
+    assert abs(rounded_elapsed - elapsed) <= 1e-6

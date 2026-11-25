@@ -15,9 +15,8 @@ from pvcomm.storage.parquet import read_jsonl
 from pvcomm.storage.power_parquet import verify_power_parquet
 from pvcomm.weather import HistoricalWeather
 
-VERSION = "v02-power-v4"
+VERSION = "v02-power-v5"
 TOLERANCE = 1e-6
-MODEL_TOLERANCE = 1e-4
 
 
 def evaluate_power(root: Path) -> dict[str, Any]:
@@ -103,9 +102,9 @@ def evaluate_power(root: Path) -> dict[str, Any]:
             ).total_seconds()
             mapped_elapsed = (row["model_mono_ns"] - manifest["clock_origin"]["ts_mono_ns"]) / 1e9
             timing &= abs(mapped_elapsed - elapsed) <= 1e-6
-            expected_weather = weather.sample(elapsed)
+            expected_weather = weather.sample(mapped_elapsed)
             models &= all(
-                abs(row[field] - getattr(expected_weather, field)) <= MODEL_TOLERANCE
+                abs(row[field] - getattr(expected_weather, field)) <= TOLERANCE
                 for field in (
                     "ghi_w_m2",
                     "dni_w_m2",
@@ -119,7 +118,7 @@ def evaluate_power(root: Path) -> dict[str, Any]:
             expected = model.calculate(expected_weather)
             error = max(abs(row[field] - expected[field]) for field in expected)
             errors.append(error)
-            models &= error < MODEL_TOLERANCE
+            models &= error < TOLERANCE
             previous = row
     check(
         "electrical_bounds",
@@ -153,7 +152,11 @@ def evaluate_power(root: Path) -> dict[str, Any]:
         causal,
         "model acceptance must pair with actual c104 terminal acceptance",
     )
-    check("weather_monotonic_mapping", timing, {"source_time_tolerance_s": 1e-6, "weather_value_tolerance": MODEL_TOLERANCE})
+    check(
+        "weather_monotonic_mapping",
+        timing,
+        {"source_time_tolerance_s": 1e-6, "weather_value_tolerance": TOLERANCE},
+    )
     feeder = ThreeSiteFeeder(config.feeder, tuple(d.station_id for d in config.devices))
     groups: dict[int, dict[str, Any]] = {}
     for row in flow:

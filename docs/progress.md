@@ -171,3 +171,7 @@ V0.1 验收补齐启动：在 `feat/v01-acceptance` 上实施 `docs/plans/2026-1
 - 本地最新check退出0：普通93 passed/9 deselected、mypy60文件、Ruff、schema/TS、ESLint/Prettier/vue-tsc、Vitest3与build通过；data4 passed/98 deselected、power2 passed/100 deselected。Vite约810kB的构建提示保留。真实V0.2 API主站测点与原始接收日志对账通过，Playwright2 passed/1 skipped（真实模式跳过空态），截图保留 outputs/v02_frozen_001/web-evidence。
 - 浏览器首次环境未同时设置PVCOMM_RUN_ROOT导致404，第二次点击隐藏的指标输入被组件外壳拦截；按trace修正为真实可见wrapper后通过，没有force或延长超时。未隐藏失败。
 - Oahu新NLR入口可下载，但原站禁止再分发与OEDI许可标记冲突，未接入/再分发；ADR0005追加实情。增加明确的灰色光学层平流模型，测试Beer–Lambert衰减和边界；它是历史小时背景上的物理简化扰动，不是实测秒级云影。当前新增source_ghi/透过率的Oracle契约0.2-power-evidence.2及QC v02-power-v3，与旧证据分目录。新模型真实运行尚待执行，暂不声明V0.2总验收通过。
+
+### 快速扰动核验的时间精度修正
+
+云影001（7410fe7）与002（44adf12）均真实90s completed、协议QC通过，但独立物理QC v2/v3失败：ISO source_weather_ts微秒化后重算秒级光学层，GHI/POA出现约3.2e-5数值偏差。临时v4将模型/天气容差改为1e-4，003（76e73ad）通过；该放宽不作为最终验收依据。最终v5改用已保留model_mono_ns与clock_origin精确映射重算，源ISO时间仅检查1µs映射误差，物理/天气原1e-6容差恢复。原始证据和各版失败报告全部保留，最终v5结果另记。新增纳秒回放回归。此修正不改变运行物理轨迹、协议参数或标签。
