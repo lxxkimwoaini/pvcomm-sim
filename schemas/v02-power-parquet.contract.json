@@ -1,0 +1,174 @@
+{
+  "schema_version": "0.2-power-evidence",
+  "scope": "Oracle",
+  "tables": {
+    "electrical_state": {
+      "cell_temp_c": {
+        "arrow_type": "float64",
+        "nullable": false
+      },
+      "command_count": {
+        "arrow_type": "int64",
+        "nullable": false
+      },
+      "connected": {
+        "arrow_type": "bool",
+        "nullable": false
+      },
+      "constraint_reason": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "dhi_w_m2": {
+        "arrow_type": "float64",
+        "nullable": false
+      },
+      "dni_w_m2": {
+        "arrow_type": "float64",
+        "nullable": false
+      },
+      "event_id": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "faulted": {
+        "arrow_type": "bool",
+        "nullable": false
+      },
+      "ghi_w_m2": {
+        "arrow_type": "float64",
+        "nullable": false
+      },
+      "model_mono_ns": {
+        "arrow_type": "int64",
+        "nullable": false
+      },
+      "p_actual_kw": {
+        "arrow_type": "float64",
+        "nullable": false
+      },
+      "p_avail_kw": {
+        "arrow_type": "float64",
+        "nullable": false
+      },
+      "p_set_accepted_kw": {
+        "arrow_type": "float64",
+        "nullable": false
+      },
+      "poa_w_m2": {
+        "arrow_type": "float64",
+        "nullable": false
+      },
+      "q_actual_kvar": {
+        "arrow_type": "float64",
+        "nullable": false
+      },
+      "run_id": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "running": {
+        "arrow_type": "bool",
+        "nullable": false
+      },
+      "sim_elapsed_ms": {
+        "arrow_type": "int64",
+        "nullable": false
+      },
+      "source": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "source_interval_start": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "source_weather_ts": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "station_id": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "temp_air_c": {
+        "arrow_type": "float64",
+        "nullable": false
+      },
+      "ts_event_utc_ns": {
+        "arrow_type": "int64",
+        "nullable": false
+      },
+      "ts_mono_ns": {
+        "arrow_type": "int64",
+        "nullable": false
+      },
+      "wind_speed_m_s": {
+        "arrow_type": "float64",
+        "nullable": false
+      }
+    },
+    "powerflow": {
+      "converged": {
+        "arrow_type": "bool",
+        "nullable": false
+      },
+      "current_a": {
+        "arrow_type": "float64",
+        "nullable": false
+      },
+      "event_id": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "injection_mono_ns": {
+        "arrow_type": "int64",
+        "nullable": false
+      },
+      "p_actual_kw": {
+        "arrow_type": "float64",
+        "nullable": false
+      },
+      "q_actual_kvar": {
+        "arrow_type": "float64",
+        "nullable": false
+      },
+      "run_id": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "sim_elapsed_ms": {
+        "arrow_type": "int64",
+        "nullable": false
+      },
+      "solved_mono_ns": {
+        "arrow_type": "int64",
+        "nullable": false
+      },
+      "source": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "station_id": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "ts_event_utc_ns": {
+        "arrow_type": "int64",
+        "nullable": false
+      },
+      "ts_mono_ns": {
+        "arrow_type": "int64",
+        "nullable": false
+      },
+      "voltage_kv": {
+        "arrow_type": "float64",
+        "nullable": false
+      },
+      "voltage_pu": {
+        "arrow_type": "float64",
+        "nullable": false
+      }
+    }
+  }
+}

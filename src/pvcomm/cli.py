@@ -8,7 +8,8 @@ from pathlib import Path
 
 from pvcomm import __version__
 from pvcomm.config import ConfigError, config_sha256, load_config
-from pvcomm.config.lab import load_v01_config, v01_config_sha256
+from pvcomm.config.lab import load_lab_document, load_v01_config, v01_config_sha256
+from pvcomm.config.power import V02Config, load_power_config
 from pvcomm.logging import create_logger
 from pvcomm.pipeline.iec104_parser import parse_run
 from pvcomm.scenario.v01_runner import V01Runner
@@ -24,6 +25,8 @@ def main(argv: list[str] | None = None) -> int:
     validate.add_argument("--config", type=Path, required=True)
     validate_lab = commands.add_parser("validate-lab-config", help="validate V0.1 IEC 104 lab YAML")
     validate_lab.add_argument("--config", type=Path, required=True)
+    validate_power = commands.add_parser("validate-power-config", help="validate V0.2 power YAML")
+    validate_power.add_argument("--config", type=Path, required=True)
     parse = commands.add_parser("parse", help="parse a V0.1 PCAP with TShark")
     parse.add_argument("--run-dir", type=Path, required=True)
     parse.add_argument("--parquet", action="store_true", help="also export versioned Arrow tables")
@@ -34,9 +37,27 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--output-root", type=Path, required=True)
     run.add_argument("--isolated", action="store_true", help="owned Linux namespace P0/P1 lab")
     for name in ("label", "split", "features", "benchmark"):
-        reserved = commands.add_parser(name, help="not implemented in V0.0")
+        reserved = commands.add_parser(name, help="not implemented in this development version")
         reserved.add_argument("arguments", nargs=argparse.REMAINDER)
     args, unknown = parser.parse_known_args(argv)
+    if args.command == "validate-power-config":
+        if unknown:
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}")
+        try:
+            power_config = load_power_config(args.config)
+        except (OSError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        print(
+            json.dumps(
+                {
+                    "valid": True,
+                    "schema_version": power_config.schema_version,
+                    "weather_sha256": power_config.weather.sha256,
+                }
+            )
+        )
+        return 0
     if args.command == "validate-lab-config":
         if unknown:
             parser.error(f"unrecognized arguments: {' '.join(unknown)}")
@@ -66,11 +87,15 @@ def main(argv: list[str] | None = None) -> int:
 
         signal.signal(signal.SIGTERM, request_cancellation)
         try:
-            lab_config = load_v01_config(args.config)
+            document = load_lab_document(args.config)
+            power = document if isinstance(document, V02Config) else None
+            lab_config = power.protocol if power is not None else load_v01_config(args.config)
+            if power is not None and not args.isolated:
+                raise ValueError("V0.2 physical simulation requires --isolated")
             if args.isolated:
                 from pvcomm.scenario.isolated_runner import run_isolated
 
-                run_dir = run_isolated(lab_config, args.config, args.output_root)
+                run_dir = run_isolated(lab_config, args.config, args.output_root, power=power)
             else:
                 run_dir = V01Runner(lab_config, args.config, args.output_root).run()
         except (OSError, ValueError, RuntimeError, TimeoutError, ImportError) as exc:
@@ -93,6 +118,10 @@ def main(argv: list[str] | None = None) -> int:
                 from pvcomm.storage.parquet import export_parquet
 
                 summary["parquet"] = export_parquet(args.run_dir)
+                if (args.run_dir / "power_config.json").exists():
+                    from pvcomm.storage.power_parquet import export_power_parquet
+
+                    summary["power_parquet"] = export_power_parquet(args.run_dir)
         except (OSError, ValueError, RuntimeError, ImportError) as exc:
             logger = create_logger("pvcomm.cli", sys.stderr)
             logger.error(str(exc), extra={"event": "parse_failed"})
@@ -105,14 +134,22 @@ def main(argv: list[str] | None = None) -> int:
         from pvcomm.qc.v01 import qc_run
 
         try:
-            report = qc_run(args.run_dir)
+            if (args.run_dir / "power_config.json").exists():
+                from pvcomm.qc.power import qc_power
+
+                report = qc_power(args.run_dir)
+            else:
+                report = qc_run(args.run_dir)
         except (OSError, ValueError, RuntimeError, ImportError) as exc:
             print(str(exc), file=sys.stderr)
             return 1
         print(json.dumps(report, sort_keys=True))
         return 0 if report["passed"] else 1
     if args.command != "validate-config":
-        print(f"{args.command}: not implemented in V0.0; no experiment executed", file=sys.stderr)
+        print(
+            f"{args.command}: not implemented in this development version; no experiment executed",
+            file=sys.stderr,
+        )
         return 3
     if unknown:
         parser.error(f"unrecognized arguments: {' '.join(unknown)}")

@@ -5,7 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Annotated, Literal, Self
+from typing import TYPE_CHECKING, Annotated, Literal, Self
+
+if TYPE_CHECKING:
+    from pvcomm.config.power import V02Config
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -116,7 +119,7 @@ class V01Config(V01Contract):
         return self
 
 
-def load_v01_config(path: Path) -> V01Config:
+def load_lab_document(path: Path) -> V01Config | V02Config:
     try:
         with path.open("rb") as stream:
             content = stream.read(MAX_CONFIG_BYTES + 1)
@@ -124,6 +127,10 @@ def load_v01_config(path: Path) -> V01Config:
             raise ValueError("config exceeds maximum size")
         raw = yaml.load(content.decode("utf-8"), Loader=UniqueKeyLoader)
         check_yaml_tree(raw)
+        if isinstance(raw, dict) and raw.get("schema_version") == "0.2":
+            from pvcomm.config.power import V02Config
+
+            return V02Config.model_validate(raw)
         return V01Config.model_validate(raw)
     except (OSError, yaml.YAMLError, TypeError, ValueError) as exc:
         raise ValueError(f"invalid V0.1 config {path}: {exc}") from exc
@@ -132,3 +139,8 @@ def load_v01_config(path: Path) -> V01Config:
 def v01_config_sha256(config: V01Config) -> str:
     payload = json.dumps(config.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def load_v01_config(path: Path) -> V01Config:
+    document = load_lab_document(path)
+    return document if isinstance(document, V01Config) else document.protocol

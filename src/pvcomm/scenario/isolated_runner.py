@@ -18,11 +18,14 @@ from typing import Any, TextIO
 from pvcomm.capture.tcpdump import TcpdumpCapture
 from pvcomm.clock import ClockOrigin
 from pvcomm.config.lab import V01Config, v01_config_sha256
+from pvcomm.config.power import V02Config
 from pvcomm.network.isolated import IsolatedNetwork
 from pvcomm.storage.events import RunRecorder
 
 
-def run_isolated(config: V01Config, source: Path, output_root: Path) -> Path:
+def run_isolated(
+    config: V01Config, source: Path, output_root: Path, *, power: V02Config | None = None
+) -> Path:
     if sys.platform != "linux":
         raise RuntimeError("isolated IEC 104 laboratory run requires Linux")
     for name in ("ip", "tcpdump", "tshark"):
@@ -74,6 +77,7 @@ def run_isolated(config: V01Config, source: Path, output_root: Path) -> Path:
     logs: list[TextIO] = []
     failures: list[str] = []
     controller = RunRecorder(root, config.run_id, suffix="_controller", origin=origin)
+    feeder = None
 
     def launch(role: str, namespace: str) -> subprocess.Popen[bytes]:
         log = (root / f"{role}.stderr.log").open("x", encoding="utf-8")
@@ -98,6 +102,19 @@ def run_isolated(config: V01Config, source: Path, output_root: Path) -> Path:
         return process
 
     try:
+        if power is not None:
+            from pvcomm.power.runtime import FeederRuntime, prepare_power
+
+            prepare_power(root, power)
+            feeder = FeederRuntime(root, power, controller.record_event)
+            manifest["data_status"] = "development_physical_cosimulation_not_dataset"
+            manifest["dependencies"].update(
+                {name: version(name) for name in ("pvlib", "pandapower")}
+            )
+            manifest["weather_sha256"] = power.weather.sha256
+            manifest["power_config_sha256"] = hashlib.sha256(
+                power.model_dump_json().encode()
+            ).hexdigest()
         network.create()
         capture_specs = [
             ("primary", network.master, "any"),
@@ -115,13 +132,16 @@ def run_isolated(config: V01Config, source: Path, output_root: Path) -> Path:
             )
             captures.append(capture)
             capture.start()
-        for i, namespace in enumerate(network.rtus, start=1):
-            process = launch(f"rtu{i}", namespace)
-            deadline = time.monotonic() + 8
-            while not (root / f"rtu{i}.ready").exists():
-                if process.poll() is not None or time.monotonic() > deadline:
-                    raise RuntimeError(f"rtu{i} was not ready; see its stderr log")
-                time.sleep(0.05)
+        rtu_processes = [
+            launch(f"rtu{i}", namespace) for i, namespace in enumerate(network.rtus, start=1)
+        ]
+        deadline = time.monotonic() + (30 if power is not None else 8)
+        while not all((root / f"rtu{i}.ready").exists() for i in range(1, 4)):
+            if any(p.poll() is not None for p in rtu_processes) or time.monotonic() > deadline:
+                raise RuntimeError("RTUs not ready; see endpoint stderr logs")
+            if feeder is not None:
+                feeder.step()
+            time.sleep(0.05)
         manifest["status"] = "running"
         save_manifest()
         master = launch("master", network.master)
@@ -129,6 +149,8 @@ def run_isolated(config: V01Config, source: Path, output_root: Path) -> Path:
         interrupted = False
         resumed = False
         while master.poll() is None:
+            if feeder is not None:
+                feeder.step()
             if any(process.poll() is not None for process in processes[:-1]):
                 raise RuntimeError("RTU process exited during experiment")
             if not all(capture.process_running for capture in captures):

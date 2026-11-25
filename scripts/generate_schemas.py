@@ -6,7 +6,9 @@ from pathlib import Path
 
 from pvcomm.config import FoundationConfig
 from pvcomm.config.lab import V01Config
+from pvcomm.config.power import V02Config
 from pvcomm.storage.parquet import APDU_FIELDS, EVENT_FIELDS, OBJECT_FIELDS, PACKET_FIELDS, REQUIRED
+from pvcomm.storage.power_parquet import TABLES as POWER_TABLES
 from pvcomm.web.app import create_app
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,7 +21,18 @@ def main() -> int:
     contracts = {
         "foundation.schema.json": FoundationConfig.model_json_schema(),
         "v01-lab.schema.json": V01Config.model_json_schema(),
+        "v02-power.schema.json": V02Config.model_json_schema(),
         "openapi.json": create_app().openapi(),
+        "v02-power-parquet.contract.json": {
+            "schema_version": "0.2-power-evidence",
+            "scope": "Oracle",
+            "tables": {
+                name: {
+                    field: {"arrow_type": kind, "nullable": False} for field, kind in fields.items()
+                }
+                for name, fields in POWER_TABLES.items()
+            },
+        },
         "v01-parquet.contract.json": {
             "schema_version": "0.1-protocol-evidence",
             "timezone": "UTC",

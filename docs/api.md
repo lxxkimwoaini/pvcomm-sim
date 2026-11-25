@@ -21,3 +21,7 @@ CLI `pvcomm --version` 和 `validate-config --config <path>` 已实现。成功�
 所有事件和 APDU 必须满足 available_at≤游标；纳秒时间在 JSON 中编码为十进制字符串。API 不读 truth/P1/QC/注入文件，不返回完整配置、payload_json、内部执行状态或标签。不提供任意路径、资源管理、命令执行、下载和写入接口。V0.0 health 的 stage 与 simulation_available 字段保留原契约，表示该兼容配置服务入口没有 Web 运行控制能力，并非 CLI 协议运行器不可用。
 
 `parse --parquet` 为可选数据组操作；`qc --run-dir` 成功写独立报告并返回 0，仅 completed 不表示 QC 通过。QC 失败或缺失证据返回 1；同版本派生目录拒绝覆盖。
+
+## V0.2开发能力声明
+
+health.stage=V0.2-development，simulation_available=true指CLI已支持真实仿真，web_run_submission_available=false。0.0配置校验服务保留；0.2由validate-power-config校验。snapshot.stations[].measurements包含白名单IOA、单位、master_iec104_telemetry来源、最多600条已到达主站的points；无观测为空数组。功率、辐照、电压界面不读取truth/IPC。limitations按实际模型版本显示，Oracle依旧拒绝。包版本0.2.0.dev0并不表示V0.2验收已通过。

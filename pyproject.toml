@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pvcomm-sim"
-version = "0.0.1"
+version = "0.2.0.dev0"
 description = "Research infrastructure for photovoltaic and IEC 104 co-simulation"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
@@ -51,4 +51,4 @@ files = ["src", "scripts", "tests"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
-markers = ["lab: requires explicitly authorized isolated Linux resources", "data: requires the optional Arrow data dependency group"]
+markers = ["lab: requires explicitly authorized isolated Linux resources", "data: requires the optional Arrow data dependency group", "power: requires the optional scientific power dependency group"]

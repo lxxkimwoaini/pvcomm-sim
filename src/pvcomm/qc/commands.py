@@ -8,6 +8,7 @@ may precede the synchronous transmit() return, but never terminal acceptance.
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Callable
 from typing import Any
 
 
@@ -18,6 +19,7 @@ def audit_commands(
     station_id: str,
     common_address: int,
     address: str,
+    reachable_power: Callable[[float, dict[str, Any]], float | None] | None = None,
 ) -> list[dict[str, Any]]:
     own = [r for r in master if r.get("station_id") == station_id]
     commands = sorted(
@@ -117,7 +119,12 @@ def audit_commands(
                     if accept is not None
                     and r["event_type"] == "master_observed_point"
                     and r.get("ioa") == ioa
-                    and same_value(r, "value")
+                    and (
+                        same_value(r, "value")
+                        if ioa == 1006 or reachable_power is None
+                        else (expected := reachable_power(target, r)) is not None
+                        and abs(r["value"] - expected) <= 0.1
+                    )
                     and accept["ts_mono_ns"] <= r["ts_mono_ns"] < end
                     and r["event_id"] not in used
                 ),

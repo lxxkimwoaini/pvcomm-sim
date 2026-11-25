@@ -152,3 +152,13 @@ V0.1 验收补齐启动：在 `feat/v01-acceptance` 上实施 `docs/plans/2026-1
 分支 feat/v02-power-cosimulation 从9b2de32堆叠，PR #1→#2均OPEN且未合并。计划 docs/plans/2026-11-25-v02.md、审查报告 docs/reports/2026-11-25-pr01-pr02-review.md、ADR0004。修复重复action任务ID、同值接受/反馈复用、跨任务/会话及时间边界；独立QC版本v01-evidence-v2，旧产物未改。
 
 实际 Ruff退出0、mypy48文件通过；pytest -m "not lab and not data" 80 passed/6 deselected，专项22 passed。WSL对保留正常1800s/维护/中断执行新版qc_run，三份报告passed=true。新代码真实重复命令实验尚未执行，V0.2物理模块尚未实现；不重报V0.1长运行或本分支CI通过。
+
+## V0.2物理实现及预检（2026-11-25）
+
+已实施独立power模块：NASA POWER历史输入SHA/单位/缺测校验、pvlib POA/SAPM/PVWatts、设备P/Q/容量/斜率/运行状态、pandapower三站径向潮流；RTU经c104接受命令后才更新目标。真实端点、原六表Arrow、P0/P1和M2白名单保留。新增0.2配置、独立Oracle电气/潮流Arrow、重算QC和实际遥测曲线，包0.2.0.dev0明确开发版；Web不提交特权运行。
+
+最初历史三天预检扩展为独立整月目录（data/nasa-power-huixian-202406-month），没有覆盖原输入。NASA POWER Hourly v2.10.5，MERRA2/SYN1DEG，规范化SHA72a8d6275ef89029b6b34e73d0cc68708ee749eef69dcf59abe65d0fe13346bd。非辉县现场实测，使用依据及版本见ADR0005；Oahu下载403/TLS失败，不宣称秒级云影验收。
+
+预检001实际失败：drvfs替换IPC文件瞬时ENOENT，manifest=failed，解析拒绝未完成运行；原目录保留。改为单写者追加完整JSONL并回归部分尾行；完整坏行仍失败。预检002实际90s completed，新增电气425行、潮流57行，真实PCAP+六表+业务独立QC通过，code_dirty=true诚实保留，不作为冻结最终验收。Arrow初次导出发现pa.bool名称错误，修复为bool_并新增读回/源哈希/拒绝覆盖测试通过；已生成六表未重建。
+
+实际普通测试91 passed/9 deselected，mypy60文件、Ruff通过；Arrow4 passed，科学2 passed（PVWatts独立公式、潮流符号/电压）；WSL真实V0.1回归3 passed/97 deselected，51.03s，持久outputs/v02_protocol_regression_001。总check最终前端结果及冻结三场景/重复同值命令/物理QC/UI还待记录。当前未宣布V0.2验收通过，不进入V0.3。

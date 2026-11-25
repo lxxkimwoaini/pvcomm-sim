@@ -27,6 +27,14 @@ class Point(Contract):
     value: float
 
 
+class MeasurementSeries(Contract):
+    ioa: int
+    name: str
+    unit: str
+    source: Literal["master_iec104_telemetry"] = "master_iec104_telemetry"
+    points: list[Point]
+
+
 class StationView(Contract):
     station_id: str
     region_id: str
@@ -37,6 +45,7 @@ class StationView(Contract):
     latest_power_kw: float | None
     power_available_at: Nanoseconds | None
     power: list[Point]
+    measurements: list[MeasurementSeries] = Field(default_factory=list)
 
 
 class EventView(Contract):
@@ -158,6 +167,32 @@ class RunRepository:
                     connection_state=state[-1] if state else None,
                     latest_power_kw=power[-1]["value"] if power else None,
                     power_available_at=power[-1]["available_at"] if power else None,
+                    measurements=[
+                        MeasurementSeries(
+                            ioa=ioa,
+                            name=name,
+                            unit=unit,
+                            points=[
+                                Point(
+                                    available_at=r["available_at"],
+                                    sim_elapsed_ms=r["sim_elapsed_ms"],
+                                    value=r["value"],
+                                )
+                                for r in own
+                                if r["event_type"] == "master_observed_point"
+                                and r.get("ioa") == ioa
+                            ][-600:],
+                        )
+                        for ioa, name, unit in (
+                            (1001, "actual_power", "kW"),
+                            (1002, "reactive_power", "kvar"),
+                            (1003, "pcc_line_voltage", "kV"),
+                            (1004, "current", "A"),
+                            (1005, "irradiance", "W/m2"),
+                            (1006, "accepted_target", "kW"),
+                            (1008, "available_ac_power", "kW"),
+                        )
+                    ],
                     power=[
                         Point(
                             available_at=r["available_at"],
@@ -190,4 +225,10 @@ class RunRepository:
             events=events,
             protocol=protocol[-100:],
             protocol_status="parsed" if protocol_path.exists() else "not_yet_parsed",
+            limitations=(
+                "V0.2 开发物理仿真；历史小时均值、pvlib/pandapower，非现场校准。"
+                "所有曲线均为主站实际收到的同链路遥测，不是独立M3或Oracle真值。"
+                if (root / "power_config.json").exists()
+                else "V0.1 协议测试模型；固定可用功率，未接入气象或潮流；功率为主站收到的遥测。"
+            ),
         )

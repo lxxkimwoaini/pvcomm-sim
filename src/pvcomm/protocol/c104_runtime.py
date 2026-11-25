@@ -15,7 +15,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from pvcomm.config.lab import V01StationConfig
 
@@ -27,6 +27,16 @@ def _set_callback_annotations(
     callback: Callable[..., object], annotations: dict[str, object]
 ) -> None:
     callback.__annotations__ = annotations
+
+
+class StationModel(Protocol):
+    @property
+    def accepted_setpoint_kw(self) -> float: ...
+    @property
+    def actual_kw(self) -> float: ...
+    def advance(self, now: float) -> None: ...
+    def accept(self, target: float, now: float) -> bool: ...
+    def telemetry(self) -> dict[int, float | bool]: ...
 
 
 @dataclass
@@ -55,6 +65,9 @@ class StationState:
         self.command_count += 1
         return True
 
+    def telemetry(self) -> dict[int, float | bool]:
+        return {1002: self.config.reactive_kvar, 1003: self.config.voltage_kv, 2001: True}
+
 
 class C104StationEndpoint:
     """One real c104 server process model and one common address."""
@@ -65,6 +78,7 @@ class C104StationEndpoint:
         host: str,
         record_event: RecordEvent,
         record_raw: RecordRaw,
+        state: StationModel | None = None,
     ) -> None:
         c104 = importlib.import_module("c104")
         self._c104 = c104
@@ -73,7 +87,7 @@ class C104StationEndpoint:
         self._record_raw = record_raw
         self._lock = threading.Lock()
         now = time.monotonic()
-        self.state = StationState(
+        self.state: StationModel = state or StationState(
             config=config,
             accepted_setpoint_kw=config.initial_setpoint_kw,
             actual_kw=min(config.available_kw, config.initial_setpoint_kw),
@@ -127,7 +141,34 @@ class C104StationEndpoint:
         self.voltage_point.value = config.voltage_kv
         self.accepted_setpoint_point.value = self.state.accepted_setpoint_kw
         self.status_point.value = True
+        self.extra_points: dict[int, Any] = {}
+        for ioa in self.state.telemetry():
+            if ioa in (1002, 1003, 2001):
+                continue
+            self.extra_points[ioa] = station.add_point(
+                io_address=ioa,
+                type=c104.Type.M_ME_NC_1,
+                report_ms=config.telemetry_period_s * 1000,
+            )
+            if self.extra_points[ioa] is None:
+                raise RuntimeError(f"failed to bind physical point {ioa}")
+        self._refresh_telemetry()
         self._install_callbacks()
+
+    def _refresh_telemetry(self) -> None:
+        points = {
+            1002: self.reactive_point,
+            1003: self.voltage_point,
+            2001: self.status_point,
+            **self.extra_points,
+        }
+        for ioa, value in self.state.telemetry().items():
+            points[ioa].value = value
+
+    def tick(self) -> None:
+        with self._lock:
+            self.state.advance(time.monotonic())
+            self._refresh_telemetry()
 
     def _install_callbacks(self) -> None:
         c104 = self._c104
@@ -173,6 +214,7 @@ class C104StationEndpoint:
             with self._lock:
                 self.state.advance(now)
                 point.value = self.state.actual_kw
+                self._refresh_telemetry()
                 actual = self.state.actual_kw
                 accepted = self.state.accepted_setpoint_kw
             self._record_event(
@@ -180,7 +222,9 @@ class C104StationEndpoint:
                 {
                     "station_id": self.config.station_id,
                     "p_actual_kw": actual,
-                    "p_avail_kw": self.config.available_kw,
+                    "p_avail_kw": self.config.available_kw
+                    if isinstance(self.state, StationState)
+                    else self.extra_points[1008].value,
                     "p_set_accepted_kw": accepted,
                     "source": "c104_periodic_transmit",
                 },
@@ -191,10 +235,18 @@ class C104StationEndpoint:
         self.power_point.on_before_read(on_before_power_transmit)
 
         def on_before_status_transmit(point: Any) -> None:
-            point.value = True
+            with self._lock:
+                self._refresh_telemetry()
 
         _set_callback_annotations(on_before_status_transmit, {"point": c104.Point, "return": None})
-        self.status_point.on_before_auto_transmit(on_before_status_transmit)
+        for point in (
+            self.reactive_point,
+            self.voltage_point,
+            self.status_point,
+            *self.extra_points.values(),
+        ):
+            point.on_before_auto_transmit(on_before_status_transmit)
+            point.on_before_read(on_before_status_transmit)
 
         def on_server_send(server: Any, data: bytes) -> None:
             self._record_raw("rtu_send", self.config.station_id, data)
@@ -347,6 +399,9 @@ class C104Master:
             (1001, c104.Type.M_ME_NC_1),
             (1002, c104.Type.M_ME_NC_1),
             (1003, c104.Type.M_ME_NC_1),
+            (1004, c104.Type.M_ME_NC_1),
+            (1005, c104.Type.M_ME_NC_1),
+            (1008, c104.Type.M_ME_NC_1),
             (1006, c104.Type.M_ME_NC_1),
             (2001, c104.Type.M_SP_NA_1),
         ):
@@ -449,6 +504,17 @@ class C104Master:
         point = station.get_point(io_address=3001)
         if point is None:
             raise RuntimeError(f"command point missing for {station_config.station_id}")
+        observed_power = station.get_point(io_address=1001)
+        current_kw = float(observed_power.value) if observed_power is not None else 0.0
+        execution_s = max(
+            10.0,
+            min(
+                60.0,
+                abs(target_kw - current_kw) / station_config.ramp_kw_per_s
+                + 2 * station_config.telemetry_period_s
+                + 1,
+            ),
+        )
         point.value = target_kw
         self._command_sequence += 1
         task_id = f"{station_config.station_id}-{self._command_sequence:09d}-{action}"
@@ -461,6 +527,7 @@ class C104Master:
                 "action": action,
                 "task_id": task_id,
                 "deadline_ms": 3000,
+                "execution_deadline_ms": math.ceil(execution_s * 1000),
             },
         )
         result = point.transmit(cause=self._c104.Cot.ACTIVATION)

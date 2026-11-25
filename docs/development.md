@@ -62,3 +62,7 @@ main 初始提交后保持稳定，新任务使用 feat/fix/chore/docs 分支。
 Windows：`uv sync --frozen --group data`；`uv run --frozen python scripts/dev.py data-test`。WSL 共享目录必须显式选择环境：`UV_PROJECT_ENVIRONMENT=.venv-wsl uv sync --frozen --group protocol --group data`，之后继续使用 `.venv-wsl/bin/python`。已实际安装 pyarrow 23.0.1，不能将基础安装没有该组当作数据测试通过。普通 CI 增加独立 Arrow job。
 
 PowerShell 设置 PVCOMM_RUN_ROOT 与 PVCOMM_E2E_REAL_ROOT 为同一个真实验收运行根，再执行 `pnpm --dir frontend test:e2e`，覆盖真实数据选择、回放、桌面/移动视口及浏览器离线与恢复。无该环境变量时，CI 明确跳过真实运行用例，另执行空运行与配置用例；不使用 Mock 冒充真实协议验收。截图与测试轨迹只保存在已忽略的 frontend/test-results。
+
+## V0.2开发验证
+
+`uv run --frozen python scripts/dev.py power-test`运行可选科学依赖专项；data-test另含电气Arrow读回、源哈希与拒绝覆盖。普通test排除lab/data/power，CI分别安装可选组。真实运行命令见README；同路径禁止重跑。historical下载脚本只写data，保留原始响应与政策快照，不提交外部数据。新增QC为v02-power-v1，内部调用独立PCAP核验和v01-evidence-v2；旧QC不覆盖。

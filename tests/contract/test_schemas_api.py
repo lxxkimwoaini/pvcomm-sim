@@ -31,8 +31,9 @@ def test_api_matches_cli_service(config_text: str) -> None:
     client = TestClient(create_app())
     assert client.get("/api/health").json() == {
         "status": "ok",
-        "stage": "V0.0",
-        "simulation_available": False,
+        "stage": "V0.2-development",
+        "simulation_available": True,
+        "web_run_submission_available": False,
     }
     result = client.post("/api/scenarios/validate", json={"yaml_text": config_text})
     assert result.status_code == 200

@@ -85,3 +85,29 @@ def test_only_unterminated_live_line_can_be_incomplete(tmp_path: Path) -> None:
 def test_unknown_run_root_is_empty(tmp_path: Path) -> None:
     client = TestClient(create_app(tmp_path / "absent"))
     assert client.get("/api/runs").json() == {"runs": []}
+
+
+def test_new_physical_curves_require_received_telemetry_and_respect_cursor(tmp_path: Path) -> None:
+    run = fixture_run(tmp_path)
+    path = run / "observed/master_events_master.jsonl"
+    row = json.loads(path.read_text().splitlines()[1])
+    for ioa, value in ((1003, 0.4), (1005, 700), (1006, 30), (1008, 24)):
+        with path.open("a") as stream:
+            stream.write(
+                json.dumps({**row, "ioa": ioa, "value": value, "event_id": f"p{ioa}"}) + "\n"
+            )
+    # Invalid truth bytes are deliberately unreadable; API must not access them.
+    (run / "truth/electrical_state_test.jsonl").write_bytes(b"\xff\xff")
+    client = TestClient(create_app(tmp_path))
+    key = client.get("/api/runs").json()["runs"][0]["run_key"]
+    first = client.get(f"/api/runs/{key}/snapshot?at_ns=1795590000000000001").json()
+    assert all(not m["points"] for m in first["stations"][0]["measurements"] if m["ioa"] != 1001)
+    latest = client.get(f"/api/runs/{key}/snapshot").json()
+    values = {
+        m["ioa"]: m["points"][-1]["value"]
+        for m in latest["stations"][0]["measurements"]
+        if m["points"]
+    }
+    assert values[1005] == 700
+    assert values[1008] == 24
+    assert all(not m["points"] for m in latest["stations"][1]["measurements"])

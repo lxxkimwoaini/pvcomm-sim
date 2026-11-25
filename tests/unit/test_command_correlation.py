@@ -127,3 +127,30 @@ def test_ack_on_different_tcp_session_is_rejected() -> None:
     data = fixture()
     data[2][1]["flow_id"] = 999
     assert not audit(data)[0]["passed"]
+
+
+def test_repeated_action_uses_new_application_task_id() -> None:
+    import threading
+    from pathlib import Path
+    from types import ModuleType, SimpleNamespace
+
+    from pvcomm.config.lab import load_v01_config
+    from pvcomm.protocol.c104_runtime import C104Master
+
+    # Test double only for the local application ID/serialization contract.
+    point = SimpleNamespace(value=10.0, transmit=lambda **_: True)
+    endpoint = C104Master.__new__(C104Master)
+    endpoint._command_lock = threading.Lock()
+    endpoint._command_sequence = 0
+    endpoint._c104 = ModuleType("synthetic_unit_c104")
+    endpoint._c104.__dict__["Cot"] = SimpleNamespace(ACTIVATION=6)
+    config = load_v01_config(Path("configs/v0.1-lab-smoke.yaml")).stations[0]
+    endpoint._remote_stations = {config.station_id: SimpleNamespace(get_point=lambda **_: point)}
+    records: list[dict[str, Any]] = []
+    endpoint._record_event = lambda kind, data: records.append({"kind": kind, **data})
+    endpoint.send_setpoint(config, 10, "limit")
+    endpoint.send_setpoint(config, 10, "limit")
+    sends = [r for r in records if r["kind"] == "master_command_sent"]
+    responses = [r for r in records if r["kind"] == "master_command_response"]
+    assert sends[0]["task_id"] != sends[1]["task_id"]
+    assert [r["task_id"] for r in sends] == [r["task_id"] for r in responses]

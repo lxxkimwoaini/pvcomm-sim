@@ -61,14 +61,14 @@ test('reads real evidence and replays only available observations', async ({
   )
   await page.goto('/')
   await page.getByRole('button', { name: '运行与回放' }).click()
-  await page.locator('.run-controls .el-select__wrapper').click()
+  await page.locator('.run-controls .el-select__wrapper').first().click()
   await page.getByRole('option', { name: new RegExp(key) }).click()
   await expect(
     page.getByRole('heading', { name: '三站通信拓扑' }),
   ).toBeVisible()
-  await expect(page.locator('.station-card')).toHaveCount(3)
+  await expect(page.locator('.topology-cards .station-card')).toHaveCount(3)
   await expect(page.locator('.power-reading').first()).toContainText('72.00')
-  await expect(page.locator('.power-chart canvas')).toHaveCount(1)
+  await expect(page.locator('.power-chart canvas')).toHaveCount(2)
   const slider = page.getByRole('slider')
   await slider.focus()
   await slider.press('End')
@@ -87,12 +87,15 @@ test('reads real evidence and replays only available observations', async ({
     .toBeLessThanOrEqual(390)
   await expect
     .poll(() =>
-      page.locator('.power-chart').evaluate((node) => {
-        const canvas = node.querySelector('canvas')
-        return canvas
-          ? canvas.getBoundingClientRect().width - node.clientWidth
-          : 1
-      }),
+      page
+        .locator('.power-chart')
+        .first()
+        .evaluate((node) => {
+          const canvas = node.querySelector('canvas')
+          return canvas
+            ? canvas.getBoundingClientRect().width - node.clientWidth
+            : 1
+        }),
     )
     .toBeLessThanOrEqual(0)
   await page.screenshot({
