@@ -51,6 +51,8 @@ V0.0 本地检查、暂存审查、私有仓库创建/推送/SHA 核验与远程
 
 安装后复核（2026-11-25，WSL Ubuntu）：`tcpdump -D` 列出 13 个接口，`dumpcap -D` 列出同一组接口；`tshark -G protocols` 识别 `iec60870_104`，字段查询可见 IEC 60870 解析器；`ip`/`tc`/`make` 可用。`.venv-wsl/bin/python` 成功导入 c104、pvlib 0.16.1、pandapower 3.5.6 和 pydantic 2.14.4。`.venv-wsl/bin/python -m pytest -q -m "not lab"`：49 passed in 5.78s；`.venv-wsl/bin/python -m pvcomm.cli validate-config --config configs/foundation.yaml`：`valid=true`，配置 SHA256 为 `15e441b1026a506b8856d27f6fa8e022304deabf6c80752d56638a3c81e1089e`。上述仅证明工具和 Python 依赖可用，不构成 V0.1 协议闭环验收。
 
+远程核验：提交 `bec54cfec8618f06246d239a40cd6f5a5d41d02d` 已推送到 `origin/main`；GitHub Actions CI run `45544659528` 对该 SHA 实际 conclusion=success。
+
 ## 尚未实现/测量
 
 IEC 104 会话与命令闭环、P0/P1 PCAP、三级解析、30 min 正常数据、物理模型、QC 指标、标签/划分/特征与真实运行 Web。未进行现场验证。V0.1 依赖隔离 Linux 工具与权限检查，不能以本阶段探针替代。
