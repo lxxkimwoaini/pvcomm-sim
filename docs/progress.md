@@ -183,3 +183,7 @@ V0.1 验收补齐启动：在 `feat/v01-acceptance` 上实施 `docs/plans/2026-1
 最终check退出0（94 passed/9 deselected、Ruff/mypy60/schema/前端质量/Vitest3/build）；data4 passed/99 deselected，power2 passed/101 deselected。云影真实浏览器2 passed/1 skipped（空态），逐值对账与移动回放通过。独立负测试副本故意越界后物理/QC源哈希拒绝，原始证据不改。ip netns list为空，没有实际worker残留。
 
 远程仍为 https://github.com/lxxkimwoaini/pvcomm-sim 、lxxkimwoaini所有、PUBLIC、默认main。功能分支已推送；da7b526的CI45582627395实际success，Ubuntu/Windows Python、Arrow、Physical models、Frontend/browser五job全部success。76e73ad的CI45581377368因长行Ruff失败，最终已按原标准修复；不隐瞒失败。PR #1/#2保持OPEN且未合并。本阶段通过开发门禁，不代表正式研究参数冻结、现场校准、秒级实测云影或正式数据集发布。下一步按堆叠顺序审核PR，并确定后续校准/阶段范围；不自动进入30站或训练。
+
+### V0.2 审核交付与远程核验
+
+验收文档提交bfab4859ab2ede3975547d389e28bd2f79d07c7b已推送；其push CI45583409443及PR CI45583485587均实际success，各五job全部成功。草稿PR #3：https://github.com/lxxkimwoaini/pvcomm-sim/pull/3 ，OPEN、isDraft=true，base=feat/v01-acceptance、head=feat/v02-power-cosimulation；依赖#2、#2依赖#1，均未合并或代用户批准。git ls-remote与本地bfab485一致，工作区干净。全分支55文件路径/凭据模式检查及本地文档链接检查通过，无data/outputs/PCAP/Parquet/外部输入入库。此补记仅文档，不把上述代码/CI SHA混称为补记本身SHA。
