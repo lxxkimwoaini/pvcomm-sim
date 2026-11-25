@@ -217,3 +217,8 @@ a2187a6十站第二轮120s全QC通过（outputs/v03_scale_s2/v03_10_normal_001�
 二十站Linux持久目录对照a2187a6，/var/lib/pvcomm/runs/v03_scale_s3/v03_20_normal_001，120s completed/clean、全部QC通过：12849完整APDU=100%、21路dropped=0、日志P99=14.146801ms/max38.434775ms，cleanup=[]。后续规模验收使用同一Linux存储环境。普通最终117 passed/10 deselected、mypy77、Ruff通过。工作台首次10站浏览器失败定位为1s轮询频繁disabled关闭选择菜单；修正前台选择与后台轮询隔离、generation保护过期响应，重验结果另记。
 
 真实10站浏览器复验2 passed/1 skipped（空态），逐值对账、物理指标切换、因果游标、桌面/移动与离线恢复通过。保留最初菜单关闭及忙时回放丢失失败记录，修复实际UI竞态。
+
+
+工作台/正常操作提交55a2d1b已推送，CI45613146105实际success。冻结checkout=/var/lib/pvcomm/sources/v03-s4，30站360秒预检=/var/lib/pvcomm/runs/v03_scale_s4/v03_30_normal_001运行中。独立Web测量预检outputs/v03_web_preflight_002已实际完成off/live/replay 30秒负载流程（仅测量脚本预检，不替代1h门禁）：WSL localhost真实API、Windows Chromium/Vite，保留请求端到端时间/服务时间/字节、Linux API及Windows进程树CPU/内存、浏览器CDP指标和截图，无fatal错误。脚本尚需与最终冻结SHA一起正式运行。
+
+新增正常设备状态变化触发潮流补算（不等待5秒周期），调度回归通过。普通119 passed/10 deselected、mypy79/Ruff/格式通过；WSL科学及Arrow6 passed/121 deselected；旧V0.1真实协议/隔离/取消清理回归3 passed/47.66s，持久目录/var/lib/pvcomm/runs/v03_legacy_regression_001。没有重报旧30分钟/90秒实验。当前仍未通过V0.3门禁。

@@ -239,7 +239,7 @@ class FeederRuntime:
         self.root, self.config, self.record = root, config, record_event
         self.model = FeederNetwork(config)
         self.last_solve = 0.0
-        self.last_commands: tuple[int, ...] = ()
+        self.last_commands: tuple[tuple[int, bool, bool, bool], ...] = ()
 
     def step(self) -> bool:
         paths = [self.root / f"truth/ipc/{d.station_id}.jsonl" for d in self.config.devices]
@@ -252,7 +252,10 @@ class FeederRuntime:
             if sample is not None
         }
         now = time.monotonic()
-        commands = tuple(s["command_count"] for s in states.values())
+        commands = tuple(
+            (s["command_count"], s["running"], s["connected"], s["faulted"])
+            for s in states.values()
+        )
         if commands == self.last_commands and now - self.last_solve < self.config.powerflow_step_s:
             return True
         if any(now * 1e9 - s["model_mono_ns"] > 3_000_000_000 for s in states.values()):
