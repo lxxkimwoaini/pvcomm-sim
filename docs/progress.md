@@ -1,6 +1,6 @@
 # PVComm 开发进度
 
-日期：2026-11-25（Asia/Shanghai）。当前阶段：V0.0 本地验收通过，远程门禁待核验。初始只有 AGENTS.md 和 V1.2/V1.3 方案；无 Git 仓库、代码或既有实验。本文件只记录实际执行，不将计划标为完成。
+日期：2026-11-25（Asia/Shanghai）。当前阶段：**V0.0 工程基础验收通过**，V0.1 尚未开始。初始只有 AGENTS.md 和 V1.2/V1.3 方案；无 Git 仓库、代码或既有实验。本文件只记录实际执行，不将计划标为完成。
 
 ## 已执行
 
@@ -41,9 +41,11 @@ CLI 的 7 个预留命令均由子进程测试实际返回 3，没有生成输�
 
 Python src 基础包、严格不可变配置与哈希、结构化 JSON 日志、UTC/单调时钟映射、CLI；FastAPI health/配置校验；Vue/Element Plus 工作台及真实校验交互；生成 schema/TS 类型；uv/pnpm 锁；跨平台开发命令、Makefile、非特权 CI。架构、数据字典、API、开发说明、ADR 与各阶段验收计划已写入 docs。
 
-## 待验收
+## 阶段验收与下一任务
 
-diff/暂存敏感信息审查；Git 首次提交、私有远程创建/推送/SHA 核验与 CI。完成前不标记整个 V0.0 通过。
+V0.0 本地检查、暂存审查、私有仓库创建/推送/SHA 核验与远程 CI 全部通过。没有依赖用户补做的 GitHub 授权步骤。初始化提交在 main；后续功能进入独立分支，不自动合并未审核 PR。
+
+下一任务为 V0.1 Linux 实验前置准备：确认现有 WSL Ubuntu 是负责人授权的隔离环境，在其内准备 Python 3.11/uv/c104、tcpdump/TShark，并核验 namespace/veth/NetEm 权限及清理范围；随后单 RTU 联通，再扩到 3 站和 30 min 双端抓包验收。当前工具缺失且未执行任何特权网络操作，故没有进入 V0.1 正式运行。无需修改科研范围、参数、标签或划分规则。
 
 ## 尚未实现/测量
 
@@ -51,4 +53,10 @@ IEC 104 会话与命令闭环、P0/P1 PCAP、三级解析、30 min 正常数据�
 
 ## GitHub
 
-目标：lxxkimwoaini/pvcomm-sim，Private，main。尚未创建/推送，因此无远程 SHA 或 CI 结果。实际结果在操作完成后补记。
+仓库：https://github.com/lxxkimwoaini/pvcomm-sim 。所有者 lxxkimwoaini，visibility=PRIVATE，defaultBranchRef=main，viewerPermission=ADMIN。`gh repo create pvcomm-sim --private --source=. --remote=origin --push` 实际退出 0。
+
+- 首次提交：`25bf8c4848d110f771af14cff20090fbefb377ea`，`chore: initialize PVComm research foundation`。
+- `git remote -v`：fetch/push 均为 `https://github.com/lxxkimwoaini/pvcomm-sim.git`。
+- `git ls-remote --heads origin main` 与首次本地 HEAD 均为上述 SHA；推送后 `git status -sb` 为 `main...origin/main`，工作区干净。
+- GitHub CI run `45539355121`：https://github.com/lxxkimwoaini/pvcomm-sim/actions/runs/45539355121 ，实际 conclusion=success；Python (ubuntu-latest)、Python (windows-latest)、Frontend and browser 三个 job 全部 success。CI 检查的代码 SHA 为上述首次提交；本验收记录随后以仅文档提交入库，避免自引用尚未产生的本提交 SHA。
+- `uv run --frozen python scripts/dev.py test-lab` 实际退出 3，提示实验 harness 尚未实现；不是通过或已执行特权测试。
