@@ -25,7 +25,7 @@ WSL2 Ubuntu 26.04 可启动，内核 6.6.87.2；默认 root、系统 Python 3.14
 | web-test | ESLint、Prettier check、vue-tsc、Vitest |
 | web-build | 类型检查及 Vite 生产构建 |
 | check | lint/typecheck/test/schemas/web-test/web-build 串行失败即停 |
-| test-lab | 授权 Linux 环境执行 `pytest -m lab`；Windows 默认阻断并返回 3 |
+| test-lab | 仅授权 Linux 且 `PVCOMM_ALLOW_LAB=1`；使用当前解释器执行 `pytest -m lab`，否则退出 3 |
 | dev-web | 本机前端；后端独立终端启动 |
 
 `pnpm --dir frontend format` 显式写入前端格式。可选 pre-commit 配置为本地检查 hook，未自动安装到用户 Git。CI 仅使用检查模式，不会自动改代码。
@@ -33,12 +33,14 @@ WSL2 Ubuntu 26.04 可启动，内核 6.6.87.2；默认 root、系统 Python 3.14
 V0.1 实验命令必须在授权的 WSL Linux 环境中执行：
 
 ```sh
-.venv-wsl/bin/python -m pytest -m lab
-.venv-wsl/bin/python -m pvcomm.cli run --config configs/v0.1-lab-30m.yaml --output-root outputs
-.venv-wsl/bin/python -m pvcomm.cli parse --run-dir outputs/v01_normal_30m_001
+PVCOMM_ALLOW_LAB=1 .venv-wsl/bin/python -m pytest -m lab
+.venv-wsl/bin/python -m pvcomm.cli run --isolated --config configs/v0.1-lab-smoke.yaml --output-root outputs/new_isolated_run
+.venv-wsl/bin/python -m pvcomm.cli parse --run-dir outputs/new_isolated_run/v01_smoke_001
 ```
 
-`test-lab` 只负责真实协议集成测试；普通 `make test` 明确使用 `-m "not lab"`。V0.1 运行会创建独立 `run_id` 目录，保留 `manifest.json`、PCAP、双端 APDU 原始记录、主站事件、终端事件、电气状态和 TShark 三层解析 JSONL。输出不进入 Git。
+`test-lab` 只负责真实协议集成测试；普通 `make test` 明确使用 `-m "not lab"`。共享 checkout 中不可直接以默认 `uv run` 选择 WSL 环境；使用 `.venv-wsl/bin/python`，避免触碰 Windows `.venv`。
+
+运行目录保留配置源文、有效配置、manifest、PCAP、tcpdump stderr/统计和两端应用证据。`observed/` 仅存主站记录，RTU APDU、终端事件和设备状态存 `truth/`；旧版回环记录中的混合文件不应用于研究特征。解析写新的版本目录，成功后原子提交；重跑同版本不会覆盖。取消 CLI 返回 130，保留 manifest 和部分证据。`--isolated` 的宿主路由与 namespace 清理由 lab 测试前后比对。
 
 ## 浏览器验证
 

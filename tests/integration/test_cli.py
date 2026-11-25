@@ -29,6 +29,16 @@ def test_cli_error(tmp_path: Path) -> None:
     assert json.loads(result.stderr)["event"] == "config_invalid"
 
 
+def test_run_and_parse_invalid_inputs_preserve_output_root(tmp_path: Path) -> None:
+    root = tmp_path / "outputs"
+    run = invoke("run", "--config", str(tmp_path / "missing"), "--output-root", str(root))
+    assert run.returncode != 0
+    assert not root.exists()
+    parse = invoke("parse", "--run-dir", str(tmp_path / "missing"))
+    assert parse.returncode != 0
+    assert not root.exists()
+
+
 @pytest.mark.parametrize("command", ["label", "qc", "split", "features", "benchmark"])
 def test_unimplemented_fails(command: str, tmp_path: Path) -> None:
     result = invoke(command, "--output-root", str(tmp_path / "outputs"))

@@ -1,0 +1,177 @@
+{
+  "$defs": {
+    "V01StationConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "available_kw": {
+          "exclusiveMinimum": 0,
+          "title": "Available Kw",
+          "type": "number"
+        },
+        "capacity_kw": {
+          "exclusiveMinimum": 0,
+          "title": "Capacity Kw",
+          "type": "number"
+        },
+        "common_address": {
+          "maximum": 65534,
+          "minimum": 1,
+          "title": "Common Address",
+          "type": "integer"
+        },
+        "initial_setpoint_kw": {
+          "exclusiveMinimum": 0,
+          "title": "Initial Setpoint Kw",
+          "type": "number"
+        },
+        "port": {
+          "maximum": 65535,
+          "minimum": 1024,
+          "title": "Port",
+          "type": "integer"
+        },
+        "ramp_kw_per_s": {
+          "exclusiveMinimum": 0,
+          "title": "Ramp Kw Per S",
+          "type": "number"
+        },
+        "reactive_kvar": {
+          "default": 0.0,
+          "title": "Reactive Kvar",
+          "type": "number"
+        },
+        "region_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Region Id",
+          "type": "string"
+        },
+        "station_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Station Id",
+          "type": "string"
+        },
+        "telemetry_period_s": {
+          "maximum": 10,
+          "minimum": 2,
+          "title": "Telemetry Period S",
+          "type": "integer"
+        },
+        "voltage_kv": {
+          "default": 0.4,
+          "exclusiveMinimum": 0,
+          "title": "Voltage Kv",
+          "type": "number"
+        }
+      },
+      "required": [
+        "station_id",
+        "region_id",
+        "common_address",
+        "port",
+        "capacity_kw",
+        "available_kw",
+        "initial_setpoint_kw",
+        "ramp_kw_per_s",
+        "telemetry_period_s"
+      ],
+      "title": "V01StationConfig",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "capture_filter": {
+      "default": "tcp",
+      "title": "Capture Filter",
+      "type": "string"
+    },
+    "capture_interface": {
+      "const": "lo",
+      "default": "lo",
+      "title": "Capture Interface",
+      "type": "string"
+    },
+    "command_after_s": {
+      "minimum": 1,
+      "title": "Command After S",
+      "type": "integer"
+    },
+    "command_kw": {
+      "exclusiveMinimum": 0,
+      "title": "Command Kw",
+      "type": "number"
+    },
+    "duration_s": {
+      "maximum": 86400,
+      "minimum": 5,
+      "title": "Duration S",
+      "type": "integer"
+    },
+    "host": {
+      "const": "127.0.0.1",
+      "default": "127.0.0.1",
+      "title": "Host",
+      "type": "string"
+    },
+    "parameter_basis": {
+      "const": "simulation_assumption",
+      "title": "Parameter Basis",
+      "type": "string"
+    },
+    "purpose": {
+      "const": "iec104_lab",
+      "title": "Purpose",
+      "type": "string"
+    },
+    "release_after_s": {
+      "minimum": 2,
+      "title": "Release After S",
+      "type": "integer"
+    },
+    "run_id": {
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "seed": {
+      "maximum": 4294967295,
+      "minimum": 0,
+      "title": "Seed",
+      "type": "integer"
+    },
+    "stations": {
+      "items": {
+        "$ref": "#/$defs/V01StationConfig"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "title": "Stations",
+      "type": "array"
+    },
+    "warmup_s": {
+      "minimum": 1,
+      "title": "Warmup S",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "purpose",
+    "parameter_basis",
+    "run_id",
+    "seed",
+    "duration_s",
+    "warmup_s",
+    "command_after_s",
+    "release_after_s",
+    "command_kw",
+    "stations"
+  ],
+  "title": "V01Config",
+  "type": "object"
+}

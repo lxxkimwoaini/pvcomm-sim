@@ -5,91 +5,19 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+import sys
 import time
+from dataclasses import asdict
 from datetime import UTC, datetime
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
 from pvcomm.capture.tcpdump import TcpdumpCapture
+from pvcomm.clock import ClockOrigin
+from pvcomm.config.lab import V01Config, v01_config_sha256
 from pvcomm.protocol.c104_runtime import C104Master, C104StationEndpoint
-from pvcomm.scenario.v01_models import V01Config, v01_config_sha256
-
-
-class RunRecorder:
-    def __init__(self, run_dir: Path, config: V01Config, config_source: Path) -> None:
-        self.run_dir = run_dir
-        self.config = config
-        self.config_source = config_source
-        self.started_mono = time.monotonic()
-        self._event_index = 0
-        self._raw_index = 0
-        self._event_file = (run_dir / "observed" / "events.jsonl").open("w", encoding="utf-8")
-        self._master_file = (run_dir / "observed" / "master_events.jsonl").open(
-            "w", encoding="utf-8"
-        )
-        self._terminal_file = (run_dir / "truth" / "terminal_events.jsonl").open(
-            "w", encoding="utf-8"
-        )
-        self._electrical_file = (run_dir / "truth" / "electrical_state.jsonl").open(
-            "w", encoding="utf-8"
-        )
-        self._raw_file = (run_dir / "observed" / "apdu_events.jsonl").open("w", encoding="utf-8")
-
-    def _base(self) -> dict[str, object]:
-        now = time.monotonic()
-        return {
-            "run_id": self.config.run_id,
-            "event_id": f"evt-{self._event_index:08d}",
-            "ts_event": datetime.now(UTC).isoformat(),
-            "ts_mono_ns": time.monotonic_ns(),
-            "sim_elapsed_ms": int((now - self.started_mono) * 1000),
-        }
-
-    def record_event(self, event_type: str, payload: dict[str, object]) -> None:
-        self._event_index += 1
-        event = {**self._base(), "event_type": event_type, **payload}
-        line = json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n"
-        self._event_file.write(line)
-        if event_type.startswith("master_"):
-            self._master_file.write(line)
-        if event_type.startswith("rtu_") or event_type.startswith("terminal_"):
-            self._terminal_file.write(line)
-        if event_type == "electrical_state":
-            self._electrical_file.write(line)
-        for stream in (
-            self._event_file,
-            self._master_file,
-            self._terminal_file,
-            self._electrical_file,
-        ):
-            stream.flush()
-
-    def record_raw(self, direction: str, station_id: str, data: bytes) -> None:
-        self._raw_index += 1
-        now = time.monotonic()
-        event = {
-            "run_id": self.config.run_id,
-            "raw_index": self._raw_index,
-            "station_id": station_id,
-            "direction": direction,
-            "ts_capture_utc_ns": time.time_ns(),
-            "ts_mono_ns": time.monotonic_ns(),
-            "sim_elapsed_ms": int((now - self.started_mono) * 1000),
-            "data_hex": data.hex(),
-            "length": len(data),
-        }
-        self._raw_file.write(json.dumps(event, sort_keys=True) + "\n")
-        self._raw_file.flush()
-
-    def close(self) -> None:
-        for stream in (
-            self._event_file,
-            self._master_file,
-            self._terminal_file,
-            self._electrical_file,
-            self._raw_file,
-        ):
-            stream.close()
+from pvcomm.storage.events import RunRecorder
 
 
 def _sha256(path: Path) -> str:
@@ -133,11 +61,22 @@ class V01Runner:
             raise FileExistsError(f"run directory already exists: {self.run_dir}")
 
     def run(self) -> Path:
+        if sys.platform != "linux":
+            raise RuntimeError("IEC 104 laboratory runs require authorized Linux")
+        # Dependency failures must precede creation of an apparent run directory.
+        version("c104")
         self.run_dir.mkdir(parents=True)
         for relative in ("raw/pcap", "observed", "truth", "parsed", "labels", "qc"):
             (self.run_dir / relative).mkdir(parents=True)
         scenario_copy = self.run_dir / "scenario.yaml"
         scenario_copy.write_bytes(self.config_source.read_bytes())
+        (self.run_dir / "effective_config.json").write_text(
+            self.config.model_dump_json(indent=2) + "\n", encoding="utf-8"
+        )
+        origin = ClockOrigin.capture()
+        git_status = subprocess.run(
+            ["git", "status", "--porcelain"], capture_output=True, text=True, check=True
+        ).stdout
         manifest: dict[str, Any] = {
             "run_id": self.config.run_id,
             "status": "created",
@@ -146,6 +85,12 @@ class V01Runner:
             "config_sha256": v01_config_sha256(self.config),
             "scenario_sha256": _sha256(scenario_copy),
             "code_version": _git_sha(),
+            "code_dirty": bool(git_status.strip()),
+            "code_changed_paths": git_status.splitlines(),
+            "clock_origin": asdict(origin),
+            "data_status": "development_protocol_evidence_not_dataset",
+            "capture_topology": "duplicate_loopback_not_independent_P0_P1",
+            "dependencies": {name: version(name) for name in ("c104", "pydantic", "PyYAML")},
             "tools": {
                 "tcpdump": _tool_version(["tcpdump", "--version"]),
                 "tshark": _tool_version(["tshark", "--version"]),
@@ -154,7 +99,7 @@ class V01Runner:
             "started_at": datetime.now(UTC).isoformat(),
         }
         self._write_manifest(manifest)
-        recorder = RunRecorder(self.run_dir, self.config, self.config_source)
+        recorder = RunRecorder(self.run_dir, self.config.run_id, origin=origin)
         primary_capture = TcpdumpCapture(
             interface=self.config.capture_interface,
             output_path=self.run_dir / "raw" / "pcap" / "primary_loopback.pcap",
@@ -173,7 +118,6 @@ class V01Runner:
             self._write_manifest(manifest)
             for capture in captures:
                 capture.start()
-            time.sleep(0.2)
             if not all(capture.process_running for capture in captures):
                 raise RuntimeError("tcpdump exited before the IEC 104 run started")
             self._timeline_start = time.monotonic()
@@ -186,8 +130,8 @@ class V01Runner:
                     record_event=recorder.record_event,
                     record_raw=recorder.record_raw,
                 )
-                endpoint.start()
                 endpoints.append(endpoint)
+                endpoint.start()
             master = C104Master(
                 host=self.config.host,
                 stations=self.config.stations,
@@ -204,19 +148,33 @@ class V01Runner:
             for station in self.config.stations:
                 master.send_setpoint(station, station.initial_setpoint_kw, action="release")
             self._sleep_until(self.config.duration_s)
-            manifest["status"] = "completed"
+            manifest["status"] = "finalizing"
+        except KeyboardInterrupt:
+            manifest["status"] = "cancelled"
+            raise
         except Exception as exc:
             manifest["status"] = "failed"
             manifest["error"] = {"type": type(exc).__name__, "message": str(exc)}
             raise
         finally:
+            cleanup_errors = []
             if master is not None:
-                master.stop()
+                try:
+                    master.stop()
+                except Exception as exc:
+                    cleanup_errors.append(f"master: {exc}")
             for endpoint in reversed(endpoints):
-                endpoint.stop()
+                try:
+                    endpoint.stop()
+                except Exception as exc:
+                    cleanup_errors.append(f"RTU {endpoint.config.station_id}: {exc}")
             capture_results: dict[str, dict[str, object]] = {}
             for capture_name, capture in zip(("primary", "diagnostic"), captures, strict=True):
-                returncode = capture.stop()
+                try:
+                    returncode = capture.stop()
+                except Exception as exc:
+                    cleanup_errors.append(f"capture {capture_name}: {exc}")
+                    returncode = -1
                 capture_results[capture_name] = {
                     "path": f"raw/pcap/{capture_name}_loopback.pcap",
                     "sha256": _sha256(capture.output_path)
@@ -226,14 +184,24 @@ class V01Runner:
                     if capture.output_path.exists()
                     else 0,
                     "tcpdump_returncode": returncode,
+                    "statistics": capture.stats,
                 }
+                if returncode != 0:
+                    cleanup_errors.append(f"capture {capture_name} returned {returncode}")
             manifest["pcap"] = {
                 "primary": capture_results["primary"],
                 "diagnostic": capture_results["diagnostic"],
             }
             manifest["finished_at"] = datetime.now(UTC).isoformat()
-            self._write_manifest(manifest)
             recorder.close()
+            manifest["cleanup_errors"] = cleanup_errors
+            if cleanup_errors:
+                manifest["status"] = "failed"
+            elif manifest["status"] == "finalizing":
+                manifest["status"] = "completed"
+            self._write_manifest(manifest)
+        if manifest["status"] != "completed":
+            raise RuntimeError(f"run failed during finalization: {manifest['cleanup_errors']}")
         return self.run_dir
 
     def _sleep_until(self, target_elapsed_s: int) -> None:

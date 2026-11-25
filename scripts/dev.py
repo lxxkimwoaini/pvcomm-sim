@@ -46,10 +46,12 @@ def execute(target: str) -> int:
         "dev-web": [[*pnpm, "dev"]],
     }
     if target == "test-lab":
-        if sys.platform == "win32" and os.environ.get("PVCOMM_ALLOW_LAB") != "1":
-            print("blocked: run test-lab inside the authorized Linux lab", file=sys.stderr)
+        if sys.platform != "linux" or os.environ.get("PVCOMM_ALLOW_LAB") != "1":
+            print("blocked: authorized Linux lab requires PVCOMM_ALLOW_LAB=1", file=sys.stderr)
             return 3
-        run([*uv, "pytest", "-m", "lab"])
+        # Reuse the active interpreter, including .venv-wsl. A nested uv run
+        # would otherwise select the Windows .venv on this shared checkout.
+        run([sys.executable, "-m", "pytest", "-m", "lab"])
         return 0
     if target == "check":
         for child in ("lint", "typecheck", "test", "schemas", "web-test", "web-build"):

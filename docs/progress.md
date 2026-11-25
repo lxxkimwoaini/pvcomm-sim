@@ -1,6 +1,6 @@
 # PVComm 开发进度
 
-日期：2026-11-25（Asia/Shanghai）。当前阶段：**V0.0 工程基础验收通过；V0.1 最小协议原型已完成冒烟验收，30 分钟正常运行门禁未完成**。初始只有 AGENTS.md 和 V1.2/V1.3 方案；无 Git 仓库、代码或既有实验。本文件只记录实际执行，不将计划标为完成。
+日期：2026-11-25（Asia/Shanghai）。当前阶段：**V0.0 通过；V0.1 已有真实独立端点短时闭环，整阶段未验收**。两个 30 分钟回环稳定性运行已完成，但不等同于独立 P0/P1 的正式验收。初始只有 AGENTS.md 和 V1.2/V1.3 方案；无既有实验。本文件只记录实际执行，不将计划标为完成。
 
 ## 已执行
 
@@ -64,7 +64,44 @@ V0.0 本地检查、暂存审查、私有仓库创建/推送/SHA 核验与远程
 
 ## 尚未实现/测量
 
-30 min 正常数据门禁、P0/P1 双接口 PCAP、物理气象/潮流模型、QC 指标、标签/划分/特征与真实运行 Web 尚未完成。当前 PCAP 是授权 WSL 回环链路的 V0.1 冒烟证据，不是现场网络验证；未创建 namespace/veth 或 NetEm 条件，未执行异常注入。
+独立 P0/P1 30 min 完整验收、断联/维护对照、正式 Parquet、独立 QC 和报文—日志精确关联、只读运行 Web 尚未完成。未以最近回调匹配估计替代正式 P99 指标。气象/潮流、标签/划分/特征属于后续阶段；本切片未执行故障注入或 NetEm。
+
+## V0.1 证据完整性修正（2026-11-25，最新记录）
+
+复核发现并修正：两份同一 lo 捕获被错误描述为双端证据；旧解析包/APDU 一对一、丢纳秒精度；终端真值进入 observed；记录器未同步；斜率把到达前时间计入新指令；tcpdump 无 readiness 和丢包统计。旧版 30 分钟记录仅保留为开发稳定性证据，不用于正式研究特征或阶段验收。
+
+- 新增 `network/isolated.py` 与 `scenario/isolated_runner.py`：4 个本次拥有的 namespace、3 对内部 veth、主站和 3 RTU 独立进程；无默认路由，不修改宿主网络或 NAT；P0 位于主站，3 份 P1 各位于终端。
+- 新增同步 `storage/events.py`：主站事件/原始回调进 observed，终端事件/原始回调及设备状态进 truth；统一 UTC/单调/逻辑时间映射和主站 available_at；命令发送、确认、反馈分别记录。
+- 配置移至 `config/lab.py`，复用有限大小、重复键/别名防护；生成 `schemas/v01-lab.schema.json`。Q=0 kvar、U=0.4 kV 为显式协议测试默认值，不是电力模型结果。
+- TShark PDML v2 保留全部包、独立 APDU、多对象和值/品质/重组引用，Decimal 精确转换纳秒。新输出在 `parsed/tshark-pdml-v2/` 原子提交，同版拒绝覆盖；旧文件保留。尚非正式 Parquet schema。
+- tcpdump 以 listening 事件判定 readiness，持续读取 stderr，采用 immediate mode；清单保留捕获/过滤接收/内核丢包计数。进程失败、取消、清理错误不能标记 completed；QC 仍独立 pending。
+
+实际验证：
+
+| 命令/证据 | 结果 |
+|---|---|
+| `uv run --frozen pytest -q -m "not lab"` | 55 passed，3 deselected；含并发、观测隔离、斜率、重复键、多 APDU、多对象、时间精度回归 |
+| `uv run --frozen mypy` | 37 个源文件通过 |
+| Ruff lint/format | 检查通过；最终完整总入口结果见下方补记 |
+| `uv run --frozen python scripts/generate_schemas.py --check` / `pnpm --dir frontend types:check` | 通过 |
+| `PVCOMM_ALLOW_LAB=1 .venv-wsl/bin/python -m pytest -q -m lab`（WSL） | 3 passed，55 deselected，50.37s；回环、独立端点及取消清理 |
+| namespace lab 路由/资源断言 | 宿主路由前后一致，本次 namespace 全部清理 |
+
+保留的实际运行：
+
+- `outputs/v01_normal_30m_001`（代码 3bb3a71）：单回环捕获约 1.1 MB，12,136 包；3 次显式总召唤、6 次命令及终端接受，真实计时约 1800 s。不是 P0/P1 验收。
+- `outputs/v01_normal_30m_002`（代码 d6526c8）：两个 tcpdump 均在 lo，自然完成；PDML v2 读取 primary 得到 **11,772 包、6,118 APDU、5,446 对象、0 个缺 ASDU 的 I APDU**；primary SHA256 `195977d0771a8671ca2242987b1ecf0dfce896b19231fe1a7a16db63f1c75687`。此计数不等于 QC 解析率。
+- `outputs/isolated_integrity_001/v01_smoke_001`：独立端点修正版开发冒烟；4 份真实 PCAP，内核丢包统计均为 0；primary **203 包、123 APDU、180 对象**；manifest 诚实记录 code_dirty=true。随后 3 项 lab 回归进一步核验 immediate mode 和取消路径。
+
+开发纪律修正：初轮功能曾直接推送 main，且曾删除并重跑同名开发冒烟目录；不回写或隐藏该历史。本切片转至 `fix/v01-evidence-integrity`，后续拒绝覆盖运行目录、使用新输出根，提交 PR 审核，不自动合并。PCAP、日志、输出及依赖环境始终不入 Git。下一步先完成本切片 PR，再在审核后的冻结版本上执行独立端点 30 min、对照与 QC/只读 Web。
+
+### 最终本地复核补记
+
+- 复验原零丢包断言实际失败：`1 failed, 2 passed, 55 deselected in 50.93s`。P0 为 224 captured/231 received/7 dropped，三份 P1 均为 0 dropped。该次运行只说明进程完成，QC 不通过。失败输出及统计在此保留；pytest 的 `/tmp` 临时原始目录随后不可用，尝试复制失败，未伪造归档。后续实验测试显式使用全新的持久输出根。
+- tcpdump 显式设置 16384 KiB 缓冲并记录 `buffer_size_kib`；保留零丢包断言。修复多进程日志 ID 缺端点角色造成的跨 RTU 重复，并增加普通回归。真实 TShark PDML 抽查确认 SQ/negative/test 字段实际使用 True/False。
+- WSL 最终命令：`PVCOMM_ALLOW_LAB=1 .venv-wsl/bin/python -m pytest -q -m lab --basetemp=outputs/lab_integrity_buffer_001`，退出 0，**3 passed, 56 deselected in 50.60s**。该输出根为首次使用，后续不得重复作为 basetemp（pytest 会清空指定 basetemp）。独立端点 P0 捕获 232 包，三份 P1 分别为 76/77/79 包；四路 dropped=0、返回码 0；P0 SHA256 `c663f623b464c2039daf53be66574b0ae7c12136409ef01fc22a04b1d01e8e9d`。完整原始记录保留于该输出根，Git 忽略。
+- `uv run --frozen python scripts/dev.py check` 最终退出 0：Ruff lint/format（50 文件）、strict mypy（37 源文件）、**56 passed / 3 lab deselected**、schema/OpenAPI/TS 一致性、ESLint/Prettier/vue-tsc、Vitest 3 项及 Vite 生产构建通过。此总入口不包含 Playwright；本轮浏览器验收由后续实际远程 CI 单独记录。
+- 当前 V0.1 仍未验收：独立端点 30 min、计划维护/中断对照、日志—报文精确对齐及独立 QC、正式 Parquet、只读运行 Web 待实现/验证。本次没有正式异常标签、检测算法结果或电力模型验收。
 
 ## GitHub
 
