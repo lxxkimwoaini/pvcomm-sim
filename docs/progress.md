@@ -260,3 +260,9 @@ V0.3开发门禁通过，详见docs/reports/2026-11-25-v03-acceptance.md；READM
 三时段仿真单核CPU均值47.787/43.997/43.398%，RSS最大6.115/6.197/6.275GiB；Linux API CPU均值实时40.605/回放7.479%、RSS最大122.527/124.953MiB，Windows测量子树CPU均值32.533/10.215%、WorkingSet最大1.248/1.279GiB，共享页会重复计。三时段为顺序工程诊断，不能作随机因果结论。电气间隔各站P99最大1005.623ms、最长1027.296ms；求解周期P95=61.138ms/max113.787ms。母线0.999745–1.008135pu、线路17.596%/变压器33.961%最大；P/Q平衡误差最大1.221214e-5kW/1.178254e-5kvar，快照跨度1004.846ms/龄期1105.074ms最大，无无效或电气越限，反送作为工况保留。
 
 保留数据1383250188B/h，其中PCAP129133060B、Parquet50170860B；按720×1.5约1.494TB（备份另计）。解析临时PDML观测为11275084964B，成功后既有流程清理，峰值空间另预留；没有将该单文件值冒充全流程磁盘峰值。720个同负载一小时单元串行连同实测初始化/解析/QC线性约819.45h；8实例90h未测，不承诺。现有C/E空闲不足正式数据与备份需求；现场校准、并发验证、正式参数冻结、720h批量、V0.4/训练均未开展。
+
+### V0.3远程审核交付核验
+
+验收文档提交8bc6489b6060ed1576710feb61702088a846bfc6已推送，git ls-remote与本地SHA一致；push CI45638703911及pull_request CI45638866871均实际success，Ubuntu/Windows Python、Arrow、Physical models、Frontend/browser五job全部成功。草稿PR #4：https://github.com/lxxkimwoaini/pvcomm-sim/pull/4 ，OPEN/isDraft=true，base=feat/v02-power-cosimulation，head=feat/v03-multisite。22:55北京时间复核#1→#2→#3→#4仍全OPEN，#3/#4 draft，未自动合并或改写历史；远程仍为lxxkimwoaini/pvcomm-sim、PUBLIC、默认main。
+
+交付检查：29份Markdown的22个本地文件链接无断链，CLI实际版本0.3.0.dev0、30站配置校验退出0，diff检查通过，变更路径无data/outputs/PCAP/Parquet，非忽略项目文件未发现高风险凭据模式。本机8000/5173无监听；WSL实验namespace列表为空，宿主两个Docker网桥veth不属于本次资源，已保留。所有复制证据原件仍在，最终成功UI证据另存outputs/v03-final-ui-passed-003。此补记仅文档，不把8bc6489的CI结果混称为补记本身CI；最终分支CI以远程实际状态及交付回复为准。

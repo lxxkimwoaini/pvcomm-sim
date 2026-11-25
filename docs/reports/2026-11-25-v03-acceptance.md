@@ -160,6 +160,6 @@ node frontend/scripts/measure-v03.mjs --source-linux /var/lib/pvcomm/sources/YOU
 
 远程https://github.com/lxxkimwoaini/pvcomm-sim，所有者lxxkimwoaini、PUBLIC（既有用户授权）、默认main。PR #1 main←fix/v01-evidence-integrity；#2 fix/v01-evidence-integrity←feat/v01-acceptance；#3 feat/v01-acceptance←feat/v02-power-cosimulation，均OPEN、#3 draft；正确顺序#1→#2→#3，未合并、改写历史或代用户批准。V0.3继续在#3上方堆叠。
 
-实际CI：76a3d2c/45618961711、29aa7e0/45619736287、f157172/45636936098均success，五job通过。最终验收文档提交/推送及草稿PR信息在progress追加；不把先前CI算作新文档提交CI。代码、配置、契约和报告入Git，PCAP、Parquet、外部历史输入、运行产物和本地备份不入Git。
+实际CI：76a3d2c/45618961711、29aa7e0/45619736287、f157172/45636936098均success，五job通过。验收文档8bc6489b6060ed1576710feb61702088a846bfc6已推送，远程SHA一致；其push CI45638703911与pull_request CI45638866871均success、五job成功。草稿PR #4为https://github.com/lxxkimwoaini/pvcomm-sim/pull/4 ，base=feat/v02-power-cosimulation、head=feat/v03-multisite，OPEN/draft，与#1→#2→#3正确堆叠且未合并。远程核验补记只更新文档，不把8bc6489的CI当作补记本身CI。代码、配置、契约和报告入Git，PCAP、Parquet、外部历史输入、运行产物和本地备份不入Git。
 
 后续仍需现场参数/高频物理模型校准和正式数据配置冻结；高频许可调研见[报告](2026-11-25-high-frequency-weather-review.md)：Tateno BSRN候选元数据与条款明确，但第三方转递受限，本次未下载矩阵/集成或分发；Oahu门户与原站许可冲突未解决，不接入。正式720h需要实际存储与并发压测。V0.4异常库、正式标签/分组划分、特征与算法训练均未开展，不自动进入下一阶段。
