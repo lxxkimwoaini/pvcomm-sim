@@ -31,7 +31,10 @@ def configuration(count: int, duration: int, *, interruption: bool = False) -> d
         center_s=80.0,
     )
     data["spatial_cloud"] = dict(direction_degrees=30.0, crosswind_width_m=1500.0)
-    data["regions"] = [{"region_id": f"R{i}"} for i in range(1, 4)]
+    data["regions"] = [
+        {"region_id": f"R{i}", "uplink": dict(delay_ms=3.0, jitter_ms=1.0, seed=1102 + i * 2)}
+        for i in range(1, 4)
+    ]
     data["feeders"] = [
         {
             "feeder_id": f"F{i}",
@@ -71,6 +74,11 @@ def configuration(count: int, duration: int, *, interruption: bool = False) -> d
             y_m=float(index // 10 * 300),
             telemetry_phase_s=float(index % 2),
             deadband_fraction=0.01,
+            access_link=dict(
+                delay_ms=(7.0, 37.0, 97.0)[index % 3],
+                jitter_ms=(2.0, 7.0, 19.0)[index % 3],
+                seed=2104 + index * 2,
+            ),
         )
         stations.append(site)
         device = baseline.devices[0].model_dump(mode="json")

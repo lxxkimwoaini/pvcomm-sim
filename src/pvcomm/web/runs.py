@@ -91,6 +91,8 @@ class StationView(Contract):
     x_m: float | None = None
     y_m: float | None = None
     power_fresh: bool = False
+    device_running: bool | None = None
+    device_status_available_at: Nanoseconds | None = None
 
 
 class RegionView(Contract):
@@ -303,6 +305,9 @@ class RunRepository:
                     cursor, station=station.station_id, kind="master_connection_state", limit=1
                 )
             ]
+            device_status = index.rows(
+                cursor, station=station.station_id, kind="master_observed_point", ioa=2001, limit=1
+            )
             stations.append(
                 StationView(
                     station_id=station.station_id,
@@ -336,6 +341,10 @@ class RunRepository:
                     connection_state=state[-1] if state else None,
                     latest_power_kw=power[-1]["value"] if power else None,
                     power_available_at=power[-1]["available_at"] if power else None,
+                    device_running=bool(device_status[-1]["value"]) if device_status else None,
+                    device_status_available_at=(
+                        device_status[-1]["available_at"] if device_status else None
+                    ),
                     measurements=[
                         MeasurementSeries(
                             ioa=ioa,

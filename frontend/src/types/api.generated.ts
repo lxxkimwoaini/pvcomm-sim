@@ -358,6 +358,10 @@ export interface components {
             common_address: number;
             /** Connection State */
             connection_state: string | null;
+            /** Device Running */
+            device_running?: boolean | null;
+            /** Device Status Available At */
+            device_status_available_at?: string | null;
             /** Electrical Parent */
             electrical_parent?: string | null;
             /** Feeder Id */

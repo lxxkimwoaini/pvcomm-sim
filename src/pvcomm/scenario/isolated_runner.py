@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import platform
 import shutil
 import signal
 import subprocess
@@ -81,6 +83,14 @@ def run_isolated(
     if isinstance(network, RegionalNetwork):
         manifest["network"]["regions"] = network.regions
         manifest["network"]["topology"] = "region_bridge_aggregation_and_site_access"
+        manifest["environment"] = {
+            "platform": platform.platform(),
+            "python": sys.version,
+            "cpu_count": os.cpu_count(),
+            "tc": subprocess.check_output(["tc", "-V"], text=True).strip(),
+            "meminfo": Path("/proc/meminfo").read_text(),
+            "output_filesystem": subprocess.check_output(["df", "-T", str(root)], text=True),
+        }
     save_manifest()
     captures: list[TcpdumpCapture] = []
     processes: list[subprocess.Popen[bytes]] = []
@@ -133,6 +143,9 @@ def run_isolated(
                 power.model_dump_json().encode()
             ).hexdigest()
         network.create()
+        if isinstance(network, RegionalNetwork):
+            manifest["network"]["netem_initial"] = network.shaping_evidence()
+            save_manifest()
         capture_specs = [
             ("primary", network.master, "any"),
             *(
@@ -271,6 +284,11 @@ def run_isolated(
         for log in logs:
             log.close()
         controller.close()
+        if isinstance(network, RegionalNetwork) and network.shaped:
+            try:
+                manifest["network"]["netem_final"] = network.shaping_evidence()
+            except Exception as exc:
+                failures.append(f"NetEm final evidence: {exc}")
         try:
             network.close()
         except Exception as exc:

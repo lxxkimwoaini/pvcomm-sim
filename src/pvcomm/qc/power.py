@@ -20,7 +20,7 @@ from pvcomm.storage.power_parquet import verify_power_parquet
 from pvcomm.weather import HistoricalWeather, station_weather
 
 VERSION = "v02-power-v6"
-MULTISITE_VERSION = "v03-power-v2"
+MULTISITE_VERSION = "v03-power-v3"
 TOLERANCE = 1e-6
 
 
@@ -46,6 +46,24 @@ def evaluate_power(root: Path) -> dict[str, Any]:
         == hashlib.sha256(config.model_dump_json().encode()).hexdigest(),
         {"weather_sha256": config.weather.sha256, "basis": config.parameter_basis},
     )
+    if isinstance(config, V03Config):
+        expected_links = 2 * (
+            sum(r.uplink is not None for r in config.regions)
+            + sum(s.access_link is not None for s in config.protocol.stations)
+        )
+        initial = manifest["network"].get("netem_initial", [])
+        final = manifest["network"].get("netem_final", [])
+        check(
+            "normal_network_parameters",
+            len(initial) == len(final) == expected_links
+            and all(r["actual"]["drops"] == 0 for r in final),
+            {
+                "bidirectional_qdiscs": expected_links,
+                "readback_verified_by_runner": True,
+                "qdisc_drops": sum(r["actual"]["drops"] for r in final),
+                "basis": "synthetic normal link delay/jitter; no configured packet loss",
+            },
+        )
     source = json.loads((root / "truth/weather/source.json").read_text())
     source_valid = all(
         hashlib.sha256((root / "truth/weather" / name).read_bytes()).hexdigest() == record["sha256"]

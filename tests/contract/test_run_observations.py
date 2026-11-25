@@ -181,3 +181,21 @@ def test_resources_are_separate_and_duplicate_evidence_returns_conflict(tmp_path
     with path.open("a") as stream:
         stream.write(path.read_text().splitlines()[0] + "\n")
     assert client.get(f"/api/runs/{key}/snapshot").status_code == 409
+
+
+def test_device_status_is_received_independently_of_connection_and_respects_cursor(
+    tmp_path: Path,
+) -> None:
+    run = fixture_run(tmp_path)
+    path = run / "observed/master_events_master.jsonl"
+    row = json.loads(path.read_text().splitlines()[-1])
+    with path.open("a") as stream:
+        stream.write(json.dumps({**row, "event_id": "status", "ioa": 2001, "value": False}) + "\n")
+    client = TestClient(create_app(tmp_path))
+    key = client.get("/api/runs").json()["runs"][0]["run_key"]
+    old = client.get(f"/api/runs/{key}/snapshot?at_ns=1795590000000000001").json()
+    assert old["stations"][0]["device_running"] is None
+    current = client.get(f"/api/runs/{key}/snapshot").json()
+    assert current["stations"][0]["device_running"] is False
+    assert current["stations"][0]["connection_state"] is None
+    assert current["stations"][1]["device_running"] is None

@@ -1,8 +1,10 @@
 """Owned L2 region aggregation and independent per-site access veth links."""
 
+import json
 import sys
+from typing import Any
 
-from pvcomm.config.multisite import V03Config
+from pvcomm.config.multisite import NormalLink, V03Config
 from pvcomm.network.isolated import IsolatedNetwork
 
 
@@ -14,6 +16,72 @@ class RegionalNetwork(IsolatedNetwork):
         self.rtus = tuple(f"{prefix}-rtu{i}" for i in range(1, len(config.devices) + 1))
         self.regions = {r.region_id: f"{prefix}-reg{i}" for i, r in enumerate(config.regions, 1)}
         self.addresses = tuple(s.address for s in config.protocol.stations)
+        self.shaped: list[tuple[str, str, NormalLink, bool]] = []
+
+    def _shape(
+        self, namespace: str, interface: str, link: NormalLink | None, reverse: bool
+    ) -> None:
+        if link is None:
+            return
+        self.prefix(namespace)  # Ownership check before any resource operation.
+        self._run(
+            "netns",
+            "exec",
+            namespace,
+            "tc",
+            "qdisc",
+            "add",
+            "dev",
+            interface,
+            "root",
+            "netem",
+            "limit",
+            "10000",
+            "delay",
+            f"{link.delay_ms}ms",
+            f"{link.jitter_ms}ms",
+            "seed",
+            str(link.seed + int(reverse)),
+        )
+        self.shaped.append((namespace, interface, link, reverse))
+
+    def shaping_evidence(self) -> list[dict[str, Any]]:
+        rows = []
+        for namespace, interface, link, reverse in self.shaped:
+            self.prefix(namespace)
+            actual = json.loads(
+                self._run(
+                    "netns",
+                    "exec",
+                    namespace,
+                    "tc",
+                    "-j",
+                    "-s",
+                    "-d",
+                    "qdisc",
+                    "show",
+                    "dev",
+                    interface,
+                )
+            )
+            netem = next(r for r in actual if r["kind"] == "netem")
+            options = netem["options"]
+            if (
+                abs(options["delay"]["delay"] * 1000 - link.delay_ms) > 1e-6
+                or abs(options["delay"]["jitter"] * 1000 - link.jitter_ms) > 1e-6
+                or options["seed"] != link.seed + int(reverse)
+            ):
+                raise RuntimeError("kernel NetEm parameters disagree with configuration")
+            rows.append(
+                {
+                    "namespace": namespace,
+                    "interface": interface,
+                    "configured": link.model_dump(),
+                    "reverse": reverse,
+                    "actual": netem,
+                }
+            )
+        return rows
 
     def create(self) -> None:
         if sys.platform != "linux" or self._owned:
@@ -47,6 +115,8 @@ class RegionalNetwork(IsolatedNetwork):
                 self._run("-n", self.master, "link", "set", f"p0_{i}", "up")
                 self._run("-n", namespace, "link", "set", "uplink", "master", "aggregate")
                 self._run("-n", namespace, "link", "set", "uplink", "up")
+                self._shape(self.master, f"p0_{i}", region.uplink, False)
+                self._shape(namespace, "uplink", region.uplink, True)
             for i, (station, namespace) in enumerate(
                 zip(self.config.protocol.stations, self.rtus, strict=True), 1
             ):
@@ -69,6 +139,8 @@ class RegionalNetwork(IsolatedNetwork):
                 self._run("-n", region_ns, "link", "set", f"access{i}", "up")
                 self._run("-n", namespace, "addr", "add", f"{station.address}/24", "dev", "p1")
                 self._run("-n", namespace, "link", "set", "p1", "up")
+                self._shape(region_ns, f"access{i}", station.access_link, False)
+                self._shape(namespace, "p1", station.access_link, True)
         except BaseException:
             self.close()
             raise

@@ -222,3 +222,8 @@ a2187a6十站第二轮120s全QC通过（outputs/v03_scale_s2/v03_10_normal_001�
 工作台/正常操作提交55a2d1b已推送，CI45613146105实际success。冻结checkout=/var/lib/pvcomm/sources/v03-s4，30站360秒预检=/var/lib/pvcomm/runs/v03_scale_s4/v03_30_normal_001运行中。独立Web测量预检outputs/v03_web_preflight_002已实际完成off/live/replay 30秒负载流程（仅测量脚本预检，不替代1h门禁）：WSL localhost真实API、Windows Chromium/Vite，保留请求端到端时间/服务时间/字节、Linux API及Windows进程树CPU/内存、浏览器CDP指标和截图，无fatal错误。脚本尚需与最终冻结SHA一起正式运行。
 
 新增正常设备状态变化触发潮流补算（不等待5秒周期），调度回归通过。普通119 passed/10 deselected、mypy79/Ruff/格式通过；WSL科学及Arrow6 passed/121 deselected；旧V0.1真实协议/隔离/取消清理回归3 passed/47.66s，持久目录/var/lib/pvcomm/runs/v03_legacy_regression_001。没有重报旧30分钟/90秒实验。当前仍未通过V0.3门禁。
+
+
+30站360s预检55a2d1b全QC通过：/var/lib/pvcomm/runs/v03_scale_s4/v03_30_normal_001，41138完整APDU=100%、31路dropped=0、P99=3.335434ms/max56.908908ms，90命令正确认/接受/反馈独占证据通过，2次本地状态变化真实收到（8.683161/58.346122ms）。正常资源不足2044.4795kW明确保留；completed/clean/cleanup=[]。真实30站Web2 passed/1 skipped（空态），18.4秒真实M2/指标/回放/移动验证通过。
+
+方案6.1正常链路补齐：新增每区域/站点可选双向NetEm，开发配置合计名义10/40/100ms、抖动3/8/20ms、显式分方向seed，0额外丢包；全部仿真假设，非现场参数。独立probe实际确认内核支持seed，自动清理。ADR0009记录版本/参数及按规模重验要求；QC升v03-power-v3单独目录。0.1/0.2不受影响。当前120普通passed、mypy79/Ruff/schema及前端检查实际通过，新增NetEm真实规模结果待记录，仍未通过1h门禁。

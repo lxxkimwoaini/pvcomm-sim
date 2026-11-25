@@ -418,6 +418,16 @@ onBeforeUnmount(() => {
           >
             {{ station.connection_state ?? '未知' }}
           </ElTag>
+          <p>
+            运行遥信：{{
+              station.device_running == null
+                ? '未知'
+                : station.device_running
+                  ? '运行'
+                  : '停运'
+            }}
+            <small>（最近接收，独立于通信连接）</small>
+          </p>
           <p class="power-reading">
             {{ station.latest_power_kw?.toFixed(2) ?? '未知' }}
             <small>kW</small>

@@ -695,6 +695,28 @@
             ],
             "title": "Connection State"
           },
+          "device_running": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Running"
+          },
+          "device_status_available_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Status Available At"
+          },
           "electrical_parent": {
             "anyOf": [
               {

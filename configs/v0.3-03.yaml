@@ -37,6 +37,10 @@ protocol:
     point_table: pvcomm-v03
     telemetry_phase_s: 0.0
     deadband_fraction: 0.01
+    access_link:
+      delay_ms: 7.0
+      jitter_ms: 2.0
+      seed: 2104
   - station_id: PV02
     region_id: R2
     common_address: 2
@@ -55,6 +59,10 @@ protocol:
     point_table: pvcomm-v03
     telemetry_phase_s: 1.0
     deadband_fraction: 0.01
+    access_link:
+      delay_ms: 37.0
+      jitter_ms: 7.0
+      seed: 2106
   - station_id: PV03
     region_id: R3
     common_address: 3
@@ -73,6 +81,10 @@ protocol:
     point_table: pvcomm-v03
     telemetry_phase_s: 0.0
     deadband_fraction: 0.01
+    access_link:
+      delay_ms: 97.0
+      jitter_ms: 19.0
+      seed: 2108
 weather:
   source_id: NASA_POWER_Hourly_huixian_20240601_30
   directory: data/nasa-power-huixian-202406-month
@@ -143,8 +155,20 @@ devices:
   faulted: false
 regions:
 - region_id: R1
+  uplink:
+    delay_ms: 3.0
+    jitter_ms: 1.0
+    seed: 1104
 - region_id: R2
+  uplink:
+    delay_ms: 3.0
+    jitter_ms: 1.0
+    seed: 1106
 - region_id: R3
+  uplink:
+    delay_ms: 3.0
+    jitter_ms: 1.0
+    seed: 1108
 feeders:
 - feeder_id: F1
   parameters:

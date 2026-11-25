@@ -8,6 +8,18 @@ from pvcomm.config.lab import Identifier, Positive, V01Config, V01Contract, V01S
 from pvcomm.config.power import DeviceConfig, FeederConfig, WeatherConfig
 
 
+class NormalLink(V01Contract):
+    delay_ms: Annotated[float, Field(ge=0, le=150)]
+    jitter_ms: Annotated[float, Field(ge=0, le=30)]
+    seed: Annotated[int, Field(strict=True, ge=0, le=2**32 - 2)]
+
+    @model_validator(mode="after")
+    def nonnegative_delay(self) -> Self:
+        if self.jitter_ms > self.delay_ms:
+            raise ValueError("jitter cannot exceed base delay")
+        return self
+
+
 class SiteConfig(V01StationConfig):
     x_m: float
     y_m: float
@@ -16,6 +28,7 @@ class SiteConfig(V01StationConfig):
     point_table: Literal["pvcomm-v02", "pvcomm-v03"] = "pvcomm-v03"
     telemetry_phase_s: Annotated[float, Field(ge=0)] = 0.0
     deadband_fraction: Annotated[float, Field(ge=0.005, le=0.02)] = 0.01
+    access_link: NormalLink | None = None
 
     @model_validator(mode="after")
     def phase_valid(self) -> Self:
@@ -30,6 +43,7 @@ class MultisiteProtocol(V01Config):
 
 class RegionConfig(V01Contract):
     region_id: Identifier
+    uplink: NormalLink | None = None
 
 
 class FeederGroup(V01Contract):
