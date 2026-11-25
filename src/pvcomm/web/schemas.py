@@ -1,4 +1,4 @@
-"""V0.0 validation API; no runtime or truth query contracts yet."""
+"""Service capability contract; CLI owns simulation execution."""
 
 from typing import Literal
 
@@ -9,8 +9,9 @@ from pvcomm.config.models import Contract
 
 class Health(Contract):
     status: Literal["ok"] = "ok"
-    stage: Literal["V0.0"] = "V0.0"
-    simulation_available: Literal[False] = False
+    stage: Literal["V0.2-development"] = "V0.2-development"
+    simulation_available: Literal[True] = True
+    web_run_submission_available: Literal[False] = False
 
 
 class ValidationRequest(Contract):

@@ -1,0 +1,219 @@
+"""RTU-owned physical state and atomic local feeder IPC; never read by master."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import shutil
+import time
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any
+
+from pvcomm.clock import ClockOrigin
+from pvcomm.config.power import DeviceConfig, V02Config
+from pvcomm.power.device import Inverter
+from pvcomm.power.feeder import ThreeSiteFeeder
+from pvcomm.power.solar import SolarModel
+from pvcomm.protocol.c104_runtime import RecordEvent
+from pvcomm.weather import HistoricalWeather
+
+
+def append_snapshot(path: Path, value: dict[str, Any]) -> None:
+    # Append-only IPC works on drvfs too: replace-over-existing may expose a
+    # transient missing pathname to a concurrent WSL reader. A partial tail
+    # never replaces the last complete record; completed malformed rows fail.
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(value, allow_nan=False) + "\n")
+        stream.flush()
+
+
+def read_snapshot(path: Path) -> dict[str, Any] | None:
+    try:
+        content = path.read_bytes()
+    except FileNotFoundError:
+        return None
+    complete = content[: content.rfind(b"\n") + 1].splitlines()
+    return dict(json.loads(complete[-1])) if complete else None
+
+
+def prepare_power(root: Path, config: V02Config) -> None:
+    source = Path(config.weather.directory).resolve()
+    weather = HistoricalWeather(source / "weather.json", config.weather)
+    weather.sample(config.protocol.duration_s + 120)
+    metadata = json.loads((source / "source.json").read_text(encoding="utf-8"))
+    if metadata["canonical_sha256"] != config.weather.sha256:
+        raise ValueError("weather provenance disagrees with configured hash")
+    raw = (source / "raw.json").read_bytes()
+    if hashlib.sha256(raw).hexdigest() != metadata["files"]["raw.json"]["sha256"]:
+        raise ValueError("raw weather provenance hash mismatch")
+    canonical = json.dumps(
+        {k: v for k, v in json.loads(raw).items() if k != "times"},
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    if hashlib.sha256(canonical).hexdigest() != config.weather.sha256:
+        raise ValueError("canonical weather differs from retained raw source")
+    destination = root / "truth/weather"
+    destination.mkdir(parents=True)
+    for name in (
+        "raw.json",
+        "weather.json",
+        "source.json",
+        "api.html",
+        "referencing.html",
+        "policy.html",
+    ):
+        shutil.copyfile(source / name, destination / name)
+    (root / "power_config.json").write_text(config.model_dump_json(indent=2), encoding="utf-8")
+    (root / "truth/ipc").mkdir()
+
+
+class PhysicalStationState:
+    """Owned exclusively by one RTU; accept is invoked by real protocol callback."""
+
+    def __init__(
+        self,
+        root: Path,
+        config: V02Config,
+        device: DeviceConfig,
+        origin: ClockOrigin,
+        record_event: RecordEvent,
+    ) -> None:
+        self.root = root
+        self.config = config
+        self.device = device
+        self.origin = origin
+        self._record = record_event
+        self.weather = HistoricalWeather(root / "truth/weather/weather.json", config.weather)
+        self.solar = SolarModel(device, config.weather)
+        now = time.monotonic()
+        available = self.solar.calculate(self.weather.sample(self.elapsed(now)))["p_avail_kw"]
+        self.inverter = Inverter(
+            device,
+            device.initial_setpoint_kw,
+            min(available, device.initial_setpoint_kw),
+            last_update_mono=now,
+        )
+        self.sample: dict[str, Any] = {}
+        self.advance(now)
+
+    def elapsed(self, now: float) -> float:
+        return (int(now * 1e9) - self.origin.ts_mono_ns) / 1e9
+
+    @property
+    def accepted_setpoint_kw(self) -> float:
+        return self.inverter.accepted_setpoint_kw
+
+    @property
+    def actual_kw(self) -> float:
+        return self.inverter.actual_kw
+
+    @property
+    def command_count(self) -> int:
+        return self.inverter.command_count
+
+    def advance(self, now: float) -> None:
+        weather = self.weather.sample(self.elapsed(now))
+        solar = self.solar.calculate(weather)
+        self.inverter.advance(solar["p_avail_kw"], now)
+        values = {
+            **{
+                k: v.isoformat() if hasattr(v, "isoformat") else v
+                for k, v in asdict(weather).items()
+            },
+            **solar,
+            "station_id": self.device.station_id,
+            "p_actual_kw": self.actual_kw,
+            "q_actual_kvar": self.inverter.reactive_kvar,
+            "p_set_accepted_kw": self.accepted_setpoint_kw,
+            "running": self.inverter.running,
+            "connected": self.device.connected,
+            "faulted": self.device.faulted,
+            "command_count": self.command_count,
+            "model_mono_ns": int(now * 1e9),
+            "constraint_reason": self.inverter.constraint_reason,
+            "source": "pvlib_pvwatts_inverter_v02",
+        }
+        self.sample = values
+        append_snapshot(self.root / f"truth/ipc/{self.device.station_id}.jsonl", values)
+        self._record("electrical_state", values)
+
+    def accept(self, target: float, now: float) -> bool:
+        # Account for the OLD target up to receipt; weather/model time is real 1x.
+        self.advance(now)
+        accepted = self.inverter.accept(target)
+        if accepted:
+            self._record(
+                "terminal_model_target_accepted",
+                {
+                    "station_id": self.device.station_id,
+                    "target_kw": target,
+                    "ioa": 3001,
+                    "command_count": self.command_count,
+                },
+            )
+            self.advance(now)
+        return accepted
+
+    def telemetry(self) -> dict[int, float | bool]:
+        voltage_file = self.root / f"truth/ipc/{self.device.station_id}-pcc.jsonl"
+        voltage = read_snapshot(voltage_file)
+        if voltage is None:
+            raise RuntimeError("physical feeder measurement is not ready")
+        if time.monotonic_ns() - voltage["solved_mono_ns"] > 10_000_000_000:
+            raise RuntimeError("physical feeder measurement is stale")
+        return {
+            1002: self.inverter.reactive_kvar,
+            1003: voltage["voltage_kv"],
+            1004: voltage["current_a"],
+            1005: self.sample["ghi_w_m2"],
+            1008: self.sample["p_avail_kw"],
+            2001: self.inverter.running,
+        }
+
+
+class FeederRuntime:
+    def __init__(self, root: Path, config: V02Config, record_event: RecordEvent) -> None:
+        self.root, self.config, self.record = root, config, record_event
+        self.model = ThreeSiteFeeder(config.feeder, tuple(d.station_id for d in config.devices))
+        self.last_solve = 0.0
+        self.last_commands: tuple[int, ...] = ()
+
+    def step(self) -> bool:
+        paths = [self.root / f"truth/ipc/{d.station_id}.jsonl" for d in self.config.devices]
+        snapshots = [read_snapshot(p) for p in paths]
+        if any(s is None for s in snapshots):
+            return False
+        states = {
+            d.station_id: sample
+            for d, sample in zip(self.config.devices, snapshots, strict=True)
+            if sample is not None
+        }
+        now = time.monotonic()
+        commands = tuple(s["command_count"] for s in states.values())
+        if commands == self.last_commands and now - self.last_solve < self.config.powerflow_step_s:
+            return True
+        if any(now * 1e9 - s["model_mono_ns"] > 3_000_000_000 for s in states.values()):
+            raise RuntimeError("stale RTU injection: cannot solve a valid feeder sample")
+        try:
+            results = self.model.solve(states)
+        except Exception as exc:
+            self.record("terminal_powerflow_failed", {"error": str(exc), "converged": False})
+            raise
+        stamp = time.monotonic_ns()
+        for station, result in results.items():
+            row = {
+                **result,
+                "solved_mono_ns": stamp,
+                "converged": True,
+                "station_id": station,
+                "injection_mono_ns": states[station]["model_mono_ns"],
+                "p_actual_kw": states[station]["p_actual_kw"],
+                "q_actual_kvar": states[station]["q_actual_kvar"],
+                "source": "pandapower_three_site_v02",
+            }
+            append_snapshot(self.root / f"truth/ipc/{station}-pcc.jsonl", row)
+            self.record("terminal_powerflow_solved", row)
+        self.last_commands, self.last_solve = commands, now
+        return True

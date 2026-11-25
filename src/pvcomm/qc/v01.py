@@ -16,10 +16,11 @@ from typing import Any
 
 from pvcomm.config.lab import load_v01_config, v01_config_sha256
 from pvcomm.pipeline.iec104_parser import PARSER_VERSION
+from pvcomm.qc.commands import audit_commands
 from pvcomm.qc.pcap import read_apdus
 from pvcomm.storage.parquet import read_jsonl, verify_parquet
 
-QC_VERSION = "v01-evidence-v1"
+QC_VERSION = "v01-evidence-v2"
 SIGNATURE = (
     "src_ip",
     "dst_ip",
@@ -222,6 +223,12 @@ def evaluate_run(run_dir: Path) -> dict[str, Any]:
         endpoint_evidence,
     )
 
+    expected_commands = 2
+    if (run_dir / "power_config.json").exists():
+        from pvcomm.config.power import V02Config
+
+        power_config = V02Config.model_validate_json((run_dir / "power_config.json").read_text())
+        expected_commands += int(power_config.repeat_command_after_s is not None)
     business = {}
     for station in config.stations:
         observations = [r for r in master if r.get("station_id") == station.station_id]
@@ -234,68 +241,30 @@ def evaluate_run(run_dir: Path) -> dict[str, Any]:
             if r["event_type"] == "terminal_command_accepted"
             and r["station_id"] == station.station_id
         ]
-        power = [
-            r
-            for r in observations
-            if r["event_type"] == "master_observed_point" and r.get("ioa") == 1001
-        ]
-        targets = []
-        for command in commands:
-            target = command["target_kw"]
-            matches = [
-                r
-                for r in power
-                if command["ts_event_utc_ns"]
-                <= r["ts_event_utc_ns"]
-                <= command["ts_event_utc_ns"] + 10_000_000_000
-                and abs(r["value"] - target) <= 0.1
+
+        def reachable_power(target: float, row: dict[str, Any]) -> float | None:
+            physical = [
+                s
+                for s in states
+                if s.get("source") == "pvlib_pvwatts_inverter_v02"
+                and s["station_id"] == row["station_id"]
+                and s["model_mono_ns"] <= row["ts_mono_ns"]
             ]
-            feedback = [
-                r
-                for r in observations
-                if r["event_type"] == "master_observed_point"
-                and r.get("ioa") == 1006
-                and command["ts_event_utc_ns"] <= r["ts_event_utc_ns"]
-                and abs(r["value"] - target) <= 0.1
-            ]
-            confirms = [
-                r
-                for r in observations
-                if r["event_type"] == "master_command_response"
-                and r["task_id"] == command["task_id"]
-                and r["positive_confirmation"] is True
-                and 0
-                <= r["ts_mono_ns"] - command["ts_mono_ns"]
-                <= command["deadline_ms"] * 1_000_000
-            ]
-            accepted_match = [
-                r
-                for r in accepted
-                if r["ts_event_utc_ns"] >= command["ts_event_utc_ns"]
-                and abs(r["target_kw"] - target) <= 0.1
-            ]
-            wire = [
-                r
-                for r in objects
-                if r["ca"] == station.common_address
-                and r["ioa"] == 3001
-                and r["cot"] == 6
-                and r["value_num"] is not None
-                and abs(r["value_num"] - target) <= 0.1
-            ]
-            targets.append(
-                {
-                    "task_id": command["task_id"],
-                    "passed": bool(matches and feedback and confirms and accepted_match and wire),
-                    "power_feedback_event": matches[0]["event_id"] if matches else None,
-                    "accept_event": accepted_match[0]["event_id"] if accepted_match else None,
-                    "wire_apdu": wire[0]["apdu_id"] if wire else None,
-                    "confirmation_ms": (confirms[0]["ts_mono_ns"] - command["ts_mono_ns"]) / 1e6
-                    if confirms
-                    else None,
-                    "deadline_ms": command["deadline_ms"],
-                }
+            return (
+                min(target, max(physical, key=lambda sample: sample["model_mono_ns"])["p_avail_kw"])
+                if physical
+                else None
             )
+
+        targets = audit_commands(
+            master,
+            terminal,
+            objects,
+            station.station_id,
+            station.common_address,
+            manifest["network"]["addresses"][config.stations.index(station)],
+            reachable_power if (run_dir / "power_config.json").exists() else None,
+        )
         business[station.station_id] = {
             "telemetry_ioas": sorted(seen),
             "gi_cots": sorted(gi),
@@ -303,7 +272,7 @@ def evaluate_run(run_dir: Path) -> dict[str, Any]:
             "commands": targets,
             "passed": {1001, 1002, 1003, 1006, 2001}.issubset(seen)
             and {6, 7, 10}.issubset(gi)
-            and len(commands) == len(accepted) == 2
+            and len(commands) == len(accepted) == expected_commands
             and all(t["passed"] for t in targets),
         }
     check("three_station_business_loop", all(r["passed"] for r in business.values()), business)
@@ -317,7 +286,12 @@ def evaluate_run(run_dir: Path) -> dict[str, Any]:
     check(
         "protocol_model_power_bounds",
         bool(states) and bounds,
-        {"samples": len(states), "physical_model": "fixed_available_power_ramp_test_only"},
+        {
+            "samples": len(states),
+            "physical_model": "pvlib_v02"
+            if (run_dir / "power_config.json").exists()
+            else "fixed_available_power_ramp_test_only",
+        },
     )
     ids = [r["event_id"] for r in [*master, *terminal, *states, *raw_master_records]]
     check(

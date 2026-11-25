@@ -43,6 +43,10 @@ const busy = ref(false)
 const offsetSeconds = ref(0)
 const live = ref(true)
 const chartNode = ref<HTMLDivElement>()
+const physicalNode = ref<HTMLDivElement>()
+const physicalStation = ref('PV01')
+const physicalMetric = ref('power')
+let physicalChart: EChartsType | undefined
 let chart: EChartsType | undefined
 let timer: ReturnType<typeof setInterval> | undefined
 let generation = 0
@@ -73,6 +77,7 @@ function draw() {
   }
   chart ??= init(chartNode.value)
   resize?.observe(chartNode.value)
+  if (physicalNode.value) resize?.observe(physicalNode.value)
   const data = snapshot.value
   const option: EChartsCoreOption = {
     animation: false,
@@ -106,6 +111,71 @@ function draw() {
     }),
   }
   chart.setOption(option, true)
+  drawPhysical()
+}
+function drawPhysical() {
+  if (!physicalNode.value || !snapshot.value) return
+  if (physicalChart && physicalChart.getDom() !== physicalNode.value) {
+    physicalChart.dispose()
+    physicalChart = undefined
+  }
+  physicalChart ??= init(physicalNode.value)
+  const station =
+    snapshot.value.stations.find(
+      (s) => s.station_id === physicalStation.value,
+    ) ?? snapshot.value.stations[0]
+  if (!station) return
+  const selected =
+    physicalMetric.value === 'power'
+      ? [1001, 1006, 1008]
+      : physicalMetric.value === 'irradiance'
+        ? [1005]
+        : [1003]
+  const names: Record<number, string> = {
+    1001: '实际有功遥测',
+    1006: '已接受调控目标',
+    1008: '可用功率遥测',
+    1005: '辐照度遥测',
+    1003: '并网点线电压',
+  }
+  const measurements = (station.measurements ?? []).filter((m) =>
+    selected.includes(m.ioa),
+  )
+  physicalChart.setOption(
+    {
+      animation: false,
+      tooltip: { trigger: 'axis' },
+      legend: { top: 0 },
+      grid: { left: 60, right: 25, top: 45, bottom: 35 },
+      xAxis: { type: 'value', name: 's' },
+      yAxis: { type: 'value', name: measurements[0]?.unit ?? '', scale: true },
+      series: measurements.map((m) => {
+        const data: (number | null)[][] = []
+        let previous = -1
+        for (const p of m.points) {
+          if (
+            previous >= 0 &&
+            p.sim_elapsed_ms - previous > station.telemetry_period_s * 1500
+          )
+            data.push([
+              (previous + station.telemetry_period_s * 1000) / 1000,
+              null,
+            ])
+          data.push([p.sim_elapsed_ms / 1000, p.value])
+          previous = p.sim_elapsed_ms
+        }
+        return {
+          name: names[m.ioa],
+          type: 'line',
+          showSymbol: false,
+          connectNulls: false,
+          step: m.ioa === 1006 ? 'end' : false,
+          data,
+        }
+      }),
+    },
+    true,
+  )
 }
 async function loadSnapshot(replay = false) {
   if (!key.value || busy.value) return
@@ -162,14 +232,19 @@ onMounted(async () => {
   timer = setInterval(() => {
     if (live.value) void loadSnapshot()
   }, 3000)
-  resize = new ResizeObserver(() => chart?.resize())
+  resize = new ResizeObserver(() => {
+    chart?.resize()
+    physicalChart?.resize()
+  })
   if (chartNode.value) resize.observe(chartNode.value)
+  if (physicalNode.value) resize.observe(physicalNode.value)
 })
 onBeforeUnmount(() => {
   generation++
   if (timer) clearInterval(timer)
   resize?.disconnect()
   chart?.dispose()
+  physicalChart?.dispose()
 })
 </script>
 
@@ -233,7 +308,7 @@ onBeforeUnmount(() => {
     <section class="editor-panel">
       <h2>三站通信拓扑</h2>
       <div class="topology-master">IEC 104 主站</div>
-      <div class="station-grid">
+      <div class="station-grid topology-cards">
         <article
           v-for="station in snapshot.stations"
           :key="station.station_id"
@@ -270,6 +345,55 @@ onBeforeUnmount(() => {
         role="img"
         aria-label="三站主站功率遥测曲线"
       />
+    </section>
+    <section class="editor-panel">
+      <h2>光伏电气过程</h2>
+      <p>
+        数据均为同一 IEC 104
+        链路上已到达主站的遥测；缺测保持未知，不从电气真值补齐。
+      </p>
+      <div class="run-controls">
+        <ElSelect
+          v-model="physicalStation"
+          aria-label="电气曲线站点"
+          @change="drawPhysical"
+        >
+          <ElOption
+            v-for="station in snapshot.stations"
+            :key="station.station_id"
+            :label="station.station_id"
+            :value="station.station_id"
+          />
+        </ElSelect>
+        <ElSelect
+          v-model="physicalMetric"
+          aria-label="电气曲线指标"
+          @change="drawPhysical"
+        >
+          <ElOption label="实际 / 可用 / 调控目标 (kW)" value="power" />
+          <ElOption label="辐照度 (W/m²)" value="irradiance" />
+          <ElOption label="并网点线电压 (kV)" value="voltage" />
+        </ElSelect>
+      </div>
+      <div
+        ref="physicalNode"
+        class="power-chart"
+        role="img"
+        aria-label="光伏电气遥测曲线"
+      />
+      <div class="station-grid">
+        <article
+          v-for="station in snapshot.stations"
+          :key="station.station_id"
+          class="station-card"
+        >
+          <h3>{{ station.station_id }} · 已接收电气量</h3>
+          <p v-for="m in station.measurements ?? []" :key="m.ioa">
+            {{ m.name }}：{{ m.points.at(-1)?.value.toFixed(3) ?? '未知' }}
+            {{ m.unit }}
+          </p>
+        </article>
+      </div>
     </section>
     <section class="editor-panel">
       <h2>主站业务事件</h2>

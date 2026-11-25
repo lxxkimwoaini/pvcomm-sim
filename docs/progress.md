@@ -1,6 +1,6 @@
 # PVComm 开发进度
 
-日期：2026-11-25（Asia/Shanghai）。当前阶段：**V0.0 通过；V0.1 首周协议开发门禁通过（2026-11-25）**。两个 30 分钟回环稳定性运行已完成，但不等同于独立 P0/P1 的正式验收。初始只有 AGENTS.md 和 V1.2/V1.3 方案；无既有实验。本文件只记录实际执行，不将计划标为完成。
+日期：2026-11-25（Asia/Shanghai）。当前阶段：**V0.0、V0.1及V0.2三站开发验收通过（2026-11-25）；未推进V0.3**。两个 30 分钟回环稳定性运行已完成，但不等同于独立 P0/P1 的正式验收。初始只有 AGENTS.md 和 V1.2/V1.3 方案；无既有实验。本文件只记录实际执行，不将计划标为完成。
 
 ## 已执行
 
@@ -146,3 +146,44 @@ V0.1 验收补齐启动：在 `feat/v01-acceptance` 上实施 `docs/plans/2026-1
 ## 仓库可见性变更（2026-11-25）
 
 用户明确要求改为公开仓库。核实当前账号 lxxkimwoaini 对目标仓库具有 ADMIN 权限后，`gh repo edit lxxkimwoaini/pvcomm-sim --visibility public --accept-visibility-change-consequences` 实际退出0；随后 `gh repo view` 核验 visibility=PUBLIC，地址 https://github.com/lxxkimwoaini/pvcomm-sim 。此前 PRIVATE 记录是历史状态。本次仅更新仓库设置和进度记录，diff检查通过，不涉及代码测试；未将既往CI结果算作本次文档提交的CI结果。
+
+## V0.2 前置审查与关联修复（2026-11-25）
+
+分支 feat/v02-power-cosimulation 从9b2de32堆叠，PR #1→#2均OPEN且未合并。计划 docs/plans/2026-11-25-v02.md、审查报告 docs/reports/2026-11-25-pr01-pr02-review.md、ADR0004。修复重复action任务ID、同值接受/反馈复用、跨任务/会话及时间边界；独立QC版本v01-evidence-v2，旧产物未改。
+
+实际 Ruff退出0、mypy48文件通过；pytest -m "not lab and not data" 80 passed/6 deselected，专项22 passed。WSL对保留正常1800s/维护/中断执行新版qc_run，三份报告passed=true。新代码真实重复命令实验尚未执行，V0.2物理模块尚未实现；不重报V0.1长运行或本分支CI通过。
+
+## V0.2物理实现及预检（2026-11-25）
+
+已实施独立power模块：NASA POWER历史输入SHA/单位/缺测校验、pvlib POA/SAPM/PVWatts、设备P/Q/容量/斜率/运行状态、pandapower三站径向潮流；RTU经c104接受命令后才更新目标。真实端点、原六表Arrow、P0/P1和M2白名单保留。新增0.2配置、独立Oracle电气/潮流Arrow、重算QC和实际遥测曲线，包0.2.0.dev0明确开发版；Web不提交特权运行。
+
+最初历史三天预检扩展为独立整月目录（data/nasa-power-huixian-202406-month），没有覆盖原输入。NASA POWER Hourly v2.10.5，MERRA2/SYN1DEG，规范化SHA72a8d6275ef89029b6b34e73d0cc68708ee749eef69dcf59abe65d0fe13346bd。非辉县现场实测，使用依据及版本见ADR0005；Oahu下载403/TLS失败，不宣称秒级云影验收。
+
+预检001实际失败：drvfs替换IPC文件瞬时ENOENT，manifest=failed，解析拒绝未完成运行；原目录保留。改为单写者追加完整JSONL并回归部分尾行；完整坏行仍失败。预检002实际90s completed，新增电气425行、潮流57行，真实PCAP+六表+业务独立QC通过，code_dirty=true诚实保留，不作为冻结最终验收。Arrow初次导出发现pa.bool名称错误，修复为bool_并新增读回/源哈希/拒绝覆盖测试通过；已生成六表未重建。
+
+实际普通测试91 passed/9 deselected，mypy60文件、Ruff通过；Arrow4 passed，科学2 passed（PVWatts独立公式、潮流符号/电压）；WSL真实V0.1回归3 passed/97 deselected，51.03s，持久outputs/v02_protocol_regression_001。总check最终前端结果及冻结三场景/重复同值命令/物理QC/UI还待记录。当前未宣布V0.2验收通过，不进入V0.3。
+
+## V0.2 历史三场景冻结验证及模型扰动准备（2026-11-25）
+
+- 代码 a4b7039ef2b9b657b67d7e408e6b8713ce045474，三份90s实时运行位于 outputs/v02_frozen_001，全部 completed、code_dirty=false、cleanup_errors=[]。晴朗/多云/小时边界 P0分别725/754/718包、363/378/363完整APDU、各987对象；解析率100%，四路捕获 dropped=0；日志映射P99分别50.007106/50.608219/45.546582ms。每运行9条不同task_id命令（各站限发、同值重复、解除），接受/确认/反馈与wire证据一对一通过。
+- v02-power-v1逐份独立QC通过；物理各431行，潮流60/60/57行（20/20/19次三站求解），pvlib与pandapower全量重算通过。原六表Arrow及新增Oracle表读回/哈希通过。冻结源码archive SHA256=38e8ae14db516cea3d8d2b5e1af7731f73bea7754d6b9e2010a80306e180b2d7，本地source.tar不入库。旧报告/契约不覆写。
+- c5c9464的CI45574379306实际success。b463e68的CI45577492912实际failure：遗漏提交三个配置，配置测试失败；补齐配置提交a4b7039后CI45577551377实际success，Ubuntu/Windows、Arrow、Physical models、Frontend/browser五job全部成功。没有把失败记录算作通过。
+- 本地最新check退出0：普通93 passed/9 deselected、mypy60文件、Ruff、schema/TS、ESLint/Prettier/vue-tsc、Vitest3与build通过；data4 passed/98 deselected、power2 passed/100 deselected。Vite约810kB的构建提示保留。真实V0.2 API主站测点与原始接收日志对账通过，Playwright2 passed/1 skipped（真实模式跳过空态），截图保留 outputs/v02_frozen_001/web-evidence。
+- 浏览器首次环境未同时设置PVCOMM_RUN_ROOT导致404，第二次点击隐藏的指标输入被组件外壳拦截；按trace修正为真实可见wrapper后通过，没有force或延长超时。未隐藏失败。
+- Oahu新NLR入口可下载，但原站禁止再分发与OEDI许可标记冲突，未接入/再分发；ADR0005追加实情。增加明确的灰色光学层平流模型，测试Beer–Lambert衰减和边界；它是历史小时背景上的物理简化扰动，不是实测秒级云影。当前新增source_ghi/透过率的Oracle契约0.2-power-evidence.2及QC v02-power-v3，与旧证据分目录。新模型真实运行尚待执行，暂不声明V0.2总验收通过。
+
+### 快速扰动核验的时间精度修正
+
+云影001（7410fe7）与002（44adf12）均真实90s completed、协议QC通过，但独立物理QC v2/v3失败：ISO source_weather_ts微秒化后重算秒级光学层，GHI/POA出现约3.2e-5数值偏差。临时v4将模型/天气容差改为1e-4，003（76e73ad）通过；该放宽不作为最终验收依据。最终v5改用已保留model_mono_ns与clock_origin精确映射重算，源ISO时间仅检查1µs映射误差，物理/天气原1e-6容差恢复。原始证据和各版失败报告全部保留，最终v5结果另记。新增纳秒回放回归。此修正不改变运行物理轨迹、协议参数或标签。
+
+## V0.2 最终三站开发门禁（2026-11-25）
+
+最终代码/QC da7b5262c24e0ae5c991692b5cc0f8f23fd69f21；cloud_frozen_003运行代码76e73ad、code_dirty=false、completed、cleanup_errors=[]。独立v5在原1e-6天气/物理门槛下passed=true，pvlib及pandapower重算误差0，单调纳秒映射回归通过；此前临时放宽的v4不作为验收依据。P0=726包/363APDU/987对象，四路dropped=0，P99=61.827776ms，9条真实不同任务逐项闭环通过；电气431行、20次三站潮流全部收敛。历史晴朗/多云/小时边界三份v1报告及冻结代码保留。详细复现、SHA与失败记录见docs/reports/2026-11-25-v02-acceptance.md。
+
+最终check退出0（94 passed/9 deselected、Ruff/mypy60/schema/前端质量/Vitest3/build）；data4 passed/99 deselected，power2 passed/101 deselected。云影真实浏览器2 passed/1 skipped（空态），逐值对账与移动回放通过。独立负测试副本故意越界后物理/QC源哈希拒绝，原始证据不改。ip netns list为空，没有实际worker残留。
+
+远程仍为 https://github.com/lxxkimwoaini/pvcomm-sim 、lxxkimwoaini所有、PUBLIC、默认main。功能分支已推送；da7b526的CI45582627395实际success，Ubuntu/Windows Python、Arrow、Physical models、Frontend/browser五job全部success。76e73ad的CI45581377368因长行Ruff失败，最终已按原标准修复；不隐瞒失败。PR #1/#2保持OPEN且未合并。本阶段通过开发门禁，不代表正式研究参数冻结、现场校准、秒级实测云影或正式数据集发布。下一步按堆叠顺序审核PR，并确定后续校准/阶段范围；不自动进入30站或训练。
+
+### V0.2 审核交付与远程核验
+
+验收文档提交bfab4859ab2ede3975547d389e28bd2f79d07c7b已推送；其push CI45583409443及PR CI45583485587均实际success，各五job全部成功。草稿PR #3：https://github.com/lxxkimwoaini/pvcomm-sim/pull/3 ，OPEN、isDraft=true，base=feat/v01-acceptance、head=feat/v02-power-cosimulation；依赖#2、#2依赖#1，均未合并或代用户批准。git ls-remote与本地bfab485一致，工作区干净。全分支55文件路径/凭据模式检查及本地文档链接检查通过，无data/outputs/PCAP/Parquet/外部输入入库。此补记仅文档，不把上述代码/CI SHA混称为补记本身SHA。

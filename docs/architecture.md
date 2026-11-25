@@ -1,18 +1,22 @@
 # 工程架构与实现边界
 
-规范依赖方向见 V1.3 第 21.1 节。当前 V0.0 实际调用链：CLI / FastAPI → config.service → config.models；domain 仅依赖标准库，clock 和 logging 不拥有运行实例。网页通过本机代理访问 FastAPI。没有网络管理、运行任务或真值查询能力。
+当前版本0.2.0.dev0，规范依赖方向见V1.3第21.1节。保留V0.0配置入口和V0.1真实协议链路；V0.2采用独立power模块。阶段状态以progress及验收报告为准。
 
-| 目录/文件 | 当前职责 | 禁止依赖或行为 |
-|---|---|---|
-| domain/ | 观测模式、运行状态、独立 QC 状态枚举 | c104、Web、数据库、电力框架 |
-| config/ | 严格 YAML、引用及物理参数边界校验；不可变配置、规范化哈希 | 不创建运行、不施加故障 |
-| clock.py | 宿主 UTC/单调零点及不确定度；左闭右开区间 | 不缩放实时协议、不代替设备/捕获时标 |
-| logging.py | 显式日志实例与 JSON 格式 | 不修改全局 root logger，不推断实验成功 |
-| cli.py | 参数、错误码、共享配置服务调用 | 不实现第二份业务逻辑 |
-| web/ | health 和配置校验 API | 不执行 shell，不读取真值/标签 |
-| frontend/ | 服务状态及 YAML 校验交互 | 无仿真曲线、mock 运行、场景故障表输出 |
-| scripts/ | 薄开发命令、契约导出 | 无仿真/标签/网络业务逻辑 |
+| 路径 | 实际职责及边界 |
+|---|---|
+| domain、clock、logging | 领域枚举、UTC/单调/逻辑时间映射、结构化日志；不依赖协议或模型框架 |
+| config | 0.0/0.1/0.2严格配置、有限YAML、引用/单位边界、规范化哈希；不创建实验资源 |
+| scenario、network、capture | 唯一运行编排、受限namespace/veth生命周期、独立P0/P1、tcpdump readiness/统计；仅清理本次资源 |
+| protocol | 实际c104主站/RTU、点表、总召唤、命令/确认；主站不读电气IPC或真值 |
+| weather、power | 版本化历史输入、pvlib、RTU拥有的逆变器状态、三站pandapower；指令只经真实协议回调接受后改变目标 |
+| storage | 配置/manifest/事件、原六表Arrow及独立Oracle电气/潮流Arrow；拒绝覆盖、保留哈希 |
+| pipeline、qc | TShark解析、独立TCP/APDU复核、一对一业务证据、物理重算；后验QC可读Oracle，不作为主站输入 |
+| cli | 配置校验、运行、解析和QC；label/split/features/benchmark明确未实现 |
+| web、frontend | 本机配置服务、M2只读API、真实遥测曲线和因果回放；不启动特权实验，不读取truth/P1/QC/注入 |
+| scripts | 薄开发/契约命令及带来源/政策快照的历史输入下载 |
 
-protocol、power、business、scenario、network、capture、storage、pipeline、qc、experiments 将按阶段建立。当前不生成这些空包；职责和后续测试见阶段计划。scenario 将是唯一运行控制入口，Web 与 CLI 共用。网络实验独立于 Web、仅管理本运行创建的隔离资源；命令经 c104 到达并被接受后才能进入电力模型。
+RTU独立进程持有自身物理状态，电气步长1s。scenario控制器读取单写者追加完整JSONL快照，每5s及接受命令时补算潮流；反馈带求解时标并检验新鲜度。真实协议始终1×。原始双端事件另行持久保存，不将IPC当作可观测证据。
 
-本次没有正式数据 schema、manifest 或运行状态机；枚举不代表生命周期已实现。后续建立 observed/parsed 与 truth/labels 的后端隔离、M0–M3 白名单及 available_at 上界，Oracle 为独立诊断入口。仅存放合法类型并不等于已实现泄漏防护；对应验收随真实数据链路补齐。
+observed只含主站收到/发送的合法信息；truth保存RTU事件、气象、物理状态与IPC。M2接口以白名单及available_at截断，Oracle请求拒绝。增加的辐照/可用功率测点是同一IEC链路的遥测，不能冒充独立M3或可信真值。新增契约不改原六表，旧冻结证据由对应SHA源码核验。
+
+没有正式标签/划分/特征管线或检测算法；不创建experiments空壳。30站、复杂异常库、正式参数冻结和数据发布属于后续阶段。

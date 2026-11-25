@@ -108,22 +108,45 @@ export interface components {
         Health: {
             /**
              * Simulation Available
-             * @default false
+             * @default true
              * @constant
              */
-            simulation_available: false;
+            simulation_available: true;
             /**
              * Stage
-             * @default V0.0
+             * @default V0.2-development
              * @constant
              */
-            stage: "V0.0";
+            stage: "V0.2-development";
             /**
              * Status
              * @default ok
              * @constant
              */
             status: "ok";
+            /**
+             * Web Run Submission Available
+             * @default false
+             * @constant
+             */
+            web_run_submission_available: false;
+        };
+        /** MeasurementSeries */
+        MeasurementSeries: {
+            /** Ioa */
+            ioa: number;
+            /** Name */
+            name: string;
+            /** Points */
+            points: components["schemas"]["Point"][];
+            /**
+             * Source
+             * @default master_iec104_telemetry
+             * @constant
+             */
+            source: "master_iec104_telemetry";
+            /** Unit */
+            unit: string;
         };
         /** Point */
         Point: {
@@ -220,6 +243,8 @@ export interface components {
             connection_state: string | null;
             /** Latest Power Kw */
             latest_power_kw: number | null;
+            /** Measurements */
+            measurements?: components["schemas"]["MeasurementSeries"][];
             /** Power */
             power: components["schemas"]["Point"][];
             /** Power Available At */

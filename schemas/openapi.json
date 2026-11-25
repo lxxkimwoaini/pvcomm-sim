@@ -123,14 +123,14 @@
         "additionalProperties": false,
         "properties": {
           "simulation_available": {
-            "const": false,
-            "default": false,
+            "const": true,
+            "default": true,
             "title": "Simulation Available",
             "type": "boolean"
           },
           "stage": {
-            "const": "V0.0",
-            "default": "V0.0",
+            "const": "V0.2-development",
+            "default": "V0.2-development",
             "title": "Stage",
             "type": "string"
           },
@@ -139,9 +139,53 @@
             "default": "ok",
             "title": "Status",
             "type": "string"
+          },
+          "web_run_submission_available": {
+            "const": false,
+            "default": false,
+            "title": "Web Run Submission Available",
+            "type": "boolean"
           }
         },
         "title": "Health",
+        "type": "object"
+      },
+      "MeasurementSeries": {
+        "additionalProperties": false,
+        "properties": {
+          "ioa": {
+            "title": "Ioa",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "source": {
+            "const": "master_iec104_telemetry",
+            "default": "master_iec104_telemetry",
+            "title": "Source",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ioa",
+          "name",
+          "unit",
+          "points"
+        ],
+        "title": "MeasurementSeries",
         "type": "object"
       },
       "Point": {
@@ -403,6 +447,13 @@
             ],
             "title": "Latest Power Kw"
           },
+          "measurements": {
+            "items": {
+              "$ref": "#/components/schemas/MeasurementSeries"
+            },
+            "title": "Measurements",
+            "type": "array"
+          },
           "power": {
             "items": {
               "$ref": "#/components/schemas/Point"
@@ -537,7 +588,7 @@
   },
   "info": {
     "title": "PVComm foundation API",
-    "version": "0.0.1"
+    "version": "0.2.0.dev0"
   },
   "openapi": "3.1.0",
   "paths": {

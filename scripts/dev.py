@@ -31,8 +31,9 @@ def execute(target: str) -> int:
         "lint": [[*uv, "ruff", "check", "."], [*uv, "ruff", "format", "--check", "."]],
         "format": [[*uv, "ruff", "check", "--fix", "."], [*uv, "ruff", "format", "."]],
         "typecheck": [[*uv, "mypy"]],
-        "test": [[*uv, "pytest", "-m", "not lab and not data"]],
+        "test": [[*uv, "pytest", "-m", "not lab and not data and not power"]],
         "data-test": [["uv", "run", "--frozen", "--group", "data", "pytest", "-m", "data"]],
+        "power-test": [["uv", "run", "--frozen", "--group", "power", "pytest", "-m", "power"]],
         "schemas": [
             [*uv, "python", "scripts/generate_schemas.py", "--check"],
             [*pnpm, "types:check"],
@@ -76,6 +77,7 @@ def main() -> int:
             "typecheck",
             "test",
             "data-test",
+            "power-test",
             "schemas",
             "web-test",
             "web-build",

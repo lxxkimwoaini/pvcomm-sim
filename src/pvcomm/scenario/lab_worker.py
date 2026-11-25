@@ -23,6 +23,11 @@ def main() -> None:
     args = parser.parse_args()
     root = args.run_dir
     config = load_v01_config(root / "scenario.yaml")
+    power = None
+    if (root / "power_config.json").exists():
+        from pvcomm.config.power import V02Config
+
+        power = V02Config.model_validate_json((root / "power_config.json").read_text())
     metadata = json.loads((root / "runtime.json").read_text(encoding="utf-8"))
     origin = ClockOrigin(**metadata["clock_origin"])
     recorder = RunRecorder(root, config.run_id, suffix=f"_{args.role}", origin=origin)
@@ -41,16 +46,35 @@ def main() -> None:
     try:
         if args.role.startswith("rtu"):
             index = int(args.role[-1]) - 1
+            physical = None
+            if power is not None:
+                from pvcomm.power.runtime import PhysicalStationState, read_snapshot
+
+                physical = PhysicalStationState(
+                    root, power, power.devices[index], origin, recorder.record_event
+                )
+                while (
+                    read_snapshot(root / f"truth/ipc/{power.devices[index].station_id}-pcc.jsonl")
+                    is None
+                ):
+                    if stop.wait(1):
+                        raise InterruptedError("power startup cancelled")
+                    physical.advance(time.monotonic())
             endpoint = C104StationEndpoint(
                 config.stations[index],
                 metadata["addresses"][index],
                 recorder.record_event,
                 recorder.record_raw,
+                state=physical,
             )
             endpoint.start()
             (root / f"{args.role}.ready").touch(exist_ok=False)
             active = True
+            next_tick = time.monotonic()
             while not stop.wait(0.05):
+                if power is not None and time.monotonic() >= next_tick:
+                    endpoint.tick()
+                    next_tick = time.monotonic() + power.electrical_step_s
                 if paused.is_set() and active:
                     endpoint.stop()
                     active = False
@@ -107,6 +131,10 @@ def main() -> None:
             wait_until(config.command_after_s)
             for station in config.stations:
                 endpoint.send_setpoint(station, config.command_kw, "limit")
+            if power is not None and power.repeat_command_after_s is not None:
+                wait_until(power.repeat_command_after_s)
+                for station in config.stations:
+                    endpoint.send_setpoint(station, config.command_kw, "limit")
             wait_until(config.release_after_s)
             for station in config.stations:
                 endpoint.send_setpoint(station, station.initial_setpoint_kw, "release")

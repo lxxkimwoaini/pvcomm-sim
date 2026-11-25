@@ -53,7 +53,7 @@ onMounted(refreshHealth)
         <span class="brand-mark" aria-hidden="true">PV</span>
         <span>PVComm <small>联合仿真实验平台</small></span>
       </a>
-      <ElTag type="info" effect="plain">V0.1 · 协议实验</ElTag>
+      <ElTag type="info" effect="plain">V0.2 开发 · 联合仿真</ElTag>
     </header>
 
     <div class="workspace">
@@ -95,7 +95,7 @@ onMounted(refreshHealth)
           :closable="false"
         />
         <ElAlert
-          title="当前仅校验工程配置，不创建仿真实例。尚未产生 IEC 104 报文、遥测或科研数据。"
+          title="此页面仅校验0.0工程配置；0.1/0.2实验由CLI运行，“运行与回放”展示实际主站观测。"
           type="info"
           :closable="false"
           show-icon

@@ -2,7 +2,7 @@
 
 分布式光伏电力—通信联合仿真平台。研究依据为 [V1.3 方案](docs/分布式光伏电力—通信联合仿真数据集构建方案_V1.3.md) 和 [AGENTS.md](AGENTS.md)。
 
-当前实现包含 V0.0 工程基础和 V0.1 本机 Linux 实验原型：配置校验、结构化日志、时钟映射、CLI、FastAPI 配置服务、Vue 校验工具、真实 c104 TCP/IEC 104 三站闭环、独立 P0/P1 抓包、TShark 解析、Parquet 导出、独立 QC 及 M2 只读回放。**V0.1 首周协议开发门禁已通过；未生成正式科研数据集或异常检测结果。** 实际验收状态见 [进度](docs/progress.md)。
+当前版本为 0.2.0.dev0：已保留 V0.0 工程基础和通过验收的 V0.1 本机 Linux 实验原型，并新增 V0.2 开发物理闭环。基础功能包括配置校验、结构化日志、时钟映射、CLI、FastAPI 配置服务、Vue 校验工具、真实 c104 TCP/IEC 104 三站闭环、独立 P0/P1 抓包、TShark 解析、Parquet 导出、独立 QC 及 M2 只读回放。**V0.1 首周协议开发门禁已通过；未生成正式科研数据集或异常检测结果。** 实际验收状态见 [进度](docs/progress.md)。
 
 ## 安装与复现
 
@@ -45,7 +45,7 @@ PVCOMM_ALLOW_LAB=1 .venv-wsl/bin/python -m pytest -m lab
 
 正式数据必须来自真实 c104/TCP 及 PCAP，命令由终端接受后才影响电力状态。M2 主实验与 Oracle 诊断分离；故障、业务违约和可观测性分层，按 available_at 保持因果。`data/`、`outputs/`、PCAP、密钥和模型权重禁止提交。
 
-按阶段建立有功能的模块；[架构](docs/architecture.md)、[阶段计划](docs/plans/2026-11-25-v0.0.md)、[数据字典](docs/data_dictionary.md)、[API](docs/api.md) 说明当前契约和后续边界。此项目尚未指定开源许可证；私有研究代码不代表可自由分发。
+按阶段建立有功能的模块；[架构](docs/architecture.md)、[阶段计划](docs/plans/2026-11-25-v0.0.md)、[数据字典](docs/data_dictionary.md)、[API](docs/api.md) 说明当前契约和后续边界。仓库经授权公开，但尚未指定代码开源许可证；公开可见不代表授予自由分发许可。
 
 ## V0.1 验收与只读工作台
 
@@ -71,3 +71,29 @@ pnpm --dir frontend dev
 选择“运行与回放”，可查看真实主站遥测、拓扑、事件和已解析 P0 APDU。回放按纳秒 available_at 截断；真值、P1、注入和事后标签不进入 API。HTTP 时间戳用十进制字符串传输，前端以 BigInt 保持精度。未解析时明确显示报文未就绪，缺口不补零。
 
 V0.1 逐门禁实测见 [验收报告](docs/reports/2026-11-25-v01-acceptance.md)。
+
+
+## V0.2 开发物理闭环（0.2.0.dev0）
+
+新增历史 NASA POWER 小时气象、pvlib POA/温度/PVWatts AC、逆变器 P/Q/斜率约束及 pandapower 三站径向潮流。参数为开发仿真假设，未现场校准；固定 available_kw 路径仍只用于 V0.1 协议回归。详细设计与门禁见 [V0.2计划](docs/plans/2026-11-25-v02.md) 和 [ADR0005](docs/decisions/0005-v02-physical-model.md)。**V0.2 三站开发验收通过**，实测和边界见 [V0.2验收报告](docs/reports/2026-11-25-v02-acceptance.md)。
+
+```sh
+# 仓库根目录，输入仅下载至 Git 忽略的 data；已有目录拒绝覆盖。
+uv run --frozen python scripts/fetch_v02_weather.py
+# WSL：明确项目环境，勿让 uv 选择 Windows .venv。
+UV_PROJECT_ENVIRONMENT=.venv-wsl uv sync --frozen --group protocol --group power --group data
+.venv-wsl/bin/python -m pvcomm.cli validate-power-config --config configs/v0.2-clear.yaml
+.venv-wsl/bin/python -m pvcomm.cli run --isolated --config configs/v0.2-clear.yaml --output-root outputs/new_v02
+.venv-wsl/bin/python -m pvcomm.cli parse --parquet --run-dir outputs/new_v02/v02_clear_001
+.venv-wsl/bin/python -m pvcomm.cli qc --run-dir outputs/new_v02/v02_clear_001
+uv run --frozen python scripts/dev.py power-test
+```
+
+多云/小时辐照边界测试分别使用 `v0.2-cloudy.yaml`、`v0.2-irradiance_transition.yaml`；均为90s实时、三站限发/重复同值限发/解除。小时均值零阶保持，不加速源时间；跨小时阶跃不是实测秒级云影。源ID/版本/许可使用依据、下载日期、原始与规范化哈希留在 truth/weather 和manifest，不进入M2。
+
+运行后设置 `PVCOMM_RUN_ROOT` 为输出父目录打开既有工作台。在“光伏电气过程”选择站点及功率/辐照/电压指标；IOA1004/1005/1008新增实验点经实际IEC104上送后显示，缺失为未知。同链路天气与可用功率不构成独立M3。Web不能启动特权实验，浏览器关闭不影响采集。
+
+六张协议Arrow表保持版本不变，新增 `parsed/parquet-v02-power-v2/` 为独立0.2 Oracle电气/潮流契约，QC分别验证来源/单位/物理计算和真实协议。普通测试不安装科学库，`power-test`与`data-test`单独运行，CI不抓包。
+
+
+`configs/v0.2-cloud_shadow.yaml`是历史晴朗背景加显式灰色光学层平流模型，用于秒级辐照扰动验收。衰减由已记录光学厚度/宽度/速度计算，不是随机电气量或实测秒级云影。来源GHI、透过率与原始文件保留Oracle证据。Oahu原站对再分发的限制与聚合目录许可标记冲突，本项目未将其接入、提交或再分发。

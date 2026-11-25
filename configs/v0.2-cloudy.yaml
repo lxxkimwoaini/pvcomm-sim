@@ -1,0 +1,77 @@
+# Development assumptions only; historical hourly means, not second-scale cloud measurements.
+schema_version: '0.2'
+purpose: power_protocol_development
+parameter_basis: simulation_assumption_not_field_calibrated
+protocol:
+  topology: isolated
+  schema_version: '0.1'
+  purpose: iec104_lab
+  parameter_basis: simulation_assumption
+  run_id: v02_cloudy_001
+  seed: 104
+  host: 127.0.0.1
+  capture_interface: lo
+  capture_filter: tcp and (port 2404)
+  duration_s: 90
+  warmup_s: 2
+  command_after_s: 15
+  release_after_s: 50
+  command_kw: 10.0
+  stations:
+  - station_id: PV01
+    region_id: R01
+    common_address: 1
+    port: 2404
+    capacity_kw: 30.0
+    available_kw: 30.0
+    initial_setpoint_kw: 30.0
+    ramp_kw_per_s: 3.0
+    telemetry_period_s: 2
+  - station_id: PV02
+    region_id: R01
+    common_address: 2
+    port: 2404
+    capacity_kw: 100.0
+    available_kw: 100.0
+    initial_setpoint_kw: 100.0
+    ramp_kw_per_s: 10.0
+    telemetry_period_s: 2
+  - station_id: PV03
+    region_id: R02
+    common_address: 3
+    port: 2404
+    capacity_kw: 300.0
+    available_kw: 300.0
+    initial_setpoint_kw: 300.0
+    ramp_kw_per_s: 30.0
+    telemetry_period_s: 2
+weather:
+  source_id: NASA_POWER_Hourly_huixian_20240601_30
+  directory: data/nasa-power-huixian-202406-month
+  sha256: 72a8d6275ef89029b6b34e73d0cc68708ee749eef69dcf59abe65d0fe13346bd
+  source_start: '2024-06-02T03:00:00Z'
+repeat_command_after_s: 30
+devices:
+- station_id: PV01
+  rated_kw: 30.0
+  rated_kva: 33.0
+  ramp_up_kw_s: 3.0
+  ramp_down_kw_s: 3.0
+  q_ramp_kvar_s: 1.5
+  initial_setpoint_kw: 30.0
+- station_id: PV02
+  rated_kw: 100.0
+  rated_kva: 110.00000000000001
+  ramp_up_kw_s: 10.0
+  ramp_down_kw_s: 10.0
+  q_ramp_kvar_s: 5.0
+  initial_setpoint_kw: 100.0
+- station_id: PV03
+  rated_kw: 300.0
+  rated_kva: 330.0
+  ramp_up_kw_s: 30.0
+  ramp_down_kw_s: 30.0
+  q_ramp_kvar_s: 15.0
+  initial_setpoint_kw: 300.0
+feeder:
+  parameter_basis: synthetic_engineering_assumption
