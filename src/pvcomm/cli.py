@@ -8,8 +8,8 @@ from pathlib import Path
 
 from pvcomm import __version__
 from pvcomm.config import ConfigError, config_sha256, load_config
-from pvcomm.config.lab import load_lab_document, load_v01_config, v01_config_sha256
-from pvcomm.config.power import V02Config, load_power_config
+from pvcomm.config.lab import V01Config, load_lab_document, load_v01_config, v01_config_sha256
+from pvcomm.config.power import power_document
 from pvcomm.logging import create_logger
 from pvcomm.pipeline.iec104_parser import parse_run
 from pvcomm.scenario.v01_runner import V01Runner
@@ -44,7 +44,7 @@ def main(argv: list[str] | None = None) -> int:
         if unknown:
             parser.error(f"unrecognized arguments: {' '.join(unknown)}")
         try:
-            power_config = load_power_config(args.config)
+            power_config = power_document(args.config)
         except (OSError, ValueError) as exc:
             print(str(exc), file=sys.stderr)
             return 2
@@ -88,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
         signal.signal(signal.SIGTERM, request_cancellation)
         try:
             document = load_lab_document(args.config)
-            power = document if isinstance(document, V02Config) else None
+            power = document if not isinstance(document, V01Config) else None
             lab_config = power.protocol if power is not None else load_v01_config(args.config)
             if power is not None and not args.isolated:
                 raise ValueError("V0.2 physical simulation requires --isolated")

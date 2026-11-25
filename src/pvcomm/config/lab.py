@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal, Self
 
 if TYPE_CHECKING:
+    from pvcomm.config.multisite import V03Config
     from pvcomm.config.power import V02Config
 
 import yaml
@@ -119,7 +120,7 @@ class V01Config(V01Contract):
         return self
 
 
-def load_lab_document(path: Path) -> V01Config | V02Config:
+def load_lab_document(path: Path) -> V01Config | V02Config | V03Config:
     try:
         with path.open("rb") as stream:
             content = stream.read(MAX_CONFIG_BYTES + 1)
@@ -127,6 +128,10 @@ def load_lab_document(path: Path) -> V01Config | V02Config:
             raise ValueError("config exceeds maximum size")
         raw = yaml.load(content.decode("utf-8"), Loader=UniqueKeyLoader)
         check_yaml_tree(raw)
+        if isinstance(raw, dict) and raw.get("schema_version") == "0.3":
+            from pvcomm.config.multisite import V03Config
+
+            return V03Config.model_validate(raw)
         if isinstance(raw, dict) and raw.get("schema_version") == "0.2":
             from pvcomm.config.power import V02Config
 

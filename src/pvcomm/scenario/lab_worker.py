@@ -8,7 +8,7 @@ import threading
 import time
 from pathlib import Path
 
-from pvcomm.clock import ClockOrigin
+from pvcomm.clock import ClockOrigin, SceneClock
 from pvcomm.config.lab import load_v01_config
 from pvcomm.protocol.c104_runtime import C104Master, C104StationEndpoint
 from pvcomm.storage.events import RunRecorder
@@ -19,18 +19,30 @@ def main() -> None:
         raise RuntimeError("laboratory workers require Linux")
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-dir", type=Path, required=True)
-    parser.add_argument("--role", choices=("master", "rtu1", "rtu2", "rtu3"), required=True)
+    parser.add_argument("--role", required=True)
     args = parser.parse_args()
     root = args.run_dir
     config = load_v01_config(root / "scenario.yaml")
     power = None
     if (root / "power_config.json").exists():
-        from pvcomm.config.power import V02Config
+        from pvcomm.config.power import power_document
 
-        power = V02Config.model_validate_json((root / "power_config.json").read_text())
+        power = power_document(root / "scenario.yaml")
+    from pvcomm.config.multisite import V03Config
+
+    if args.role != "master" and args.role not in {
+        f"rtu{i}" for i in range(1, len(config.stations) + 1)
+    }:
+        raise ValueError("unknown worker role")
     metadata = json.loads((root / "runtime.json").read_text(encoding="utf-8"))
     origin = ClockOrigin(**metadata["clock_origin"])
-    recorder = RunRecorder(root, config.run_id, suffix=f"_{args.role}", origin=origin)
+    recorder = RunRecorder(
+        root,
+        config.run_id,
+        suffix=f"_{args.role}",
+        origin=origin,
+        scene_clock=SceneClock(root / "scene.json") if isinstance(power, V03Config) else None,
+    )
     stop = threading.Event()
     paused = threading.Event()
 
@@ -45,7 +57,7 @@ def main() -> None:
     endpoint: C104StationEndpoint | C104Master | None = None
     try:
         if args.role.startswith("rtu"):
-            index = int(args.role[-1]) - 1
+            index = int(args.role[3:]) - 1
             physical = None
             if power is not None:
                 from pvcomm.power.runtime import PhysicalStationState, read_snapshot
@@ -105,7 +117,16 @@ def main() -> None:
             endpoint.start()
             endpoint.wait_until_open()
             endpoint.interrogate_all()
-            start = time.monotonic()
+            if isinstance(power, V03Config):
+                (root / "master.initialized").touch(exist_ok=False)
+                while not (root / "scene.json").exists():
+                    if stop.wait(0.05):
+                        raise InterruptedError("scene startup cancelled")
+                start = json.loads((root / "scene.json").read_text())["start_mono_ns"] / 1e9
+                if stop.wait(max(0, start - time.monotonic())):
+                    raise InterruptedError("scene startup cancelled")
+            else:
+                start = time.monotonic()
             interruption = config.interruption
             if interruption is not None and interruption.planned:
                 recorder.record_event(

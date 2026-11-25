@@ -187,3 +187,11 @@ V0.1 验收补齐启动：在 `feat/v01-acceptance` 上实施 `docs/plans/2026-1
 ### V0.2 审核交付与远程核验
 
 验收文档提交bfab4859ab2ede3975547d389e28bd2f79d07c7b已推送；其push CI45583409443及PR CI45583485587均实际success，各五job全部成功。草稿PR #3：https://github.com/lxxkimwoaini/pvcomm-sim/pull/3 ，OPEN、isDraft=true，base=feat/v01-acceptance、head=feat/v02-power-cosimulation；依赖#2、#2依赖#1，均未合并或代用户批准。git ls-remote与本地bfab485一致，工作区干净。全分支55文件路径/凭据模式检查及本地文档链接检查通过，无data/outputs/PCAP/Parquet/外部输入入库。此补记仅文档，不把上述代码/CI SHA混称为补记本身SHA。
+
+## V0.3 启动与前置切片（2026-11-25）
+
+读取AGENTS、V1.3、V0.2报告/进度及ADR0001–0005；基线e4e14b9，当前feat/v03-multisite。核查PR #1→#2→#3仍OPEN（#3 draft），不合并；远程PUBLIC和main不变。环境Git2.52、gh2.102、uv0.11.13、Python3.11.15、Node24.14、pnpm11.5，WSL抓包/命名空间与科学依赖可用。计划docs/plans/2026-11-25-v03.md，ADR0006记录场景屏障及增量读取。
+
+新增严格0.3配置、配置驱动区域聚合/站点接入资源、通用馈线适配；尚未做规模验收。0.1/0.2原配置不改。修正IPC为最多128KiB尾读；M2投影采用只读observed的临时SQLite增量索引，每次只摄入完整新增行，Windows退出连接回归通过。新增宿主映射与场景起点分离，0.3初始化时气象逻辑固定0，主站/RTU准备后屏障启动1×。新增物理电压/热限/功率平衡/反向潮流/Q斜率/快照时序QC；电气越限不推断通信标签。事务保留严格成功标准，另报告拒绝/超时/缺反馈，不将失败当成功。
+
+实际本地普通pytest106 passed/10 deselected，mypy69文件通过；Ruff检查/格式化执行后须最终检查；schema已生成0.3。初次新增SQLite测试揭示Windows退出句柄问题已修复；并站fixture的CA引用错误已修正，不调整验收门槛。真实断联120s回归已编写但此记录时尚未执行，V0.3未验收。下一步冻结代码后运行tests/lab/test_v03_prerequisites.py，持久化outputs，检查物理连续、恢复最新遥测、真实双端PCAP及独立QC；通过后方可扩大站点规模。

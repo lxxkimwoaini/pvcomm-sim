@@ -16,15 +16,21 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from pvcomm.capture.tcpdump import TcpdumpCapture
-from pvcomm.clock import ClockOrigin
+from pvcomm.clock import ClockOrigin, SceneClock
 from pvcomm.config.lab import V01Config, v01_config_sha256
+from pvcomm.config.multisite import V03Config
 from pvcomm.config.power import V02Config
 from pvcomm.network.isolated import IsolatedNetwork
+from pvcomm.network.regional import RegionalNetwork
 from pvcomm.storage.events import RunRecorder
 
 
 def run_isolated(
-    config: V01Config, source: Path, output_root: Path, *, power: V02Config | None = None
+    config: V01Config,
+    source: Path,
+    output_root: Path,
+    *,
+    power: V02Config | V03Config | None = None,
 ) -> Path:
     if sys.platform != "linux":
         raise RuntimeError("isolated IEC 104 laboratory run requires Linux")
@@ -36,7 +42,7 @@ def run_isolated(
     root.mkdir(parents=True, exist_ok=False)
     (root / "scenario.yaml").write_bytes(source.read_bytes())
     (root / "effective_config.json").write_text(config.model_dump_json(indent=2), encoding="utf-8")
-    network = IsolatedNetwork()
+    network = RegionalNetwork(power) if isinstance(power, V03Config) else IsolatedNetwork()
     origin = ClockOrigin.capture()
     metadata = {"clock_origin": asdict(origin), "addresses": network.addresses}
     (root / "runtime.json").write_text(json.dumps(metadata), encoding="utf-8")
@@ -71,12 +77,21 @@ def run_isolated(
         temp.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         temp.replace(root / "manifest.json")
 
+    if isinstance(network, RegionalNetwork):
+        manifest["network"]["regions"] = network.regions
+        manifest["network"]["topology"] = "region_bridge_aggregation_and_site_access"
     save_manifest()
     captures: list[TcpdumpCapture] = []
     processes: list[subprocess.Popen[bytes]] = []
     logs: list[TextIO] = []
     failures: list[str] = []
-    controller = RunRecorder(root, config.run_id, suffix="_controller", origin=origin)
+    controller = RunRecorder(
+        root,
+        config.run_id,
+        suffix="_controller",
+        origin=origin,
+        scene_clock=SceneClock(root / "scene.json") if isinstance(power, V03Config) else None,
+    )
     feeder = None
 
     def launch(role: str, namespace: str) -> subprocess.Popen[bytes]:
@@ -136,7 +151,9 @@ def run_isolated(
             launch(f"rtu{i}", namespace) for i, namespace in enumerate(network.rtus, start=1)
         ]
         deadline = time.monotonic() + (30 if power is not None else 8)
-        while not all((root / f"rtu{i}.ready").exists() for i in range(1, 4)):
+        while not all(
+            (root / f"rtu{i}.ready").exists() for i in range(1, len(config.stations) + 1)
+        ):
             if any(p.poll() is not None for p in rtu_processes) or time.monotonic() > deadline:
                 raise RuntimeError("RTUs not ready; see endpoint stderr logs")
             if feeder is not None:
@@ -157,6 +174,23 @@ def run_isolated(
                 raise RuntimeError("capture process exited during experiment")
             if time.monotonic() > deadline:
                 raise TimeoutError("master exceeded configured runtime and startup allowance")
+            if (
+                isinstance(power, V03Config)
+                and (root / "master.initialized").exists()
+                and not (root / "scene.json").exists()
+            ):
+                start_ns = time.monotonic_ns() + 500_000_000
+                scene = {
+                    "start_mono_ns": start_ns,
+                    "start_utc_ns": origin.utc_ns(start_ns),
+                    "weather_source_start": power.weather.source_start.isoformat(),
+                    "rate": 1.0,
+                }
+                stage = root / "scene.json.tmp"
+                stage.write_text(json.dumps(scene), encoding="utf-8")
+                stage.rename(root / "scene.json")
+                manifest["scene_clock"] = scene
+                save_manifest()
             event = config.interruption
             ready = root / "master.ready"
             if event is not None and ready.exists():

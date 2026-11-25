@@ -129,6 +129,46 @@ def test_ack_on_different_tcp_session_is_rejected() -> None:
     assert not audit(data)[0]["passed"]
 
 
+def test_parallel_stations_repeated_values_are_independent() -> None:
+    first = fixture()
+    second = fixture()
+    for rows in second:
+        for row in rows:
+            if "station_id" in row:
+                row["station_id"] = "PV02"
+            if "common_address" in row:
+                row["common_address"] = 2
+            if "ca" in row:
+                row["ca"] = 2
+                row["src_ip"] = row["src_ip"].replace("rtu", "rtu2")
+                row["dst_ip"] = row["dst_ip"].replace("rtu", "rtu2")
+    joined = (first[0] + second[0], first[1] + second[1], first[2] + second[2])
+    assert all(r["passed"] for r in audit_commands(*joined, "PV01", 1, "rtu"))
+    assert all(r["passed"] for r in audit_commands(*joined, "PV02", 2, "rtu2"))
+
+
+def test_rejection_timeout_and_missing_feedback_are_distinct() -> None:
+    data = fixture()
+    data[0][1]["positive_confirmation"] = False
+    data[1][0]["event_type"] = "terminal_command_rejected"
+    data[2][1]["negative_confirm"] = True
+    result = audit(data)[0]
+    assert result["outcome"] == "rejected"
+    assert result["transaction_evidence_valid"] and not result["passed"]
+    data = fixture()
+    data[0].pop(1)
+    assert audit(data)[0]["outcome"] == "confirmation_timeout"
+    data = fixture()
+    data[0].pop(3)
+    assert audit(data)[0]["outcome"] == "feedback_missing"
+
+
+def test_another_run_cannot_supply_missing_transaction_evidence() -> None:
+    data = fixture()
+    data[0][1]["run_id"] = "other-run"
+    assert not audit(data)[0]["passed"]
+
+
 def test_physical_shortage_uses_reachable_power_only_in_oracle_audit() -> None:
     data = fixture()
     for row in data[0]:

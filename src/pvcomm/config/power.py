@@ -2,7 +2,10 @@
 
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Literal, Self
+from typing import TYPE_CHECKING, Annotated, Literal, Self
+
+if TYPE_CHECKING:
+    from pvcomm.config.multisite import V03Config
 
 import yaml
 from pydantic import Field, model_validator
@@ -132,3 +135,13 @@ def load_power_config(path: Path) -> V02Config:
     raw = yaml.load(data.decode("utf-8"), Loader=UniqueKeyLoader)
     check_yaml_tree(raw)
     return V02Config.model_validate(raw)
+
+
+def power_document(path: Path) -> "V02Config | V03Config":
+    from pvcomm.config.lab import load_lab_document
+    from pvcomm.config.multisite import V03Config
+
+    document = load_lab_document(path)
+    if not isinstance(document, (V02Config, V03Config)):
+        raise ValueError("expected power configuration 0.2 or 0.3")
+    return document

@@ -10,12 +10,14 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from pvcomm.clock import ClockOrigin
+from pvcomm.clock import ClockOrigin, SceneClock
+from pvcomm.config.multisite import V03Config
 from pvcomm.config.power import DeviceConfig, V02Config
 from pvcomm.power.device import Inverter
-from pvcomm.power.feeder import ThreeSiteFeeder
+from pvcomm.power.feeder import FeederNetwork
 from pvcomm.power.solar import SolarModel
 from pvcomm.protocol.c104_runtime import RecordEvent
+from pvcomm.storage.jsonl import MAX_SNAPSHOT_BYTES, last_complete_record
 from pvcomm.weather import HistoricalWeather
 
 
@@ -23,21 +25,19 @@ def append_snapshot(path: Path, value: dict[str, Any]) -> None:
     # Append-only IPC works on drvfs too: replace-over-existing may expose a
     # transient missing pathname to a concurrent WSL reader. A partial tail
     # never replaces the last complete record; completed malformed rows fail.
+    encoded = json.dumps(value, allow_nan=False) + "\n"
+    if len(encoded.encode("utf-8")) > MAX_SNAPSHOT_BYTES:
+        raise ValueError("IPC snapshot exceeds maximum size")
     with path.open("a", encoding="utf-8") as stream:
-        stream.write(json.dumps(value, allow_nan=False) + "\n")
+        stream.write(encoded)
         stream.flush()
 
 
 def read_snapshot(path: Path) -> dict[str, Any] | None:
-    try:
-        content = path.read_bytes()
-    except FileNotFoundError:
-        return None
-    complete = content[: content.rfind(b"\n") + 1].splitlines()
-    return dict(json.loads(complete[-1])) if complete else None
+    return last_complete_record(path)
 
 
-def prepare_power(root: Path, config: V02Config) -> None:
+def prepare_power(root: Path, config: V02Config | V03Config) -> None:
     source = Path(config.weather.directory).resolve()
     weather = HistoricalWeather(source / "weather.json", config.weather)
     weather.sample(config.protocol.duration_s + 120)
@@ -75,7 +75,7 @@ class PhysicalStationState:
     def __init__(
         self,
         root: Path,
-        config: V02Config,
+        config: V02Config | V03Config,
         device: DeviceConfig,
         origin: ClockOrigin,
         record_event: RecordEvent,
@@ -84,6 +84,9 @@ class PhysicalStationState:
         self.config = config
         self.device = device
         self.origin = origin
+        self.scene_clock = (
+            SceneClock(root / "scene.json") if isinstance(config, V03Config) else None
+        )
         self._record = record_event
         self.weather = HistoricalWeather(root / "truth/weather/weather.json", config.weather)
         self.solar = SolarModel(device, config.weather)
@@ -99,7 +102,11 @@ class PhysicalStationState:
         self.advance(now)
 
     def elapsed(self, now: float) -> float:
-        return (int(now * 1e9) - self.origin.ts_mono_ns) / 1e9
+        return (
+            self.scene_clock.elapsed(int(now * 1e9))
+            if self.scene_clock is not None
+            else (int(now * 1e9) - self.origin.ts_mono_ns) / 1e9
+        )
 
     @property
     def accepted_setpoint_kw(self) -> float:
@@ -174,9 +181,11 @@ class PhysicalStationState:
 
 
 class FeederRuntime:
-    def __init__(self, root: Path, config: V02Config, record_event: RecordEvent) -> None:
+    def __init__(
+        self, root: Path, config: V02Config | V03Config, record_event: RecordEvent
+    ) -> None:
         self.root, self.config, self.record = root, config, record_event
-        self.model = ThreeSiteFeeder(config.feeder, tuple(d.station_id for d in config.devices))
+        self.model = FeederNetwork(config)
         self.last_solve = 0.0
         self.last_commands: tuple[int, ...] = ()
 
@@ -202,6 +211,28 @@ class FeederRuntime:
             self.record("terminal_powerflow_failed", {"error": str(exc), "converged": False})
             raise
         stamp = time.monotonic_ns()
+        if isinstance(self.config, V03Config):
+            for feeder_id, diagnostic in self.model.diagnostic_rows.items():
+                self.record(
+                    "terminal_feeder_diagnostics",
+                    {
+                        "feeder_id": feeder_id,
+                        "solved_mono_ns": stamp,
+                        "solve_duration_ms": (stamp / 1e9 - now) * 1000,
+                        "snapshot_span_ms": (
+                            max(s["model_mono_ns"] for s in states.values())
+                            - min(s["model_mono_ns"] for s in states.values())
+                        )
+                        / 1e6,
+                        "calculation_valid": True,
+                        **diagnostic,
+                        "reverse_flow": diagnostic["grid_p_kw"] < 0,
+                        "electrical_limit_violation": diagnostic["bus_min_pu"] < 0.9
+                        or diagnostic["bus_max_pu"] > 1.1
+                        or diagnostic["line_max_loading_percent"] > 100
+                        or diagnostic["transformer_loading_percent"] > 100,
+                    },
+                )
         for station, result in results.items():
             row = {
                 **result,

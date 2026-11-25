@@ -40,6 +40,10 @@ def audit_commands(
             end = min(end, following["ts_mono_ns"])
         utc_ack_end = utc + (ack_end - start)
         target = command["target_kw"]
+        run_id = command.get("run_id")
+        own_run = [r for r in own if r.get("run_id") == run_id]
+        terminal_run = [r for r in terminal if r.get("run_id") == run_id]
+        objects_run = [r for r in objects if r.get("run_id") == run_id]
 
         def same_value(row: dict[str, Any], field: str, target: float = target) -> bool:
             value = row.get(field)
@@ -54,7 +58,7 @@ def audit_commands(
         response = unique(
             [
                 r
-                for r in own
+                for r in own_run
                 if r["event_type"] == "master_command_response"
                 and r.get("task_id") == command["task_id"]
                 and r.get("ioa") == command["ioa"]
@@ -67,7 +71,7 @@ def audit_commands(
         accept = unique(
             [
                 r
-                for r in terminal
+                for r in terminal_run
                 if r["event_type"] == "terminal_command_accepted"
                 and r.get("station_id") == station_id
                 and r.get("ioa") == command["ioa"]
@@ -80,7 +84,7 @@ def audit_commands(
         wire = unique(
             [
                 r
-                for r in objects
+                for r in objects_run
                 if r.get("ca") == common_address
                 and r.get("ioa") == command["ioa"]
                 and r.get("type_id") == 50
@@ -95,7 +99,7 @@ def audit_commands(
         ack = unique(
             [
                 r
-                for r in objects
+                for r in objects_run
                 if wire is not None
                 and r.get("flow_id") == wire.get("flow_id")
                 and r.get("ca") == common_address
@@ -115,7 +119,7 @@ def audit_commands(
             candidates = sorted(
                 (
                     r
-                    for r in own
+                    for r in own_run
                     if accept is not None
                     and r["event_type"] == "master_observed_point"
                     and r.get("ioa") == ioa
@@ -133,11 +137,69 @@ def audit_commands(
             feedback[ioa] = candidates[0] if candidates else None
             if candidates:
                 used.add(candidates[0]["event_id"])
+        negative_responses = [
+            r
+            for r in own_run
+            if r["event_type"] == "master_command_response"
+            and r.get("task_id") == command["task_id"]
+            and r.get("ioa") == command["ioa"]
+            and r.get("positive_confirmation") is False
+            and same_value(r, "target_kw")
+            and start <= r["ts_mono_ns"] < ack_end
+        ]
+        rejections = [
+            r
+            for r in terminal_run
+            if r["event_type"] == "terminal_command_rejected"
+            and r.get("station_id") == station_id
+            and r.get("ioa") == command["ioa"]
+            and r.get("common_address") == common_address
+            and same_value(r, "target_kw")
+            and start <= r["ts_mono_ns"] < ack_end
+        ]
+        negative_acks = [
+            r
+            for r in objects_run
+            if wire is not None
+            and r.get("flow_id") == wire.get("flow_id")
+            and r.get("src_ip") == address
+            and r.get("ca") == common_address
+            and r.get("ioa") == command["ioa"]
+            and r.get("type_id") == 50
+            and r.get("cot") == 7
+            and r.get("negative_confirm") is True
+            and not r.get("test_flag")
+            and same_value(r, "value_num")
+            and wire["available_at"] <= r["available_at"] < utc_ack_end
+        ]
+        successful = ids[command["task_id"]] == 1 and all(
+            (response, accept, wire, ack, feedback[1006], feedback[1001])
+        )
+        rejected = (
+            ids[command["task_id"]] == 1
+            and not accept
+            and not response
+            and bool(wire)
+            and len(negative_responses) == len(rejections) == len(negative_acks) == 1
+        )
+        cutoff = max((r["ts_mono_ns"] for r in own_run), default=start)
+        outcome = (
+            "accepted_complete"
+            if successful
+            else "rejected"
+            if rejected
+            else "feedback_missing"
+            if response and accept and wire and ack
+            else "confirmation_timeout"
+            if not response and not negative_responses and cutoff >= ack_end
+            else "incomplete_or_ambiguous"
+        )
         results.append(
             {
                 "task_id": command["task_id"],
-                "passed": ids[command["task_id"]] == 1
-                and all((response, accept, wire, ack, feedback[1006], feedback[1001])),
+                "passed": bool(successful),
+                "outcome": outcome,
+                "transaction_evidence_valid": bool(successful or rejected),
                 "command_event": command["event_id"],
                 "accept_event": accept["event_id"] if accept else None,
                 "response_event": response["event_id"] if response else None,

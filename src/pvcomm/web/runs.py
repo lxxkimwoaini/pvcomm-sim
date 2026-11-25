@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tempfile
+import threading
+import weakref
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -11,6 +14,7 @@ from pydantic import Field, PlainSerializer
 
 from pvcomm.config.lab import load_v01_config
 from pvcomm.config.models import Contract
+from pvcomm.web.observation_index import ObservationIndex
 
 Nanoseconds = Annotated[int, PlainSerializer(str, return_type=str, when_used="json")]
 
@@ -93,6 +97,19 @@ class RunList(Contract):
 class RunRepository:
     def __init__(self, root: Path) -> None:
         self.root = root.resolve()
+        self._cache = tempfile.TemporaryDirectory(prefix="pvcomm-m2-index-")
+        self._indexes: dict[str, ObservationIndex] = {}
+        self._lock = threading.Lock()
+        self._finalizer = weakref.finalize(self, self._close_indexes, self._indexes, self._cache)
+
+    @staticmethod
+    def _close_indexes(
+        indexes: dict[str, ObservationIndex], cache: tempfile.TemporaryDirectory[str]
+    ) -> None:
+        for index in indexes.values():
+            index.connection.close()
+        indexes.clear()
+        cache.cleanup()
 
     def _directories(self) -> dict[str, Path]:
         if not self.root.is_dir():
@@ -123,40 +140,45 @@ class RunRepository:
         return RunList(runs=runs)
 
     def snapshot(self, key: str, at_ns: int | None) -> RunSnapshot:
+        with self._lock:
+            return self._snapshot(key, at_ns)
+
+    def _snapshot(self, key: str, at_ns: int | None) -> RunSnapshot:
         directories = self._directories()
         if key not in directories:
             raise FileNotFoundError("unknown run")
         root = directories[key]
         config = load_v01_config(self._safe_file(root / "scenario.yaml"))
-        rows = []
+        if key not in self._indexes:
+            self._indexes[key] = ObservationIndex(Path(self._cache.name) / f"{key}.sqlite")
+        index = self._indexes[key]
         for path in sorted((root / "observed").glob("master_events*.jsonl")):
-            text = self._safe_file(path).read_text(encoding="utf-8")
-            lines = text.splitlines()
-            for index, line in enumerate(lines):
-                try:
-                    row = json.loads(line)
-                except json.JSONDecodeError:
-                    # A live writer may not yet have completed its final line.
-                    if index == len(lines) - 1 and not text.endswith("\n"):
-                        continue
-                    raise
-                if "available_at" not in row or not row.get("event_type", "").startswith("master_"):
-                    raise ValueError("invalid master observation contract")
-                rows.append(row)
-        rows.sort(key=lambda r: (r["available_at"], r["event_id"]))
-        first = rows[0]["available_at"] if rows else 0
-        last = rows[-1]["available_at"] if rows else 0
+            index.ingest(self._safe_file(path))
+        protocol_path = root / "parsed/tshark-pdml-v2/iec104_apdu.jsonl"
+        if protocol_path.exists():
+            index.ingest(self._safe_file(protocol_path), protocol=True)
+        first, last = index.bounds()
         cursor = min(at_ns, last) if at_ns is not None else last
-        visible = [row for row in rows if row["available_at"] <= cursor]
         stations = []
         for station in config.stations:
-            own = [r for r in visible if r.get("station_id") == station.station_id]
-            power = [
-                r
-                for r in own
-                if r["event_type"] == "master_observed_point" and r.get("ioa") == 1001
+            own = []
+            for ioa in (1001, 1002, 1003, 1004, 1005, 1006, 1008):
+                own.extend(
+                    index.rows(
+                        cursor,
+                        station=station.station_id,
+                        kind="master_observed_point",
+                        ioa=ioa,
+                        limit=600,
+                    )
+                )
+            power = [r for r in own if r.get("ioa") == 1001]
+            state = [
+                r["state"]
+                for r in index.rows(
+                    cursor, station=station.station_id, kind="master_connection_state", limit=1
+                )
             ]
-            state = [r["state"] for r in own if r["event_type"] == "master_connection_state"]
             stations.append(
                 StationView(
                     station_id=station.station_id,
@@ -205,17 +227,10 @@ class RunRepository:
             )
         event_fields = set(EventView.model_fields)
         events = [
-            EventView.model_validate({k: r.get(k) for k in event_fields}) for r in visible[-100:]
+            EventView.model_validate({k: r.get(k) for k in event_fields})
+            for r in index.rows(cursor)
         ]
-        protocol_path = root / "parsed/tshark-pdml-v2/iec104_apdu.jsonl"
-        protocol = []
-        if protocol_path.exists():
-            for line in self._safe_file(protocol_path).read_text(encoding="utf-8").splitlines():
-                row = json.loads(line)
-                if row["available_at"] <= cursor:
-                    protocol.append(
-                        ProtocolView.model_validate({k: row[k] for k in ProtocolView.model_fields})
-                    )
+        protocol = [ProtocolView.model_validate(row) for row in index.rows(cursor, kind="protocol")]
         return RunSnapshot(
             run_key=key,
             cursor_utc_ns=cursor,

@@ -80,7 +80,7 @@ def evaluate_run(run_dir: Path) -> dict[str, Any]:
         checks[name] = {"passed": bool(passed), "evidence": evidence}
 
     captures = manifest.get("captures", [])
-    hashes_valid = len(captures) == 4
+    hashes_valid = len(captures) == 1 + len(config.stations)
     independent: dict[str, dict[str, Any]] = {}
     for capture in captures:
         path = run_dir / capture["path"]
@@ -100,7 +100,7 @@ def evaluate_run(run_dir: Path) -> dict[str, Any]:
     )
     check(
         "zero_capture_drops",
-        len(captures) == 4
+        len(captures) == 1 + len(config.stations)
         and all(
             c["exit_code"] == 0 and c["statistics"].get("packets_dropped_by_kernel") == 0
             for c in captures
@@ -225,9 +225,9 @@ def evaluate_run(run_dir: Path) -> dict[str, Any]:
 
     expected_commands = 2
     if (run_dir / "power_config.json").exists():
-        from pvcomm.config.power import V02Config
+        from pvcomm.config.power import power_document
 
-        power_config = V02Config.model_validate_json((run_dir / "power_config.json").read_text())
+        power_config = power_document(run_dir / "power_config.json")
         expected_commands += int(power_config.repeat_command_after_s is not None)
     business = {}
     for station in config.stations:
