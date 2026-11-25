@@ -105,6 +105,12 @@ class PhysicalStationState:
             SceneClock(root / "scene.json") if isinstance(config, V03Config) else None
         )
         self._record = record_event
+        self._applied_operations = 0
+        self._operations = (
+            [op for op in config.device_operations if op.station_id == device.station_id]
+            if isinstance(config, V03Config)
+            else []
+        )
         weather_config = station_weather(config, device.station_id)
         self.weather = HistoricalWeather(
             weather_directory(root, config, device.station_id) / "weather.json", weather_config
@@ -141,7 +147,21 @@ class PhysicalStationState:
         return self.inverter.command_count
 
     def advance(self, now: float) -> None:
-        weather = self.weather.sample(self.elapsed(now))
+        elapsed = self.elapsed(now)
+        for operation in self._operations[self._applied_operations :]:
+            if elapsed < operation.at_s:
+                break
+            # A local operation changes enablement only, never a remote setpoint,
+            # connectivity or fault status. It remains separate Oracle evidence.
+            self.inverter.config = self.inverter.config.model_copy(
+                update={"enabled": operation.enabled}
+            )
+            self._applied_operations += 1
+            self._record(
+                "terminal_local_device_operation",
+                {**operation.model_dump(), "applied_scene_s": elapsed},
+            )
+        weather = self.weather.sample(elapsed)
         solar = self.solar.calculate(weather)
         self.inverter.advance(
             solar["p_avail_kw"], self.elapsed(now) if self.scene_clock is not None else now
@@ -159,6 +179,7 @@ class PhysicalStationState:
             "running": self.inverter.running,
             "connected": self.device.connected,
             "faulted": self.device.faulted,
+            "enabled": self.inverter.config.enabled,
             "command_count": self.command_count,
             "model_mono_ns": int(now * 1e9),
             "constraint_reason": self.inverter.constraint_reason,

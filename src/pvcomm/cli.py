@@ -23,16 +23,18 @@ def main(argv: list[str] | None = None) -> int:
         "validate-config", help="validate foundation YAML; no simulation"
     )
     validate.add_argument("--config", type=Path, required=True)
-    validate_lab = commands.add_parser("validate-lab-config", help="validate V0.1 IEC 104 lab YAML")
+    validate_lab = commands.add_parser("validate-lab-config", help="validate IEC 104 lab YAML")
     validate_lab.add_argument("--config", type=Path, required=True)
-    validate_power = commands.add_parser("validate-power-config", help="validate V0.2 power YAML")
+    validate_power = commands.add_parser(
+        "validate-power-config", help="validate V0.2/V0.3 power YAML"
+    )
     validate_power.add_argument("--config", type=Path, required=True)
-    parse = commands.add_parser("parse", help="parse a V0.1 PCAP with TShark")
+    parse = commands.add_parser("parse", help="parse retained PCAP with TShark")
     parse.add_argument("--run-dir", type=Path, required=True)
     parse.add_argument("--parquet", action="store_true", help="also export versioned Arrow tables")
-    qc = commands.add_parser("qc", help="independent V0.1 raw-evidence verification")
+    qc = commands.add_parser("qc", help="independent protocol and physical verification")
     qc.add_argument("--run-dir", type=Path, required=True)
-    run = commands.add_parser("run", help="run the V0.1 real IEC 104 local lab")
+    run = commands.add_parser("run", help="run configured real IEC 104 isolated/local lab")
     run.add_argument("--config", type=Path, required=True)
     run.add_argument("--output-root", type=Path, required=True)
     run.add_argument("--isolated", action="store_true", help="owned Linux namespace P0/P1 lab")
@@ -91,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
             power = document if not isinstance(document, V01Config) else None
             lab_config = power.protocol if power is not None else load_v01_config(args.config)
             if power is not None and not args.isolated:
-                raise ValueError("V0.2 physical simulation requires --isolated")
+                raise ValueError("physical simulation requires --isolated")
             if args.isolated:
                 from pvcomm.scenario.isolated_runner import run_isolated
 

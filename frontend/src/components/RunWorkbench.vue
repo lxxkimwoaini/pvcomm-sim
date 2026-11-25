@@ -24,6 +24,10 @@ import { CanvasRenderer } from 'echarts/renderers'
 import {
   getRuns,
   getSnapshot,
+  getEvents,
+  getResources,
+  type EventsPage,
+  type ResourceView,
   type RunList,
   type RunSnapshot,
 } from '../api/client'
@@ -42,6 +46,47 @@ const error = ref('')
 const busy = ref(false)
 const offsetSeconds = ref(0)
 const live = ref(true)
+const selectedRegion = ref('all')
+const eventPage = ref<EventsPage | null>(null)
+const resources = ref<ResourceView | null>(null)
+const visibleStations = computed(
+  () =>
+    snapshot.value?.stations.filter(
+      (s) =>
+        selectedRegion.value === 'all' || s.region_id === selectedRegion.value,
+    ) ?? [],
+)
+const visibleEvents = computed(
+  () => eventPage.value?.events ?? snapshot.value?.events ?? [],
+)
+const feeders = computed(() => [
+  ...new Set(
+    snapshot.value?.stations
+      .map((s) => s.feeder_id)
+      .filter((s): s is string => !!s) ?? [],
+  ),
+])
+const feederWidth = computed(() =>
+  Math.max(
+    1160,
+    160 +
+      Math.max(0, ...feeders.value.map((id) => feederSites(id).length)) * 100,
+  ),
+)
+const measurement = (station: RunSnapshot['stations'][number], ioa: number) =>
+  station.measurements?.find((m) => m.ioa === ioa)?.points.at(-1)?.value
+const feederSites = (id: string) =>
+  snapshot.value?.stations.filter((s) => s.feeder_id === id) ?? []
+const space = (value: number | null | undefined, axis: 'x_m' | 'y_m') => {
+  const values = snapshot.value?.stations.map((s) => s[axis] ?? 0) ?? [0]
+  const low = Math.min(...values),
+    high = Math.max(...values)
+  return (
+    45 +
+    (((value ?? low) - low) / Math.max(1, high - low)) *
+      (axis === 'x_m' ? 900 : 260)
+  )
+}
 const chartNode = ref<HTMLDivElement>()
 const physicalNode = ref<HTMLDivElement>()
 const physicalStation = ref('PV01')
@@ -78,22 +123,18 @@ function draw() {
   chart ??= init(chartNode.value)
   resize?.observe(chartNode.value)
   if (physicalNode.value) resize?.observe(physicalNode.value)
-  const data = snapshot.value
   const option: EChartsCoreOption = {
     animation: false,
     tooltip: { trigger: 'axis' },
-    legend: { top: 0 },
+    legend: { top: 0, type: 'scroll' },
     grid: { left: 55, right: 20, top: 40, bottom: 35 },
     xAxis: { type: 'value', name: 's' },
     yAxis: { type: 'value', name: 'kW', min: 0 },
-    series: data.stations.map((station) => {
+    series: visibleStations.value.map((station) => {
       const points: (number | null)[][] = []
       let previous = -1
       for (const point of station.power) {
-        if (
-          previous >= 0 &&
-          point.sim_elapsed_ms - previous > station.telemetry_period_s * 1500
-        )
+        if (previous >= 0 && point.gap_before)
           points.push([
             (previous + station.telemetry_period_s * 1000) / 1000,
             null,
@@ -153,10 +194,7 @@ function drawPhysical() {
         const data: (number | null)[][] = []
         let previous = -1
         for (const p of m.points) {
-          if (
-            previous >= 0 &&
-            p.sim_elapsed_ms - previous > station.telemetry_period_s * 1500
-          )
+          if (previous >= 0 && p.gap_before)
             data.push([
               (previous + station.telemetry_period_s * 1000) / 1000,
               null,
@@ -178,7 +216,7 @@ function drawPhysical() {
   )
 }
 async function loadSnapshot(replay = false) {
-  if (!key.value || busy.value) return
+  if (!key.value || (busy.value && !replay)) return
   const version = ++generation
   busy.value = true
   error.value = ''
@@ -193,12 +231,36 @@ async function loadSnapshot(replay = false) {
     const result = await getSnapshot(key.value, cursor)
     if (version !== generation) return
     snapshot.value = result
+    eventPage.value = null
     await nextTick()
     draw()
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '读取失败'
+    if (version === generation)
+      error.value = cause instanceof Error ? cause.message : '读取失败'
   } finally {
-    busy.value = false
+    if (version === generation) busy.value = false
+  }
+}
+async function olderEvents() {
+  const oldest = visibleEvents.value[0]
+  if (!oldest || !snapshot.value) return
+  live.value = false
+  try {
+    eventPage.value = await getEvents(
+      key.value,
+      snapshot.value.cursor_utc_ns,
+      oldest.available_at,
+      oldest.event_id,
+    )
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '分页读取失败'
+  }
+}
+async function loadResources() {
+  try {
+    resources.value = await getResources(key.value)
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '资源读取失败'
   }
 }
 async function refreshRuns() {
@@ -214,7 +276,11 @@ async function refreshRuns() {
 }
 function changeRun() {
   generation++
+  busy.value = false
   snapshot.value = null
+  eventPage.value = null
+  resources.value = null
+  selectedRegion.value = 'all'
   offsetSeconds.value = 0
   live.value = true
   void loadSnapshot()
@@ -231,7 +297,7 @@ onMounted(async () => {
   await refreshRuns()
   timer = setInterval(() => {
     if (live.value) void loadSnapshot()
-  }, 3000)
+  }, 1000)
   resize = new ResizeObserver(() => {
     chart?.resize()
     physicalChart?.resize()
@@ -264,7 +330,7 @@ onBeforeUnmount(() => {
       id="run-selector"
       v-model="key"
       placeholder="暂无独立端点运行"
-      :disabled="busy"
+      :disabled="!runs.length"
       @change="changeRun"
     >
       <ElOption
@@ -306,15 +372,45 @@ onBeforeUnmount(() => {
       <p>起点后 {{ offsetSeconds }} 秒；仅显示游标时刻已到达主站的信息。</p>
     </section>
     <section class="editor-panel">
-      <h2>三站通信拓扑</h2>
+      <h2>区域通信拓扑</h2>
+      <div class="station-grid">
+        <article
+          v-for="region in snapshot.regions ?? []"
+          :key="region.region_id"
+          class="station-card"
+        >
+          <h3>{{ region.region_id }} · 汇聚链路</h3>
+          <p>连接 {{ region.open_connections }} / {{ region.stations }}</p>
+          <strong
+            >{{ region.observed_power_kw?.toFixed(2) ?? '未知' }} kW</strong
+          >
+          <p>
+            有效功率 {{ region.valid_power_stations }} 站 · 容量覆盖
+            {{ (region.capacity_coverage_fraction * 100).toFixed(1) }}%
+          </p>
+        </article>
+      </div>
+      <div class="run-controls">
+        <ElSelect v-model="selectedRegion" aria-label="通信区域" @change="draw">
+          <ElOption label="全部区域" value="all" />
+          <ElOption
+            v-for="region in snapshot.regions ?? []"
+            :key="region.region_id"
+            :label="region.region_id"
+            :value="region.region_id"
+          />
+        </ElSelect>
+      </div>
       <div class="topology-master">IEC 104 主站</div>
       <div class="station-grid topology-cards">
         <article
-          v-for="station in snapshot.stations"
+          v-for="station in visibleStations"
           :key="station.station_id"
           class="station-card"
         >
-          <span class="link-label">TCP / IEC 104</span>
+          <span class="link-label"
+            >主站 → {{ station.region_id }} 汇聚 → 站点接入</span
+          >
           <h3>{{ station.station_id }} · {{ station.region_id }}</h3>
           <p>CA {{ station.common_address }} · {{ station.capacity_kw }} kW</p>
           <ElTag
@@ -326,6 +422,9 @@ onBeforeUnmount(() => {
             {{ station.latest_power_kw?.toFixed(2) ?? '未知' }}
             <small>kW</small>
           </p>
+          <ElTag v-if="!station.power_fresh" type="warning">
+            功率未知或已过期
+          </ElTag>
           <p>
             {{
               station.power_available_at
@@ -336,14 +435,170 @@ onBeforeUnmount(() => {
         </article>
       </div>
     </section>
+    <section v-if="feeders.length" class="editor-panel">
+      <h2>电气馈线拓扑</h2>
+      <p>
+        配置定义的合成工程馈线，与通信区域独立；线路数值为主站实际收到的同链路遥测。
+      </p>
+      <div class="table-scroll">
+        <svg
+          class="feeder-svg"
+          :viewBox="`0 0 ${feederWidth} ${feeders.length * 120}`"
+          role="img"
+          aria-label="配置驱动电气馈线"
+        >
+          <g
+            v-for="(feeder, row) in feeders"
+            :key="feeder"
+            :transform="`translate(0,${row * 120})`"
+          >
+            <rect
+              x="5"
+              y="25"
+              width="90"
+              height="40"
+              fill="#edf5fc"
+              stroke="#86acc6"
+            />
+            <text x="50" y="50" text-anchor="middle">{{ feeder }}</text>
+            <g
+              v-for="(site, col) in feederSites(feeder)"
+              :key="site.station_id"
+            >
+              <line
+                :x1="95 + col * 100"
+                y1="45"
+                :x2="135 + col * 100"
+                y2="45"
+                :stroke="
+                  measurement(site, 1009) === undefined ? '#b8c2cb' : '#4282a6'
+                "
+              />
+              <rect
+                :x="135 + col * 100"
+                y="25"
+                width="60"
+                height="40"
+                fill="#f5fafc"
+                stroke="#86acc6"
+              />
+              <text :x="165 + col * 100" y="49" text-anchor="middle">
+                {{ site.station_id }}
+              </text>
+              <text :x="165 + col * 100" y="82" text-anchor="middle">
+                {{ measurement(site, 1009)?.toFixed(1) ?? '未知' }}%
+              </text>
+              <text :x="165 + col * 100" y="101" text-anchor="middle">
+                {{ measurement(site, 1003)?.toFixed(3) ?? '未知' }} kV
+              </text>
+            </g>
+          </g>
+        </svg>
+      </div>
+    </section>
+    <section
+      v-if="snapshot.stations.some((s) => s.x_m != null)"
+      class="editor-panel"
+    >
+      <h2>空间气象与站点响应</h2>
+      <p>
+        局部东/北坐标（m），颜色来自已收到的辐照度；灰色表示未知。秒级扰动为物理模型，背景为历史小时产品。
+      </p>
+      <svg viewBox="0 0 1000 350" role="img" aria-label="站点辐照度空间分布">
+        <g
+          v-for="site in snapshot.stations"
+          :key="site.station_id"
+          :transform="`translate(${space(site.x_m, 'x_m')},${space(site.y_m, 'y_m')})`"
+        >
+          <circle
+            r="12"
+            :fill="
+              measurement(site, 1005) === undefined
+                ? '#b8c2cb'
+                : `hsl(40 85% ${75 - Math.min(1200, measurement(site, 1005) ?? 0) / 40}%)`
+            "
+          />
+          <text y="26" text-anchor="middle" font-size="11">
+            {{ site.station_id }} ·
+            {{ site.latest_power_kw?.toFixed(1) ?? '未知' }}kW
+          </text>
+          <title>
+            {{ site.station_id }} ({{ site.x_m }}, {{ site.y_m }})m ·
+            {{ measurement(site, 1005)?.toFixed(1) ?? '未知' }} W/m²
+          </title>
+        </g>
+      </svg>
+    </section>
+    <section class="editor-panel">
+      <h2>区域调控与协议统计</h2>
+      <p>
+        发送回调
+        {{ snapshot.protocol_statistics?.master_send_callbacks ?? 0 }} 次 /
+        接收回调
+        {{ snapshot.protocol_statistics?.master_receive_callbacks ?? 0 }} 次；{{
+          snapshot.protocol_statistics?.master_receive_bytes ?? 0
+        }}
+        B 接收。回调次数不等同于独立解析后的 APDU 数。
+      </p>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>任务</th>
+              <th>区域</th>
+              <th>分配 / 请求 kW</th>
+              <th>资源缺口 kW</th>
+              <th>确认 / 站点</th>
+              <th>传输失败</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="task in snapshot.dispatches ?? []"
+              :key="task.dispatch_id"
+            >
+              <td>{{ task.dispatch_id }}</td>
+              <td>{{ task.regions.join(', ') }}</td>
+              <td>
+                {{ task.allocated_kw.toFixed(1) }} /
+                {{ task.requested_kw.toFixed(1) }}
+              </td>
+              <td>{{ task.unallocated_kw.toFixed(1) }}</td>
+              <td>{{ task.positive_confirmations }} / {{ task.stations }}</td>
+              <td>{{ task.failed_transmissions }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>确认是主站收到的协议响应；不据此冒充电气执行完成。</p>
+      <ElButton @click="loadResources">读取实验资源诊断</ElButton>
+      <p v-if="resources">
+        独立基础设施诊断（最新时刻，不随 M2 游标回放）：CPU
+        {{
+          resources.cpu_percent_one_core?.toFixed(1) ?? '未知'
+        }}%（单核100%）；RSS
+        {{
+          resources.rss_bytes == null
+            ? '未知'
+            : (resources.rss_bytes / 1048576).toFixed(1)
+        }}
+        MiB；时钟映射偏差
+        {{
+          resources.utc_mapping_drift_ms?.toFixed(3) ?? '未知'
+        }}ms。范围为仿真/抓包进程，不含浏览器与API。
+      </p>
+    </section>
     <section class="editor-panel">
       <h2>主站接收有功曲线</h2>
-      <p>横轴：逻辑时间 s。每站最多显示最近 600 个观测；遥测缺口断线显示。</p>
+      <p>
+        横轴：逻辑时间 s。最多读取最近 600 个观测；多站场景按 min/max
+        降采样至120点，保留首尾及缺口；仅影响展示。
+      </p>
       <div
         ref="chartNode"
         class="power-chart"
         role="img"
-        aria-label="三站主站功率遥测曲线"
+        aria-label="多站主站功率遥测曲线"
       />
     </section>
     <section class="editor-panel">
@@ -397,7 +652,11 @@ onBeforeUnmount(() => {
     </section>
     <section class="editor-panel">
       <h2>主站业务事件</h2>
-      <p>最近 100 条可观测事件，按 available_at 截断。</p>
+      <p>每页最多100条主站事件，按 available_at 截断并以时间/ID联合分页。</p>
+      <ElButton :disabled="!visibleEvents.length" @click="olderEvents">
+        较早100条
+      </ElButton>
+      <ElButton @click="eventPage = null">当前游标最近100条</ElButton>
       <div class="table-scroll">
         <table>
           <thead>
@@ -410,7 +669,7 @@ onBeforeUnmount(() => {
           </thead>
           <tbody>
             <tr
-              v-for="event in [...snapshot.events].reverse()"
+              v-for="event in [...visibleEvents].reverse()"
               :key="event.event_id"
             >
               <td>{{ date(event.available_at) }}</td>
@@ -482,8 +741,13 @@ onBeforeUnmount(() => {
 }
 .station-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr));
   gap: 20px;
+}
+.feeder-svg {
+  width: 100%;
+  min-width: 900px;
+  font-size: 12px;
 }
 .station-card {
   min-width: 0;

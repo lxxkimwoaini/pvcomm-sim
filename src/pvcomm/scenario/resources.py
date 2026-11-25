@@ -10,8 +10,11 @@ from pvcomm.power.runtime import append_snapshot
 
 
 class ResourceSampler:
-    def __init__(self, root: Path, origin: ClockOrigin) -> None:
+    def __init__(
+        self, root: Path, origin: ClockOrigin, *, scope: str = "controller_workers_capture_only"
+    ) -> None:
         self.root, self.origin = root, origin
+        self.scope = scope
         self.previous: tuple[float, float] | None = None
         self.last = 0.0
 
@@ -53,7 +56,7 @@ class ResourceSampler:
                 "disk_read_bytes": read_bytes,
                 "disk_write_bytes": write_bytes,
                 "utc_mapping_drift_ms": (time.time_ns() - self.origin.utc_ns(mono)) / 1e6,
-                "scope": "controller_workers_capture_only",
+                "scope": self.scope,
             },
         )
         self.previous, self.last = (now, cpu_s), now

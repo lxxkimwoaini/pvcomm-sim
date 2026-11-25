@@ -504,7 +504,7 @@ wheels = [
 
 [[package]]
 name = "pvcomm-sim"
-version = "0.2.0.dev0"
+version = "0.3.0.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic" },

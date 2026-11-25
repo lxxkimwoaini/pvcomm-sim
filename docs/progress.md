@@ -203,3 +203,17 @@ V0.1 验收补齐启动：在 `feat/v01-acceptance` 上实施 `docs/plans/2026-1
 新增独立tick/空间模型/死区报告后的第三轮f9afe25真实三站断联test1 passed/146.28s，outputs/v03_prerequisite_003；仍为冻结code_dirty=false。三区独立聚合通信和物理QC通过。后续revision2增加通过真实通信进入M2的线路/变压器负载及入线功率点，保持revision1复现；普通113 passed、Ruff/mypy73通过。将基于独立冻结checkout进行3/10/20/30逐级测试，开发UI不得修改运行中的冻结源码。
 
 e27c44b冻结checkout outputs/v03_source_s1，3站120s真实运行outputs/v03_scale_s1/v03_03_normal_001，completed/clean、全QC通过（2344完整APDU、2785包、2137对象）；10站120s completed且物理/调控闭环通过，但P0工具丢包54，独立协议QC失败，目录保留，不进入20站。规模脚本首尝试被PowerShell展开Bash变量，未产生运行证据；后续显式参数调用。新增ADR0008抓包原生Linux spool/核对哈希后归档，关闭V0.3 immediate模式，门槛不改；待冻结重验10站。普通113 passed/10 deselected，Ruff/mypy73通过。
+
+
+### V0.3 工作台、正常设备操作及规模门禁跟踪
+
+a2187a6十站第二轮120s全QC通过（outputs/v03_scale_s2/v03_10_normal_001），6830完整APDU、8009包、6250对象，11路dropped=0。二十站同冻结代码120s completed/clean/cleanup=[]且21路dropped=0，但日志对齐P99=164.241582ms（max310.274496ms）失败；outputs/v03_scale_s2/v03_20_normal_001保留，不进入30站。对照目录改用WSL持久Linux文件系统/var/lib/pvcomm/runs/v03_scale_s3，仅验证存储开销影响，结果待核验。a2187a6 push CI45610679904实际success。
+
+工作台新增配置双拓扑、区域覆盖率/聚合、空间遥测、调控确认状态、原始回调统计、基础设施资源独立端点、100条联合游标分页及最多120点极值/首尾/缺口保留。M2不读truth补齐；新契约回归验证时间因果/并列事件分页/资源隔离/重复证据409及曲线峰值。新增显式正常本地enable操作，不改已接受设定值及connected/faulted；30站候选310s停机、330s恢复，由真实遥信上送，独立QC v03-power-v2保留旧报告。此功能真实验收尚待30站短运行。
+
+普通检查已实际116 passed/10 deselected（新增设备操作单测后待最终总检）、mypy74文件、Ruff/schema、前端类型/Vitest3/build通过；Vite约817kB提示保留。发现并修复测试类型注解及package.json格式失败，没有降低检查。包更新0.3.0.dev0，README/CLI明确V0.3开发状态与未验收，不重标旧版本证据。PR #1/#2/#3仍OPEN、#3 draft，未合并。
+
+
+二十站Linux持久目录对照a2187a6，/var/lib/pvcomm/runs/v03_scale_s3/v03_20_normal_001，120s completed/clean、全部QC通过：12849完整APDU=100%、21路dropped=0、日志P99=14.146801ms/max38.434775ms，cleanup=[]。后续规模验收使用同一Linux存储环境。普通最终117 passed/10 deselected、mypy77、Ruff通过。工作台首次10站浏览器失败定位为1s轮询频繁disabled关闭选择菜单；修正前台选择与后台轮询隔离、generation保护过期响应，重验结果另记。
+
+真实10站浏览器复验2 passed/1 skipped（空态），逐值对账、物理指标切换、因果游标、桌面/移动与离线恢复通过。保留最初菜单关闭及忙时回放丢失失败记录，修复实际UI竞态。

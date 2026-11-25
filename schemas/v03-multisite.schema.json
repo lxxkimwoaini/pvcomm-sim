@@ -475,6 +475,39 @@
       "title": "MultisiteProtocol",
       "type": "object"
     },
+    "NormalDeviceOperation": {
+      "additionalProperties": false,
+      "description": "Local planned enable/disable, independent of remote dispatch and faults.",
+      "properties": {
+        "at_s": {
+          "minimum": 1,
+          "title": "At S",
+          "type": "integer"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "reason": {
+          "const": "planned_local_operation",
+          "default": "planned_local_operation",
+          "title": "Reason",
+          "type": "string"
+        },
+        "station_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Station Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "station_id",
+        "at_s",
+        "enabled"
+      ],
+      "title": "NormalDeviceOperation",
+      "type": "object"
+    },
     "RegionConfig": {
       "additionalProperties": false,
       "properties": {
@@ -708,6 +741,14 @@
       ],
       "title": "Contract Revision",
       "type": "integer"
+    },
+    "device_operations": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/NormalDeviceOperation"
+      },
+      "title": "Device Operations",
+      "type": "array"
     },
     "devices": {
       "items": {

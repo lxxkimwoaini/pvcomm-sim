@@ -51,3 +51,25 @@ def test_capacity_and_observed_resource_allocation_shortage_is_explicit() -> Non
         allocate(10, capacities, {"small": 10.0})
     with pytest.raises(ValueError):
         allocate(10, capacities, {"small": float("nan"), "large": 10.0})
+
+
+def test_normal_device_operations_preserve_remote_target_and_fault_state() -> None:
+    from pvcomm.power.device import Inverter
+
+    cfg = V03Config.model_validate(configuration(30, 360))
+    operations = cfg.device_operations
+    assert [op.enabled for op in operations] == [False, True]
+    device = cfg.devices[0]
+    inverter = Inverter(device, device.rated_kw, actual_kw=20, last_update_mono=309)
+    for operation in operations:
+        inverter.config = inverter.config.model_copy(update={"enabled": operation.enabled})
+        inverter.advance(20, operation.at_s)
+        assert inverter.running == operation.enabled
+        assert inverter.actual_kw == (20 if operation.enabled else 0)
+        assert inverter.accepted_setpoint_kw == device.rated_kw
+        assert inverter.command_count == 0
+        assert inverter.config.connected and not inverter.config.faulted
+    raw = cfg.model_dump(mode="json")
+    raw["device_operations"][1]["at_s"] = 309
+    with pytest.raises(ValueError, match="operation"):
+        V03Config.model_validate(raw)

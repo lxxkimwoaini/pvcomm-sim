@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/diagnostics/runs/{run_key}/resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Resources */
+        get: operations["resources_api_diagnostics_runs__run_key__resources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -30,6 +47,23 @@ export interface paths {
         };
         /** Runs */
         get: operations["runs_api_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_key}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Events */
+        get: operations["events_api_runs__run_key__events_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -76,6 +110,27 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** DispatchView */
+        DispatchView: {
+            /** Allocated Kw */
+            allocated_kw: number;
+            /** Available At */
+            available_at: string;
+            /** Dispatch Id */
+            dispatch_id: string;
+            /** Failed Transmissions */
+            failed_transmissions: number;
+            /** Positive Confirmations */
+            positive_confirmations: number;
+            /** Regions */
+            regions: string[];
+            /** Requested Kw */
+            requested_kw: number;
+            /** Stations */
+            stations: number;
+            /** Unallocated Kw */
+            unallocated_kw: number;
+        };
         /** EventView */
         EventView: {
             /** Action */
@@ -98,6 +153,19 @@ export interface components {
             target_kw?: number | null;
             /** Value */
             value?: number | boolean | null;
+        };
+        /** EventsPage */
+        EventsPage: {
+            /** Cursor Utc Ns */
+            cursor_utc_ns: string;
+            /** Events */
+            events: components["schemas"]["EventView"][];
+            /** Next Before Id */
+            next_before_id: string | null;
+            /** Next Before Ns */
+            next_before_ns: string | null;
+            /** Run Key */
+            run_key: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -152,6 +220,11 @@ export interface components {
         Point: {
             /** Available At */
             available_at: string;
+            /**
+             * Gap Before
+             * @default false
+             */
+            gap_before: boolean;
             /** Sim Elapsed Ms */
             sim_elapsed_ms: number;
             /** Value */
@@ -176,6 +249,42 @@ export interface components {
             /** Type Id */
             type_id: number | null;
         };
+        /** RegionView */
+        RegionView: {
+            /** Capacity Coverage Fraction */
+            capacity_coverage_fraction: number;
+            /** Observed Power Kw */
+            observed_power_kw: number | null;
+            /** Open Connections */
+            open_connections: number;
+            /** Region Id */
+            region_id: string;
+            /** Stations */
+            stations: number;
+            /** Valid Power Stations */
+            valid_power_stations: number;
+        };
+        /** ResourceView */
+        ResourceView: {
+            /** Cpu Percent One Core */
+            cpu_percent_one_core?: number | null;
+            /** Disk Read Bytes */
+            disk_read_bytes?: number | null;
+            /** Disk Write Bytes */
+            disk_write_bytes?: number | null;
+            /** Rss Bytes */
+            rss_bytes?: number | null;
+            /**
+             * Scope
+             * @default infrastructure_only_not_M2_features
+             * @constant
+             */
+            scope: "infrastructure_only_not_M2_features";
+            /** Ts Utc Ns */
+            ts_utc_ns?: string | null;
+            /** Utc Mapping Drift Ms */
+            utc_mapping_drift_ms?: number | null;
+        };
         /** RunList */
         RunList: {
             /** Runs */
@@ -185,6 +294,8 @@ export interface components {
         RunSnapshot: {
             /** Cursor Utc Ns */
             cursor_utc_ns: string;
+            /** Dispatches */
+            dispatches?: components["schemas"]["DispatchView"][];
             /** Events */
             events: components["schemas"]["EventView"][];
             /** First Available At */
@@ -204,11 +315,17 @@ export interface components {
             mode: "M2";
             /** Protocol */
             protocol: components["schemas"]["ProtocolView"][];
+            /** Protocol Statistics */
+            protocol_statistics?: {
+                [key: string]: number;
+            };
             /**
              * Protocol Status
              * @enum {string}
              */
             protocol_status: "parsed" | "not_yet_parsed";
+            /** Regions */
+            regions?: components["schemas"]["RegionView"][];
             /** Run Key */
             run_key: string;
             /**
@@ -241,6 +358,10 @@ export interface components {
             common_address: number;
             /** Connection State */
             connection_state: string | null;
+            /** Electrical Parent */
+            electrical_parent?: string | null;
+            /** Feeder Id */
+            feeder_id?: string | null;
             /** Latest Power Kw */
             latest_power_kw: number | null;
             /** Measurements */
@@ -249,12 +370,21 @@ export interface components {
             power: components["schemas"]["Point"][];
             /** Power Available At */
             power_available_at: string | null;
+            /**
+             * Power Fresh
+             * @default false
+             */
+            power_fresh: boolean;
             /** Region Id */
             region_id: string;
             /** Station Id */
             station_id: string;
             /** Telemetry Period S */
             telemetry_period_s: number;
+            /** X M */
+            x_m?: number | null;
+            /** Y M */
+            y_m?: number | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -298,6 +428,37 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    resources_api_diagnostics_runs__run_key__resources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     health_api_health_get: {
         parameters: {
             query?: never;
@@ -334,6 +495,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunList"];
+                };
+            };
+        };
+    };
+    events_api_runs__run_key__events_get: {
+        parameters: {
+            query: {
+                at_ns: number;
+                before_ns?: number | null;
+                before_id?: string | null;
+                limit?: number;
+                mode?: "M2";
+            };
+            header?: never;
+            path: {
+                run_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventsPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -1176,3 +1176,10 @@ dispatch_tasks:
 repeat_command_after_s: 35
 electrical_step_s: 1
 powerflow_step_s: 5
+device_operations:
+- station_id: PV01
+  at_s: 310
+  enabled: false
+- station_id: PV01
+  at_s: 330
+  enabled: true

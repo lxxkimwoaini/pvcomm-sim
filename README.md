@@ -2,7 +2,7 @@
 
 分布式光伏电力—通信联合仿真平台。研究依据为 [V1.3 方案](docs/分布式光伏电力—通信联合仿真数据集构建方案_V1.3.md) 和 [AGENTS.md](AGENTS.md)。
 
-当前版本为 0.2.0.dev0：已保留 V0.0 工程基础和通过验收的 V0.1 本机 Linux 实验原型，并新增 V0.2 开发物理闭环。基础功能包括配置校验、结构化日志、时钟映射、CLI、FastAPI 配置服务、Vue 校验工具、真实 c104 TCP/IEC 104 三站闭环、独立 P0/P1 抓包、TShark 解析、Parquet 导出、独立 QC 及 M2 只读回放。**V0.1 首周协议开发门禁已通过；未生成正式科研数据集或异常检测结果。** 实际验收状态见 [进度](docs/progress.md)。
+当前版本为 0.3.0.dev0（V0.3 开发中，尚未通过规模门禁）：已保留 V0.0 工程基础和通过验收的 V0.1 本机 Linux 实验原型，已通过 V0.2 三站物理闭环验收，并扩展配置驱动的多站点开发功能。基础功能包括配置校验、结构化日志、时钟映射、CLI、FastAPI 配置服务、Vue 校验工具、真实 c104 TCP/IEC 104 三站闭环、独立 P0/P1 抓包、TShark 解析、Parquet 导出、独立 QC 及 M2 只读回放。**V0.1 首周协议开发门禁已通过；未生成正式科研数据集或异常检测结果。** 实际验收状态见 [进度](docs/progress.md)。
 
 ## 安装与复现
 
@@ -97,3 +97,19 @@ uv run --frozen python scripts/dev.py power-test
 
 
 `configs/v0.2-cloud_shadow.yaml`是历史晴朗背景加显式灰色光学层平流模型，用于秒级辐照扰动验收。衰减由已记录光学厚度/宽度/速度计算，不是随机电气量或实测秒级云影。来源GHI、透过率与原始文件保留Oracle证据。Oahu原站对再分发的限制与聚合目录许可标记冲突，本项目未将其接入、提交或再分发。
+
+
+## V0.3 多站点开发（尚未验收）
+
+配置驱动 N 站点、区域聚合/独立接入链路、与通信分组独立的电气馈线、空间平流云影、差异周期/死区/事件上送、区域分批调控与显式资源不足反馈。参数均为仿真假设，非辉县现场配置。历史小时背景和模型生成秒级扰动严格区分；固定 available_kw 仍仅用于 V0.1 回归。
+
+```sh
+.venv-wsl/bin/python -m pvcomm.cli validate-power-config --config configs/v0.3-03.yaml
+.venv-wsl/bin/python -m pvcomm.cli run --isolated --config configs/v0.3-03.yaml --output-root outputs/unique_v03_run
+.venv-wsl/bin/python -m pvcomm.cli parse --parquet --run-dir outputs/unique_v03_run/v03_03_normal_001
+.venv-wsl/bin/python -m pvcomm.cli qc --run-dir outputs/unique_v03_run/v03_03_normal_001
+```
+
+按 3→10→20→30 逐级验证，`v0.3-30-short.yaml` 为360秒业务预检，`v0.3-30-1h.yaml` 为3600秒验收候选，不能仅凭命令结束宣称QC通过。冻结干净代码、独立输出目录和源文件哈希；抓包先落Linux原生spool，停止后逐份核对SHA256并持久化。失败证据保留，禁止覆盖。计划、实际结果与未完成项见 [V0.3计划](docs/plans/2026-11-25-v03.md) 及进度文档。
+
+Web继续只读实际M2，新增区域覆盖率、配置双拓扑、空间遥测、区域任务、原始回调计数、联合游标事件分页及曲线min/max降采样；原始Arrow/科学数据不降采样。资源诊断位于独立 `/api/diagnostics/runs/{key}/resources`，不进入M2输入。主站图中缺测不读取truth补齐，累计回调数不冒称独立解析APDU数。

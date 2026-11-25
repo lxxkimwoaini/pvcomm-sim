@@ -52,6 +52,15 @@ class DispatchTask(V01Contract):
     batch_interval_s: Annotated[float, Field(ge=0)] = 1.0
 
 
+class NormalDeviceOperation(V01Contract):
+    """Local planned enable/disable, independent of remote dispatch and faults."""
+
+    station_id: Identifier
+    at_s: Annotated[int, Field(strict=True, ge=1)]
+    enabled: bool
+    reason: Literal["planned_local_operation"] = "planned_local_operation"
+
+
 class V03Config(V01Contract):
     schema_version: Literal["0.3"]
     contract_revision: Literal[1, 2] = 1
@@ -65,6 +74,7 @@ class V03Config(V01Contract):
     feeders: Annotated[tuple[FeederGroup, ...], Field(min_length=1, max_length=12)]
     spatial_cloud: SpatialCloud | None = None
     dispatch_tasks: tuple[DispatchTask, ...] = ()
+    device_operations: tuple[NormalDeviceOperation, ...] = ()
     repeat_command_after_s: Annotated[int, Field(strict=True, ge=1)] | None = None
     electrical_step_s: Literal[1] = 1
     powerflow_step_s: Literal[5] = 5
@@ -143,4 +153,13 @@ class V03Config(V01Contract):
             if task.at_s < previous_end or end >= lab.duration_s:
                 raise ValueError("dispatch execution windows overlap or exceed run")
             previous_end = end
+        previous_by_site: dict[str, int] = {}
+        for operation in self.device_operations:
+            if (
+                operation.station_id not in {s.station_id for s in lab.stations}
+                or operation.at_s >= lab.duration_s
+                or operation.at_s <= previous_by_site.get(operation.station_id, 0)
+            ):
+                raise ValueError("invalid or unordered normal device operation")
+            previous_by_site[operation.station_id] = operation.at_s
         return self

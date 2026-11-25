@@ -54,7 +54,9 @@ test('reads real evidence and replays only available observations', async ({
   expect(response.ok()).toBeTruthy()
   const latest = await response.json()
   expect(latest.source).toBe('real_c104_protocol_simulation')
-  expect(latest.stations).toHaveLength(3)
+  expect(latest.stations).toHaveLength(
+    Number(process.env.PVCOMM_E2E_STATIONS ?? 3),
+  )
   expect(JSON.stringify(latest)).not.toMatch(
     /fault_applied|service_violation|p_actual_kw|terminal_command_accepted|code_dirty|interruption/,
   )
@@ -63,9 +65,11 @@ test('reads real evidence and replays only available observations', async ({
   await page.locator('.run-controls .el-select__wrapper').first().click()
   await page.getByRole('option', { name: new RegExp(key) }).click()
   await expect(
-    page.getByRole('heading', { name: '三站通信拓扑' }),
+    page.getByRole('heading', { name: '区域通信拓扑' }),
   ).toBeVisible()
-  await expect(page.locator('.topology-cards .station-card')).toHaveCount(3)
+  await expect(page.locator('.topology-cards .station-card')).toHaveCount(
+    latest.stations.length,
+  )
   const latestPower = [...observed]
     .reverse()
     .find(
@@ -80,9 +84,15 @@ test('reads real evidence and replays only available observations', async ({
           r.station_id === station.station_id &&
           r.ioa === measurement.ioa,
       )
-      expect(measurement.points.map((p: { value: number }) => p.value)).toEqual(
-        raw.slice(-600).map((r) => r.value),
-      )
+      if (latest.stations.length <= 3) {
+        expect(
+          measurement.points.map((p: { value: number }) => p.value),
+        ).toEqual(raw.slice(-600).map((r) => r.value))
+      } else {
+        expect(measurement.points.length).toBeLessThanOrEqual(120)
+        for (const p of measurement.points)
+          expect(raw.some((r) => r.value === p.value)).toBeTruthy()
+      }
     }
   }
   await expect(page.locator('.power-reading').first()).toContainText(
@@ -99,7 +109,7 @@ test('reads real evidence and replays only available observations', async ({
   await expect(page.locator('.power-reading').first()).toContainText(
     (latest.stations[0].latest_power_kw as number).toFixed(2),
   )
-  if (runName.startsWith('v02_')) {
+  if (runName.startsWith('v02_') || runName.startsWith('v03_')) {
     await expect(
       page.getByRole('heading', { name: '光伏电气过程' }),
     ).toBeVisible()

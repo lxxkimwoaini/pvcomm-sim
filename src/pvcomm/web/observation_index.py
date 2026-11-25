@@ -18,10 +18,12 @@ class ObservationIndex:
             "CREATE INDEX series_idx ON observations(station, kind, ioa, stamp, id)"
         )
         self.connection.execute("CREATE INDEX state_idx ON observations(station, kind, stamp, id)")
+        self.connection.execute("CREATE INDEX kind_idx ON observations(kind, stamp, id)")
         self.offsets: dict[Path, int] = {}
         self.ingested_bytes = 0
+        self.raw_totals: dict[tuple[Path, str], tuple[int, int]] = {}
 
-    def ingest(self, path: Path, *, protocol: bool = False) -> None:
+    def ingest(self, path: Path, *, protocol: bool = False, raw_callbacks: bool = False) -> None:
         offset = self.offsets.get(path, 0)
         if path.stat().st_size < offset:
             raise ValueError("observed append-only evidence was truncated")
@@ -50,8 +52,15 @@ class ObservationIndex:
                 "target_kw",
                 "positive_confirmation",
                 "task_id",
+                "dispatch_id",
+                "region_ids",
+                "requested_kw",
+                "allocated_kw",
+                "unallocated_kw",
+                "targets_kw",
             }
         )
+        totals = dict(self.raw_totals)
         with path.open("rb") as stream, self.connection:
             stream.seek(offset)
             while True:
@@ -61,26 +70,48 @@ class ObservationIndex:
                 if not line or not line.endswith(b"\n"):
                     break
                 raw = json.loads(line)
-                if "available_at" not in raw or (
+                if raw_callbacks:
+                    direction = raw.get("direction")
+                    if (
+                        direction not in ("master_send", "master_receive")
+                        or "available_at" not in raw
+                    ):
+                        raise ValueError("invalid master raw callback")
+                    count, size = totals.get((path, direction), (0, 0))
+                    count, size = count + 1, size + raw["length"]
+                    totals[(path, direction)] = count, size
+                    row = {
+                        "event_id": raw["event_id"],
+                        "available_at": raw["available_at"],
+                        "event_type": "statistics_" + direction,
+                        "count": count,
+                        "bytes": size,
+                    }
+                elif "available_at" not in raw or (
                     not protocol and not raw.get("event_type", "").startswith("master_")
                 ):
                     raise ValueError("invalid master observation contract")
-                row = {k: v for k, v in raw.items() if k in fields}
+                else:
+                    row = {k: v for k, v in raw.items() if k in fields}
                 identity = row["apdu_id" if protocol else "event_id"]
-                self.connection.execute(
-                    "INSERT INTO observations VALUES (?, ?, ?, ?, ?, ?)",
-                    (
-                        row["available_at"],
-                        identity,
-                        row.get("station_id"),
-                        "protocol" if protocol else row["event_type"],
-                        row.get("ioa"),
-                        json.dumps(row),
-                    ),
-                )
+                try:
+                    self.connection.execute(
+                        "INSERT INTO observations VALUES (?, ?, ?, ?, ?, ?)",
+                        (
+                            row["available_at"],
+                            identity,
+                            row.get("station_id"),
+                            "protocol" if protocol else row["event_type"],
+                            row.get("ioa"),
+                            json.dumps(row),
+                        ),
+                    )
+                except sqlite3.IntegrityError as exc:
+                    raise ValueError("duplicate observation identity") from exc
                 offset = stream.tell()
         self.ingested_bytes += offset - self.offsets.get(path, 0)
         self.offsets[path] = offset
+        self.raw_totals = totals
 
     def bounds(self) -> tuple[int, int]:
         low = self.connection.execute(
@@ -100,6 +131,7 @@ class ObservationIndex:
         kind: str | None = None,
         ioa: int | None = None,
         limit: int = 100,
+        before: tuple[int, str] | None = None,
     ) -> list[dict[str, Any]]:
         where = ["stamp <= ?"]
         args: list[str | int] = [cursor]
@@ -108,7 +140,12 @@ class ObservationIndex:
                 where.append(f"{column} = ?")
                 args.append(value)
         if kind is None:
-            where.append("kind != 'protocol'")
+            where.append(
+                "kind NOT IN ('protocol', 'statistics_master_send', 'statistics_master_receive')"
+            )
+        if before is not None:
+            where.append("(stamp, id) < (?, ?)")
+            args.extend(before)
         args.append(limit)
         records = self.connection.execute(
             f"SELECT payload FROM observations WHERE {' AND '.join(where)} "

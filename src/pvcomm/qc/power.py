@@ -13,12 +13,14 @@ from pvcomm.power.feeder import FeederNetwork
 from pvcomm.power.runtime import weather_directory
 from pvcomm.power.solar import SolarModel
 from pvcomm.qc.electrical import classify_feeder
+from pvcomm.qc.performance import records
 from pvcomm.qc.v01 import evaluate_run
 from pvcomm.storage.parquet import read_jsonl
 from pvcomm.storage.power_parquet import verify_power_parquet
 from pvcomm.weather import HistoricalWeather, station_weather
 
 VERSION = "v02-power-v6"
+MULTISITE_VERSION = "v03-power-v2"
 TOLERANCE = 1e-6
 
 
@@ -62,6 +64,7 @@ def evaluate_power(root: Path) -> dict[str, Any]:
     bounds, ramps, models, causal, timing = True, True, True, True, True
     errors = []
     q_ramps = True
+    device_status_valid = True
     for device in config.devices:
         own = sorted(
             (r for r in rows if r["station_id"] == device.station_id),
@@ -77,6 +80,15 @@ def evaluate_power(root: Path) -> dict[str, Any]:
         ):
             raise ValueError("station weather provenance mismatch")
         model = SolarModel(device, weather_config)
+        local_operations = sorted(
+            (
+                e
+                for e in terminal
+                if e["event_type"] == "terminal_local_device_operation"
+                and e["station_id"] == device.station_id
+            ),
+            key=lambda e: e["ts_mono_ns"],
+        )
         previous = None
         if not own:
             bounds = ramps = models = causal = False
@@ -131,6 +143,15 @@ def evaluate_power(root: Path) -> dict[str, Any]:
                 / 1e9
             )
             timing &= abs(mapped_elapsed - elapsed) <= 1e-6
+            if isinstance(config, V03Config):
+                enabled = device.enabled
+                for event in local_operations:
+                    if event["ts_mono_ns"] <= row["ts_mono_ns"]:
+                        enabled = event["enabled"]
+                device_status_valid &= row.get("enabled", device.enabled) == enabled
+                device_status_valid &= row["running"] == (
+                    enabled and device.connected and not device.faulted
+                )
             expected_weather = weather.sample(mapped_elapsed)
             models &= all(
                 abs(row[field] - getattr(expected_weather, field)) <= TOLERANCE
@@ -198,6 +219,53 @@ def evaluate_power(root: Path) -> dict[str, Any]:
         timing,
         {"source_time_tolerance_s": 1e-6, "weather_value_tolerance": TOLERANCE},
     )
+    if isinstance(config, V03Config):
+        operations = sorted(
+            (e for e in terminal if e["event_type"] == "terminal_local_device_operation"),
+            key=lambda e: (e["station_id"], e["at_s"]),
+        )
+        expected_ops = sorted(config.device_operations, key=lambda e: (e.station_id, e.at_s))
+        device_status_valid &= len(operations) == len(expected_ops)
+        for event, expected_op in zip(operations, expected_ops, strict=False):
+            device_status_valid &= (
+                all(event[k] == v for k, v in expected_op.model_dump().items())
+                and 0 <= event["applied_scene_s"] - expected_op.at_s < 1.5
+            )
+        check(
+            "normal_device_operations",
+            device_status_valid,
+            {"operations": len(operations), "independent_of_communication_and_faults": True},
+        )
+        status_observations = [
+            e
+            for e in records((root / "observed").glob("master_events*.jsonl"))
+            if e["event_type"] == "master_observed_point" and e.get("ioa") == 2001
+        ]
+        status_delays = []
+        for operation in operations:
+            device = next(d for d in config.devices if d.station_id == operation["station_id"])
+            expected_running = operation["enabled"] and device.connected and not device.faulted
+            matches = [
+                e
+                for e in status_observations
+                if e["station_id"] == operation["station_id"]
+                and e["value"] == expected_running
+                and 0 <= e["ts_mono_ns"] - operation["ts_mono_ns"] < 3_000_000_000
+            ]
+            if matches:
+                status_delays.append(
+                    min(e["ts_mono_ns"] for e in matches) - operation["ts_mono_ns"]
+                )
+        check(
+            "normal_device_status_received",
+            len(status_delays) == len(operations),
+            {
+                "operations": len(operations),
+                "received": len(status_delays),
+                "delay_ms": [d / 1e6 for d in status_delays],
+                "evidence": "actual master IOA2001; independent raw protocol QC checks PCAP",
+            },
+        )
     feeder = FeederNetwork(config)
     groups: dict[int, dict[str, Any]] = {}
     for row in flow:
@@ -256,7 +324,7 @@ def evaluate_power(root: Path) -> dict[str, Any]:
     protocol = evaluate_run(root)
     check("independent_protocol_evidence", protocol["passed"], protocol)
     return {
-        "qc_version": VERSION,
+        "qc_version": MULTISITE_VERSION if isinstance(config, V03Config) else VERSION,
         "run_id": config.protocol.run_id,
         "checks": checks,
         "passed": all(c["passed"] for c in checks.values()),
@@ -269,7 +337,7 @@ def evaluate_power(root: Path) -> dict[str, Any]:
 
 def qc_power(root: Path) -> dict[str, Any]:
     config = power_document(root / "power_config.json")
-    destination = root / "qc" / ("v03-power-v1" if isinstance(config, V03Config) else VERSION)
+    destination = root / "qc" / (MULTISITE_VERSION if isinstance(config, V03Config) else VERSION)
     if destination.exists():
         raise FileExistsError(f"power QC output exists: {destination}")
     report = evaluate_power(root)

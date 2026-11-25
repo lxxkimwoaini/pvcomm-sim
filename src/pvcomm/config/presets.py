@@ -88,6 +88,10 @@ def configuration(count: int, duration: int, *, interruption: bool = False) -> d
         devices.append(device)
     lab["stations"], data["devices"] = stations, devices
     if duration >= 360 and not interruption:
+        data["device_operations"] = [
+            dict(station_id="PV01", at_s=310, enabled=False),
+            dict(station_id="PV01", at_s=330, enabled=True),
+        ]
         capacity = sum(s["capacity_kw"] for s in stations)
         data["dispatch_tasks"] = [
             dict(
