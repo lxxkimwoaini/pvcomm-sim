@@ -47,6 +47,10 @@ V0.0 本地检查、暂存审查、私有仓库创建/推送/SHA 核验与远程
 
 下一任务为 V0.1 Linux 实验前置准备：确认现有 WSL Ubuntu 是负责人授权的隔离环境，在其内准备 Python 3.11/uv/c104、tcpdump/TShark，并核验 namespace/veth/NetEm 权限及清理范围；随后单 RTU 联通，再扩到 3 站和 30 min 双端抓包验收。当前工具缺失且未执行任何特权网络操作，故没有进入 V0.1 正式运行。无需修改科研范围、参数、标签或划分规则。
 
+本次用户授权安装已完成：WSL Ubuntu 安装 tcpdump 4.99.6、TShark/Dumpcap 4.6.4、libpcap 开发包、build-essential、pkg-config；uv 0.13.10；uv 管理 CPython 3.11.15。项目环境目标为 `.venv-wsl/`，尚未把 IEC 104 进程接入网络，也未创建 namespace/veth、修改 tc 或执行抓包实验。
+
+安装后复核（2026-11-25，WSL Ubuntu）：`tcpdump -D` 列出 13 个接口，`dumpcap -D` 列出同一组接口；`tshark -G protocols` 识别 `iec60870_104`，字段查询可见 IEC 60870 解析器；`ip`/`tc`/`make` 可用。`.venv-wsl/bin/python` 成功导入 c104、pvlib 0.16.1、pandapower 3.5.6 和 pydantic 2.14.4。`.venv-wsl/bin/python -m pytest -q -m "not lab"`：49 passed in 5.78s；`.venv-wsl/bin/python -m pvcomm.cli validate-config --config configs/foundation.yaml`：`valid=true`，配置 SHA256 为 `15e441b1026a506b8856d27f6fa8e022304deabf6c80752d56638a3c81e1089e`。上述仅证明工具和 Python 依赖可用，不构成 V0.1 协议闭环验收。
+
 ## 尚未实现/测量
 
 IEC 104 会话与命令闭环、P0/P1 PCAP、三级解析、30 min 正常数据、物理模型、QC 指标、标签/划分/特征与真实运行 Web。未进行现场验证。V0.1 依赖隔离 Linux 工具与权限检查，不能以本阶段探针替代。

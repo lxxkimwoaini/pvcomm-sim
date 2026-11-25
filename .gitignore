@@ -22,6 +22,7 @@
 *.sqlite*
 *.db
 .venv/
+.venv-wsl/
 __pycache__/
 *.py[cod]
 *.egg-info/

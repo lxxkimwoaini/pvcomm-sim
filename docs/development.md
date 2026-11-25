@@ -8,6 +8,8 @@
 
 WSL2 Ubuntu 26.04 可启动，内核 6.6.87.2；默认 root、系统 Python 3.14.4、Docker daemon 29.5.2、ip/tc/make 已存在。没有 uv、tcpdump、TShark/dumpcap。Windows 原生没有 Docker/make/抓包工具。当前不创建 namespace、不修改宿主网络、不启动容器。WSL 的正式实验工具/隔离权限需在 V0.1 专项准备，不能将本机 Python 探针当作 Linux 兼容结果。
 
+2026-11-25 已在该 Ubuntu 实例安装 tcpdump 4.99.6、TShark/Dumpcap 4.6.4、libpcap 开发包、build-essential 和 pkg-config；`apt-get update` 遇到 Docker 官方源一次 TLS reset，但 Ubuntu 官方源安装成功，Docker 源不是本次依赖。使用 Astral 安装器得到 uv 0.13.10（安装器未接受预期的 0.11.13 环境变量）；项目 Python 3.11.15 已由 uv 管理。Linux 项目环境放在仓库 `.venv-wsl/`，不覆盖 Windows `.venv`，该目录已加入 `.gitignore`。版本差异记录为环境事实，CI 仍固定 uv 0.11.13。
+
 ## 命令
 
 首次安装见 README。下表 make 和脚本目标等价，Windows 无 make 时使用 `uv run python scripts/dev.py <target>`。
