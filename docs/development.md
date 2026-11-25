@@ -25,10 +25,20 @@ WSL2 Ubuntu 26.04 可启动，内核 6.6.87.2；默认 root、系统 Python 3.14
 | web-test | ESLint、Prettier check、vue-tsc、Vitest |
 | web-build | 类型检查及 Vite 生产构建 |
 | check | lint/typecheck/test/schemas/web-test/web-build 串行失败即停 |
-| test-lab | 当前未实现，退出 3；不是 skipped 或通过 |
+| test-lab | 授权 Linux 环境执行 `pytest -m lab`；Windows 默认阻断并返回 3 |
 | dev-web | 本机前端；后端独立终端启动 |
 
 `pnpm --dir frontend format` 显式写入前端格式。可选 pre-commit 配置为本地检查 hook，未自动安装到用户 Git。CI 仅使用检查模式，不会自动改代码。
+
+V0.1 实验命令必须在授权的 WSL Linux 环境中执行：
+
+```sh
+.venv-wsl/bin/python -m pytest -m lab
+.venv-wsl/bin/python -m pvcomm.cli run --config configs/v0.1-lab-30m.yaml --output-root outputs
+.venv-wsl/bin/python -m pvcomm.cli parse --run-dir outputs/v01_normal_30m_001
+```
+
+`test-lab` 只负责真实协议集成测试；普通 `make test` 明确使用 `-m "not lab"`。V0.1 运行会创建独立 `run_id` 目录，保留 `manifest.json`、PCAP、双端 APDU 原始记录、主站事件、终端事件、电气状态和 TShark 三层解析 JSONL。输出不进入 Git。
 
 ## 浏览器验证
 

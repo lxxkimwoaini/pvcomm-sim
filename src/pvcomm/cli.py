@@ -8,6 +8,9 @@ from pathlib import Path
 from pvcomm import __version__
 from pvcomm.config import ConfigError, config_sha256, load_config
 from pvcomm.logging import create_logger
+from pvcomm.pipeline.iec104_parser import parse_run
+from pvcomm.scenario.v01_models import load_v01_config, v01_config_sha256
+from pvcomm.scenario.v01_runner import V01Runner
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -18,10 +21,59 @@ def main(argv: list[str] | None = None) -> int:
         "validate-config", help="validate foundation YAML; no simulation"
     )
     validate.add_argument("--config", type=Path, required=True)
-    for name in ("run", "parse", "label", "qc", "split", "features", "benchmark"):
+    validate_lab = commands.add_parser("validate-lab-config", help="validate V0.1 IEC 104 lab YAML")
+    validate_lab.add_argument("--config", type=Path, required=True)
+    parse = commands.add_parser("parse", help="parse a V0.1 PCAP with TShark")
+    parse.add_argument("--run-dir", type=Path, required=True)
+    run = commands.add_parser("run", help="run the V0.1 real IEC 104 local lab")
+    run.add_argument("--config", type=Path, required=True)
+    run.add_argument("--output-root", type=Path, required=True)
+    for name in ("label", "qc", "split", "features", "benchmark"):
         reserved = commands.add_parser(name, help="not implemented in V0.0")
         reserved.add_argument("arguments", nargs=argparse.REMAINDER)
     args, unknown = parser.parse_known_args(argv)
+    if args.command == "validate-lab-config":
+        if unknown:
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}")
+        try:
+            config = load_v01_config(args.config)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        print(
+            json.dumps(
+                {
+                    "valid": True,
+                    "config_sha256": v01_config_sha256(config),
+                    "schema_version": config.schema_version,
+                    "station_count": len(config.stations),
+                }
+            )
+        )
+        return 0
+    if args.command == "run":
+        if unknown:
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}")
+        try:
+            lab_config = load_v01_config(args.config)
+            run_dir = V01Runner(lab_config, args.config, args.output_root).run()
+        except (OSError, ValueError, RuntimeError, TimeoutError) as exc:
+            logger = create_logger("pvcomm.cli", sys.stderr)
+            logger.error(str(exc), extra={"event": "run_failed"})
+            return 1
+        print(json.dumps({"status": "completed", "run_dir": str(run_dir)}))
+        return 0
+    if args.command == "parse":
+        if unknown:
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}")
+        try:
+            summary = parse_run(args.run_dir)
+        except (OSError, ValueError, RuntimeError) as exc:
+            logger = create_logger("pvcomm.cli", sys.stderr)
+            logger.error(str(exc), extra={"event": "parse_failed"})
+            return 1
+        print(json.dumps(summary, sort_keys=True))
+        return 0
     if args.command != "validate-config":
         print(f"{args.command}: not implemented in V0.0; no experiment executed", file=sys.stderr)
         return 3
@@ -29,15 +81,22 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"unrecognized arguments: {' '.join(unknown)}")
     logger = create_logger("pvcomm.cli", sys.stderr)
     try:
-        config = load_config(args.config)
+        foundation_config = load_config(args.config)
     except ConfigError as exc:
         logger.error(str(exc), extra={"event": "config_invalid"})
         return 2
-    digest = config_sha256(config)
-    logger.info("configuration validated", extra={"run_id": config.run_id, "event": "config_valid"})
+    digest = config_sha256(foundation_config)
+    logger.info(
+        "configuration validated",
+        extra={"run_id": foundation_config.run_id, "event": "config_valid"},
+    )
     print(
         json.dumps(
-            {"valid": True, "config_sha256": digest, "schema_version": config.schema_version}
+            {
+                "valid": True,
+                "config_sha256": digest,
+                "schema_version": foundation_config.schema_version,
+            }
         )
     )
     return 0

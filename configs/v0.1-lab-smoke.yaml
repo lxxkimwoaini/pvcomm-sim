@@ -1,0 +1,41 @@
+schema_version: "0.1"
+purpose: iec104_lab
+parameter_basis: simulation_assumption
+run_id: v01_smoke_001
+seed: 104
+host: 127.0.0.1
+capture_interface: lo
+capture_filter: "tcp and (port 25041 or port 25042 or port 25043)"
+duration_s: 20
+warmup_s: 3
+command_after_s: 6
+release_after_s: 12
+command_kw: 60.0
+stations:
+  - station_id: PV01
+    region_id: R01
+    common_address: 1
+    port: 25041
+    capacity_kw: 80.0
+    available_kw: 72.0
+    initial_setpoint_kw: 72.0
+    ramp_kw_per_s: 20.0
+    telemetry_period_s: 2
+  - station_id: PV02
+    region_id: R01
+    common_address: 2
+    port: 25042
+    capacity_kw: 100.0
+    available_kw: 90.0
+    initial_setpoint_kw: 90.0
+    ramp_kw_per_s: 20.0
+    telemetry_period_s: 2
+  - station_id: PV03
+    region_id: R02
+    common_address: 3
+    port: 25043
+    capacity_kw: 140.0
+    available_kw: 126.0
+    initial_setpoint_kw: 126.0
+    ramp_kw_per_s: 20.0
+    telemetry_period_s: 2

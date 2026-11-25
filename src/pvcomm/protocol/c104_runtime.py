@@ -1,0 +1,389 @@
+"""c104 2.2.1 runtime adapters for the V0.1 local laboratory run.
+
+The c104 extension validates callback annotations at runtime.  The adapter
+therefore imports c104 only inside lab execution and assigns the exact
+annotations required by the extension after defining callbacks.  This keeps
+the ordinary Windows/CI environment independent of the optional protocol
+dependency while retaining strict callback contracts in the actual run.
+"""
+
+from __future__ import annotations
+
+import importlib
+import threading
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
+
+from pvcomm.scenario.v01_models import V01StationConfig
+
+RecordEvent = Callable[[str, dict[str, object]], None]
+RecordRaw = Callable[[str, str, bytes], None]
+
+
+def _set_callback_annotations(
+    callback: Callable[..., object], annotations: dict[str, object]
+) -> None:
+    callback.__annotations__ = annotations
+
+
+@dataclass
+class StationState:
+    config: V01StationConfig
+    accepted_setpoint_kw: float
+    actual_kw: float
+    command_count: int = 0
+    last_update_mono: float = 0.0
+
+
+class C104StationEndpoint:
+    """One real c104 server process model and one common address."""
+
+    def __init__(
+        self,
+        config: V01StationConfig,
+        host: str,
+        record_event: RecordEvent,
+        record_raw: RecordRaw,
+    ) -> None:
+        c104 = importlib.import_module("c104")
+        self._c104 = c104
+        self.config = config
+        self._record_event = record_event
+        self._record_raw = record_raw
+        self._lock = threading.Lock()
+        now = time.monotonic()
+        self.state = StationState(
+            config=config,
+            accepted_setpoint_kw=config.initial_setpoint_kw,
+            actual_kw=min(config.available_kw, config.initial_setpoint_kw),
+            last_update_mono=now,
+        )
+        self.server = c104.Server(ip=host, port=config.port, tick_rate_ms=100)
+        station = self.server.add_station(common_address=config.common_address)
+        if station is None:
+            raise RuntimeError(f"failed to add station {config.station_id}")
+        self.station = station
+        self.power_point = station.add_point(
+            io_address=1001,
+            type=c104.Type.M_ME_NC_1,
+            report_ms=config.telemetry_period_s * 1000,
+        )
+        self.accepted_setpoint_point = station.add_point(io_address=1006, type=c104.Type.M_ME_NC_1)
+        self.status_point = station.add_point(
+            io_address=2001,
+            type=c104.Type.M_SP_NA_1,
+            report_ms=config.telemetry_period_s * 1000,
+        )
+        self.command_point = station.add_point(
+            io_address=3001,
+            type=c104.Type.C_SE_NC_1,
+            command_mode=c104.CommandMode.DIRECT,
+        )
+        if any(
+            point is None
+            for point in (
+                self.power_point,
+                self.accepted_setpoint_point,
+                self.status_point,
+                self.command_point,
+            )
+        ):
+            raise RuntimeError(f"failed to create point table for {config.station_id}")
+        self.power_point.value = self.state.actual_kw
+        self.accepted_setpoint_point.value = self.state.accepted_setpoint_kw
+        self.status_point.value = True
+        self._install_callbacks()
+
+    def _install_callbacks(self) -> None:
+        c104 = self._c104
+
+        def on_command(point: Any, previous_info: Any, message: Any) -> Any:
+            target = float(point.value)
+            with self._lock:
+                accepted = 0.0 <= target <= self.config.available_kw
+                if accepted:
+                    self.state.accepted_setpoint_kw = target
+                    self.state.command_count += 1
+                    self.accepted_setpoint_point.value = target
+            self._record_event(
+                "terminal_command_accepted" if accepted else "terminal_command_rejected",
+                {
+                    "station_id": self.config.station_id,
+                    "common_address": self.config.common_address,
+                    "ioa": point.io_address,
+                    "target_kw": target,
+                    "previous_value": getattr(previous_info, "value", None),
+                    "cot": message.cot.name,
+                    "accepted_setpoint_kw": self.state.accepted_setpoint_kw,
+                },
+            )
+            if accepted:
+                self.accepted_setpoint_point.transmit(cause=c104.Cot.SPONTANEOUS)
+                return c104.ResponseState.SUCCESS
+            return c104.ResponseState.FAILURE
+
+        _set_callback_annotations(
+            on_command,
+            {
+                "point": c104.Point,
+                "previous_info": c104.Information,
+                "message": c104.IncomingMessage,
+                "return": c104.ResponseState,
+            },
+        )
+        self.command_point.on_receive(on_command)
+
+        def on_before_power_transmit(point: Any) -> None:
+            now = time.monotonic()
+            with self._lock:
+                elapsed = max(0.0, now - self.state.last_update_mono)
+                target = min(self.config.available_kw, self.state.accepted_setpoint_kw)
+                delta = self.config.ramp_kw_per_s * elapsed
+                if self.state.actual_kw < target:
+                    self.state.actual_kw = min(target, self.state.actual_kw + delta)
+                else:
+                    self.state.actual_kw = max(target, self.state.actual_kw - delta)
+                self.state.last_update_mono = now
+                point.value = self.state.actual_kw
+                actual = self.state.actual_kw
+                accepted = self.state.accepted_setpoint_kw
+            self._record_event(
+                "electrical_state",
+                {
+                    "station_id": self.config.station_id,
+                    "p_actual_kw": actual,
+                    "p_avail_kw": self.config.available_kw,
+                    "p_set_accepted_kw": accepted,
+                    "source": "c104_periodic_transmit",
+                },
+            )
+
+        _set_callback_annotations(on_before_power_transmit, {"point": c104.Point, "return": None})
+        self.power_point.on_before_auto_transmit(on_before_power_transmit)
+
+        def on_before_status_transmit(point: Any) -> None:
+            point.value = True
+
+        _set_callback_annotations(on_before_status_transmit, {"point": c104.Point, "return": None})
+        self.status_point.on_before_auto_transmit(on_before_status_transmit)
+
+        def on_server_send(server: Any, data: bytes) -> None:
+            self._record_raw("rtu_send", self.config.station_id, data)
+
+        _set_callback_annotations(
+            on_server_send, {"server": c104.Server, "data": bytes, "return": None}
+        )
+        self.server.on_send_raw(on_server_send)
+
+        def on_server_receive(server: Any, data: bytes) -> None:
+            self._record_raw("rtu_receive", self.config.station_id, data)
+
+        _set_callback_annotations(
+            on_server_receive, {"server": c104.Server, "data": bytes, "return": None}
+        )
+        self.server.on_receive_raw(on_server_receive)
+
+    def start(self) -> None:
+        self.server.start()
+        self._record_event(
+            "rtu_started",
+            {
+                "station_id": self.config.station_id,
+                "common_address": self.config.common_address,
+                "port": self.config.port,
+            },
+        )
+
+    def stop(self) -> None:
+        self.server.stop()
+        self._record_event("rtu_stopped", {"station_id": self.config.station_id})
+
+
+class C104Master:
+    """One real c104 client controlling the configured RTU endpoints."""
+
+    def __init__(
+        self,
+        host: str,
+        stations: tuple[V01StationConfig, ...],
+        record_event: RecordEvent,
+        record_raw: RecordRaw,
+    ) -> None:
+        c104 = importlib.import_module("c104")
+        self._c104 = c104
+        self._host = host
+        self._stations = stations
+        self._record_event = record_event
+        self._record_raw = record_raw
+        self.client = c104.Client(tick_rate_ms=100, command_timeout_ms=3000)
+        self._connections: dict[str, Any] = {}
+        self._remote_stations: dict[str, Any] = {}
+
+    def _install_connection_callbacks(
+        self, station_config: V01StationConfig, connection: Any
+    ) -> None:
+        c104 = self._c104
+
+        def on_state_change(connection: Any, state: Any) -> None:
+            self._record_event(
+                "master_connection_state",
+                {"station_id": station_config.station_id, "state": state.name},
+            )
+
+        _set_callback_annotations(
+            on_state_change,
+            {"connection": c104.Connection, "state": c104.ConnectionState, "return": None},
+        )
+        connection.on_state_change(on_state_change)
+
+        def on_receive_raw(connection: Any, data: bytes) -> None:
+            self._record_raw("master_receive", station_config.station_id, data)
+
+        _set_callback_annotations(
+            on_receive_raw,
+            {"connection": c104.Connection, "data": bytes, "return": None},
+        )
+        connection.on_receive_raw(on_receive_raw)
+
+        def on_send_raw(connection: Any, data: bytes) -> None:
+            self._record_raw("master_send", station_config.station_id, data)
+
+        _set_callback_annotations(
+            on_send_raw,
+            {"connection": c104.Connection, "data": bytes, "return": None},
+        )
+        connection.on_send_raw(on_send_raw)
+
+    def start(self) -> None:
+        c104 = self._c104
+        for station_config in self._stations:
+            connection = self.client.add_connection(
+                ip=self._host, port=station_config.port, init=c104.Init.ALL
+            )
+            if connection is None:
+                raise RuntimeError(f"failed to create connection for {station_config.station_id}")
+            self._connections[station_config.station_id] = connection
+            self._install_connection_callbacks(station_config, connection)
+        self.client.start()
+        for connection in self._connections.values():
+            connection.connect()
+
+    def wait_until_open(self, timeout_s: float = 10.0) -> None:
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            if all(
+                connection.state == self._c104.ConnectionState.OPEN
+                for connection in self._connections.values()
+            ):
+                for station_config in self._stations:
+                    connection = self._connections[station_config.station_id]
+                    station = connection.get_station(common_address=station_config.common_address)
+                    if station is None:
+                        raise RuntimeError(f"station not initialized: {station_config.station_id}")
+                    self._remote_stations[station_config.station_id] = station
+                    self._install_point_callbacks(station_config, station)
+                return
+            time.sleep(0.05)
+        states = {
+            station_id: connection.state.name
+            for station_id, connection in self._connections.items()
+        }
+        raise TimeoutError(f"IEC 104 connections did not open: {states}")
+
+    def _install_point_callbacks(self, station_config: V01StationConfig, station: Any) -> None:
+        c104 = self._c104
+        for io_address, point_type in (
+            (1001, c104.Type.M_ME_NC_1),
+            (1006, c104.Type.M_ME_NC_1),
+            (2001, c104.Type.M_SP_NA_1),
+        ):
+            point = station.get_point(io_address=io_address)
+            if point is None:
+                point = station.add_point(io_address=io_address, type=point_type)
+            if point is None:
+                raise RuntimeError(
+                    f"failed to bind point {io_address} for {station_config.station_id}"
+                )
+
+            def on_receive(
+                point: Any,
+                previous_info: Any,
+                message: Any,
+                *,
+                _station_id: str = station_config.station_id,
+            ) -> Any:
+                self._record_event(
+                    "master_observed_point",
+                    {
+                        "station_id": _station_id,
+                        "ioa": point.io_address,
+                        "value": point.value,
+                        "cot": message.cot.name,
+                    },
+                )
+                return c104.ResponseState.SUCCESS
+
+            _set_callback_annotations(
+                on_receive,
+                {
+                    "point": c104.Point,
+                    "previous_info": c104.Information,
+                    "message": c104.IncomingMessage,
+                    "return": c104.ResponseState,
+                },
+            )
+            point.on_receive(on_receive)
+        command_point = station.get_point(io_address=3001)
+        if command_point is None:
+            command_point = station.add_point(
+                io_address=3001, type=c104.Type.C_SE_NC_1, command_mode=c104.CommandMode.DIRECT
+            )
+        if command_point is None:
+            raise RuntimeError(f"failed to bind command point for {station_config.station_id}")
+
+    def interrogate_all(self) -> None:
+        for station_config in self._stations:
+            connection = self._connections[station_config.station_id]
+            result = connection.interrogation(
+                common_address=station_config.common_address,
+                cause=self._c104.Cot.ACTIVATION,
+                wait_for_response=True,
+            )
+            self._record_event(
+                "master_interrogation",
+                {
+                    "station_id": station_config.station_id,
+                    "common_address": station_config.common_address,
+                    "success": result,
+                },
+            )
+            if not result:
+                raise RuntimeError(f"interrogation failed for {station_config.station_id}")
+
+    def send_setpoint(
+        self, station_config: V01StationConfig, target_kw: float, action: str
+    ) -> None:
+        station = self._remote_stations[station_config.station_id]
+        point = station.get_point(io_address=3001)
+        if point is None:
+            raise RuntimeError(f"command point missing for {station_config.station_id}")
+        point.value = target_kw
+        result = point.transmit(cause=self._c104.Cot.ACTIVATION)
+        self._record_event(
+            "master_command_sent",
+            {
+                "station_id": station_config.station_id,
+                "ioa": 3001,
+                "target_kw": target_kw,
+                "action": action,
+                "accepted_by_transport": result,
+            },
+        )
+        if not result:
+            raise RuntimeError(f"command was not accepted for {station_config.station_id}")
+
+    def stop(self) -> None:
+        self.client.stop()
+        self._record_event("master_stopped", {})

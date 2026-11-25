@@ -1,6 +1,6 @@
 # PVComm 开发进度
 
-日期：2026-11-25（Asia/Shanghai）。当前阶段：**V0.0 工程基础验收通过**，V0.1 尚未开始。初始只有 AGENTS.md 和 V1.2/V1.3 方案；无 Git 仓库、代码或既有实验。本文件只记录实际执行，不将计划标为完成。
+日期：2026-11-25（Asia/Shanghai）。当前阶段：**V0.0 工程基础验收通过；V0.1 最小协议原型已完成冒烟验收，30 分钟正常运行门禁未完成**。初始只有 AGENTS.md 和 V1.2/V1.3 方案；无 Git 仓库、代码或既有实验。本文件只记录实际执行，不将计划标为完成。
 
 ## 已执行
 
@@ -45,7 +45,7 @@ Python src 基础包、严格不可变配置与哈希、结构化 JSON 日志、
 
 V0.0 本地检查、暂存审查、私有仓库创建/推送/SHA 核验与远程 CI 全部通过。没有依赖用户补做的 GitHub 授权步骤。初始化提交在 main；后续功能进入独立分支，不自动合并未审核 PR。
 
-下一任务为 V0.1 Linux 实验前置准备：确认现有 WSL Ubuntu 是负责人授权的隔离环境，在其内准备 Python 3.11/uv/c104、tcpdump/TShark，并核验 namespace/veth/NetEm 权限及清理范围；随后单 RTU 联通，再扩到 3 站和 30 min 双端抓包验收。当前工具缺失且未执行任何特权网络操作，故没有进入 V0.1 正式运行。无需修改科研范围、参数、标签或划分规则。
+下一任务为 V0.1 30 分钟正常运行门禁：在同一授权 WSL 回环实验环境执行 `configs/v0.1-lab-30m.yaml`，核对双端 PCAP、TShark 解析率、事件关联和资源清理。当前未创建 namespace/veth、未修改 tc、未连接外部地址；无需修改科研范围、参数、标签或划分规则。
 
 本次用户授权安装已完成：WSL Ubuntu 安装 tcpdump 4.99.6、TShark/Dumpcap 4.6.4、libpcap 开发包、build-essential、pkg-config；uv 0.13.10；uv 管理 CPython 3.11.15。项目环境目标为 `.venv-wsl/`，尚未把 IEC 104 进程接入网络，也未创建 namespace/veth、修改 tc 或执行抓包实验。
 
@@ -53,9 +53,18 @@ V0.0 本地检查、暂存审查、私有仓库创建/推送/SHA 核验与远程
 
 远程核验：提交 `bec54cfec8618f06246d239a40cd6f5a5d41d02d` 已推送到 `origin/main`；GitHub Actions CI run `45544659528` 对该 SHA 实际 conclusion=success。
 
+## V0.1 冒烟实际结果（2026-11-25）
+
+- 新增 `src/pvcomm/protocol/c104_runtime.py`：使用 c104 2.2.1 建立 1 主站 + 3 RTU 的真实 TCP/IEC 104 回环通信；点表包含有功遥测 IOA 1001、已接受设定值 IOA 1006、运行状态 IOA 2001 和有功命令 IOA 3001。
+- 新增 `src/pvcomm/scenario/v01_runner.py`、V0.1 严格配置、运行清单和 tcpdump 生命周期；端口 25041/25042/25043，公共地址 1/2/3。
+- 冒烟命令：`wsl.exe bash -lc 'cd /mnt/e/project/pv && .venv-wsl/bin/python -m pytest -q -m lab'`，实际 `1 passed, 47 deselected in 22.79s`。
+- 真实运行 `v01_smoke_001`：manifest `status=completed`；3 次总召唤，6 次主站命令（每站限发/解除各一次），6 次终端接受；双端原始 APDU 250 条；PCAP 约 20 KB，tcpdump 返回码 0。
+- `tshark` 通过端口解码识别 `iec60870_104` 128 帧、`iec60870_asdu` 110 帧；`pvcomm parse --run-dir outputs/v01_smoke_001` 实际生成 `packets.jsonl` 127 行、`iec104_apdu.jsonl` 127 行、`iec104_objects.jsonl` 115 行（每次实际调度可能有 1 帧差异）。解析字段包含帧时间、方向、TCP 长度、APDU I/S/U 控制字段、类型、COT、CA、OA、IOA。
+- 运行目录和 PCAP 在 `outputs/` 下，已被 Git 忽略；没有把原始 PCAP 或运行产物提交到仓库。
+
 ## 尚未实现/测量
 
-IEC 104 会话与命令闭环、P0/P1 PCAP、三级解析、30 min 正常数据、物理模型、QC 指标、标签/划分/特征与真实运行 Web。未进行现场验证。V0.1 依赖隔离 Linux 工具与权限检查，不能以本阶段探针替代。
+30 min 正常数据门禁、P0/P1 双接口 PCAP、物理气象/潮流模型、QC 指标、标签/划分/特征与真实运行 Web 尚未完成。当前 PCAP 是授权 WSL 回环链路的 V0.1 冒烟证据，不是现场网络验证；未创建 namespace/veth 或 NetEm 条件，未执行异常注入。
 
 ## GitHub
 

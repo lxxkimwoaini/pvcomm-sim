@@ -1,6 +1,7 @@
 """Thin, cross-platform development commands. Never manages lab resources."""
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -45,10 +46,11 @@ def execute(target: str) -> int:
         "dev-web": [[*pnpm, "dev"]],
     }
     if target == "test-lab":
-        print(
-            "V0.0: lab harness not implemented; no privileged experiment executed", file=sys.stderr
-        )
-        return 3
+        if sys.platform == "win32" and os.environ.get("PVCOMM_ALLOW_LAB") != "1":
+            print("blocked: run test-lab inside the authorized Linux lab", file=sys.stderr)
+            return 3
+        run([*uv, "pytest", "-m", "lab"])
+        return 0
     if target == "check":
         for child in ("lint", "typecheck", "test", "schemas", "web-test", "web-build"):
             code = execute(child)
