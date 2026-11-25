@@ -78,6 +78,9 @@ def main() -> None:
                 recorder.record_event,
                 recorder.record_raw,
                 state=physical,
+                logical_elapsed=physical.elapsed
+                if physical is not None and isinstance(power, V03Config)
+                else None,
             )
             endpoint.start()
             (root / f"{args.role}.ready").touch(exist_ok=False)
@@ -86,7 +89,8 @@ def main() -> None:
             while not stop.wait(0.05):
                 if power is not None and time.monotonic() >= next_tick:
                     endpoint.tick()
-                    next_tick = time.monotonic() + power.electrical_step_s
+                    while next_tick <= time.monotonic():
+                        next_tick += power.electrical_step_s
                 if paused.is_set() and active:
                     endpoint.stop()
                     active = False
@@ -145,20 +149,25 @@ def main() -> None:
             (root / "master.ready").write_text(str(start), encoding="ascii")
             recorder.record_event("master_business_started", {})
 
-            def wait_until(elapsed: int) -> None:
+            def wait_until(elapsed: float) -> None:
                 if stop.wait(max(0, start + elapsed - time.monotonic())):
                     raise InterruptedError("lab worker cancelled")
 
-            wait_until(config.command_after_s)
-            for station in config.stations:
-                endpoint.send_setpoint(station, config.command_kw, "limit")
-            if power is not None and power.repeat_command_after_s is not None:
-                wait_until(power.repeat_command_after_s)
+            if isinstance(power, V03Config) and power.dispatch_tasks:
+                from pvcomm.business.dispatch import execute_dispatches
+
+                execute_dispatches(power, endpoint, wait_until, recorder.record_event)
+            else:
+                wait_until(config.command_after_s)
                 for station in config.stations:
                     endpoint.send_setpoint(station, config.command_kw, "limit")
-            wait_until(config.release_after_s)
-            for station in config.stations:
-                endpoint.send_setpoint(station, station.initial_setpoint_kw, "release")
+                if power is not None and power.repeat_command_after_s is not None:
+                    wait_until(power.repeat_command_after_s)
+                    for station in config.stations:
+                        endpoint.send_setpoint(station, config.command_kw, "limit")
+                wait_until(config.release_after_s)
+                for station in config.stations:
+                    endpoint.send_setpoint(station, station.initial_setpoint_kw, "release")
             if interruption is not None:
                 wait_until(interruption.start_s + interruption.duration_s + 1)
                 endpoint.recover(interruption.station_id)

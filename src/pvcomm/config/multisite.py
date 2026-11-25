@@ -42,16 +42,28 @@ class SpatialCloud(V01Contract):
     crosswind_width_m: Positive
 
 
+class DispatchTask(V01Contract):
+    dispatch_id: Identifier
+    at_s: Annotated[int, Field(strict=True, ge=1)]
+    region_ids: tuple[Identifier, ...]
+    total_kw: Annotated[float, Field(ge=0)]
+    allocation: Literal["capacity", "observed_available"]
+    batch_size: Annotated[int, Field(strict=True, ge=1, le=30)] = 5
+    batch_interval_s: Annotated[float, Field(ge=0)] = 1.0
+
+
 class V03Config(V01Contract):
     schema_version: Literal["0.3"]
     purpose: Literal["multisite_power_protocol_development"]
     parameter_basis: Literal["simulation_assumption_not_field_calibrated"]
     protocol: MultisiteProtocol
     weather: WeatherConfig
+    weather_by_station: dict[str, WeatherConfig] = Field(default_factory=dict)
     devices: Annotated[tuple[DeviceConfig, ...], Field(min_length=1, max_length=120)]
     regions: Annotated[tuple[RegionConfig, ...], Field(min_length=1, max_length=12)]
     feeders: Annotated[tuple[FeederGroup, ...], Field(min_length=1, max_length=12)]
     spatial_cloud: SpatialCloud | None = None
+    dispatch_tasks: tuple[DispatchTask, ...] = ()
     repeat_command_after_s: Annotated[int, Field(strict=True, ge=1)] | None = None
     electrical_step_s: Literal[1] = 1
     powerflow_step_s: Literal[5] = 5
@@ -61,6 +73,8 @@ class V03Config(V01Contract):
         import ipaddress
 
         lab = self.protocol
+        if not set(self.weather_by_station).issubset({s.station_id for s in lab.stations}):
+            raise ValueError("weather override references unknown station")
         if lab.topology != "isolated":
             raise ValueError("V0.3 requires isolated topology")
         if tuple(d.station_id for d in self.devices) != tuple(s.station_id for s in lab.stations):
@@ -109,4 +123,21 @@ class V03Config(V01Contract):
             raise ValueError("repeat command needs disjoint execution windows")
         if self.spatial_cloud is not None and self.weather.cloud_shadow is None:
             raise ValueError("spatial cloud requires an explicit modeled optical layer")
+        if len({t.dispatch_id for t in self.dispatch_tasks}) != len(self.dispatch_tasks):
+            raise ValueError("dispatch IDs must be unique")
+        previous_end = 0.0
+        for task in self.dispatch_tasks:
+            if (
+                not task.region_ids
+                or len(set(task.region_ids)) != len(task.region_ids)
+                or not set(task.region_ids).issubset(regions)
+            ):
+                raise ValueError("invalid dispatch regions")
+            members = [s for s in lab.stations if s.region_id in task.region_ids]
+            end = (
+                task.at_s + (len(members) - 1) // task.batch_size * (3 + task.batch_interval_s) + 60
+            )
+            if task.at_s < previous_end or end >= lab.duration_s:
+                raise ValueError("dispatch execution windows overlap or exceed run")
+            previous_end = end
         return self

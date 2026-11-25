@@ -12,13 +12,13 @@ from typing import Any
 
 from pvcomm.clock import ClockOrigin, SceneClock
 from pvcomm.config.multisite import V03Config
-from pvcomm.config.power import DeviceConfig, V02Config
+from pvcomm.config.power import DeviceConfig, V02Config, WeatherConfig
 from pvcomm.power.device import Inverter
 from pvcomm.power.feeder import FeederNetwork
 from pvcomm.power.solar import SolarModel
 from pvcomm.protocol.c104_runtime import RecordEvent
 from pvcomm.storage.jsonl import MAX_SNAPSHOT_BYTES, last_complete_record
-from pvcomm.weather import HistoricalWeather
+from pvcomm.weather import HistoricalWeather, station_weather
 
 
 def append_snapshot(path: Path, value: dict[str, Any]) -> None:
@@ -37,12 +37,12 @@ def read_snapshot(path: Path) -> dict[str, Any] | None:
     return last_complete_record(path)
 
 
-def prepare_power(root: Path, config: V02Config | V03Config) -> None:
-    source = Path(config.weather.directory).resolve()
-    weather = HistoricalWeather(source / "weather.json", config.weather)
-    weather.sample(config.protocol.duration_s + 120)
+def prepare_weather(destination: Path, config: WeatherConfig, duration_s: int) -> None:
+    source = Path(config.directory).resolve()
+    weather = HistoricalWeather(source / "weather.json", config)
+    weather.sample(duration_s + 120)
     metadata = json.loads((source / "source.json").read_text(encoding="utf-8"))
-    if metadata["canonical_sha256"] != config.weather.sha256:
+    if metadata["canonical_sha256"] != config.sha256:
         raise ValueError("weather provenance disagrees with configured hash")
     raw = (source / "raw.json").read_bytes()
     if hashlib.sha256(raw).hexdigest() != metadata["files"]["raw.json"]["sha256"]:
@@ -52,9 +52,8 @@ def prepare_power(root: Path, config: V02Config | V03Config) -> None:
         sort_keys=True,
         separators=(",", ":"),
     ).encode()
-    if hashlib.sha256(canonical).hexdigest() != config.weather.sha256:
+    if hashlib.sha256(canonical).hexdigest() != config.sha256:
         raise ValueError("canonical weather differs from retained raw source")
-    destination = root / "truth/weather"
     destination.mkdir(parents=True)
     for name in (
         "raw.json",
@@ -65,6 +64,24 @@ def prepare_power(root: Path, config: V02Config | V03Config) -> None:
         "policy.html",
     ):
         shutil.copyfile(source / name, destination / name)
+
+
+def weather_directory(root: Path, config: V02Config | V03Config, station_id: str) -> Path:
+    base = root / "truth/weather"
+    return (
+        base / station_id
+        if isinstance(config, V03Config) and station_id in config.weather_by_station
+        else base
+    )
+
+
+def prepare_power(root: Path, config: V02Config | V03Config) -> None:
+    prepare_weather(root / "truth/weather", config.weather, config.protocol.duration_s)
+    if isinstance(config, V03Config):
+        for station_id, weather in config.weather_by_station.items():
+            prepare_weather(
+                root / "truth/weather" / station_id, weather, config.protocol.duration_s
+            )
     (root / "power_config.json").write_text(config.model_dump_json(indent=2), encoding="utf-8")
     (root / "truth/ipc").mkdir()
 
@@ -88,15 +105,18 @@ class PhysicalStationState:
             SceneClock(root / "scene.json") if isinstance(config, V03Config) else None
         )
         self._record = record_event
-        self.weather = HistoricalWeather(root / "truth/weather/weather.json", config.weather)
-        self.solar = SolarModel(device, config.weather)
+        weather_config = station_weather(config, device.station_id)
+        self.weather = HistoricalWeather(
+            weather_directory(root, config, device.station_id) / "weather.json", weather_config
+        )
+        self.solar = SolarModel(device, weather_config)
         now = time.monotonic()
         available = self.solar.calculate(self.weather.sample(self.elapsed(now)))["p_avail_kw"]
         self.inverter = Inverter(
             device,
             device.initial_setpoint_kw,
             min(available, device.initial_setpoint_kw),
-            last_update_mono=now,
+            last_update_mono=self.elapsed(now) if self.scene_clock is not None else now,
         )
         self.sample: dict[str, Any] = {}
         self.advance(now)
@@ -123,7 +143,9 @@ class PhysicalStationState:
     def advance(self, now: float) -> None:
         weather = self.weather.sample(self.elapsed(now))
         solar = self.solar.calculate(weather)
-        self.inverter.advance(solar["p_avail_kw"], now)
+        self.inverter.advance(
+            solar["p_avail_kw"], self.elapsed(now) if self.scene_clock is not None else now
+        )
         values = {
             **{
                 k: v.isoformat() if hasattr(v, "isoformat") else v

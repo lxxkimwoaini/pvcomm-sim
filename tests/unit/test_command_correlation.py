@@ -196,6 +196,7 @@ def test_repeated_action_uses_new_application_task_id() -> None:
     endpoint = C104Master.__new__(C104Master)
     endpoint._command_lock = threading.Lock()
     endpoint._command_sequence = 0
+    endpoint._station_locks = {"PV01": threading.Lock()}
     endpoint._c104 = ModuleType("synthetic_unit_c104")
     endpoint._c104.__dict__["Cot"] = SimpleNamespace(ACTIVATION=6)
     config = load_v01_config(Path("configs/v0.1-lab-smoke.yaml")).stations[0]

@@ -8,7 +8,11 @@ import math
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pvcomm.config.multisite import V03Config
+    from pvcomm.config.power import V02Config
 
 from pvcomm.config.power import WeatherConfig
 
@@ -19,6 +23,35 @@ PARAMETERS = {
     "T2M": ("temp_air_c", "C", -80, 65),
     "WS10M": ("wind_speed_m_s", "m/s", 0, 100),
 }
+
+
+def station_weather(config: V02Config | V03Config, station_id: str) -> WeatherConfig:
+    """Retain historical background identity; derive an explicit spatial model.
+
+    Direction is propagation angle counter-clockwise from local east (x).
+    Cloud center arrival is delayed by downwind distance / speed, while a
+    Gaussian crosswind optical depth gives differing amplitudes.
+    """
+    from pvcomm.config.multisite import V03Config
+
+    if not isinstance(config, V03Config):
+        return config.weather
+    background = config.weather_by_station.get(station_id, config.weather)
+    if config.spatial_cloud is None or background.cloud_shadow is None:
+        return background
+    site = next(s for s in config.protocol.stations if s.station_id == station_id)
+    angle = math.radians(config.spatial_cloud.direction_degrees)
+    downwind = site.x_m * math.cos(angle) + site.y_m * math.sin(angle)
+    crosswind = -site.x_m * math.sin(angle) + site.y_m * math.cos(angle)
+    shadow = background.cloud_shadow.model_copy(
+        update={
+            "center_s": background.cloud_shadow.center_s
+            + downwind / background.cloud_shadow.speed_m_s,
+            "optical_depth": background.cloud_shadow.optical_depth
+            * math.exp(-0.5 * (crosswind / config.spatial_cloud.crosswind_width_m) ** 2),
+        }
+    )
+    return background.model_copy(update={"cloud_shadow": shadow})
 
 
 @dataclass(frozen=True)

@@ -25,6 +25,10 @@ class TcpdumpCapture:
     _lines: list[str] = field(default_factory=list, init=False)
     stats: dict[str, int | None] = field(default_factory=dict, init=False)
 
+    @property
+    def process_id(self) -> int | None:
+        return self._process.pid if self._process is not None else None
+
     def start(self) -> None:
         if sys.platform != "linux":
             raise RuntimeError("tcpdump laboratory execution requires Linux")

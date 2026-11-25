@@ -151,6 +151,64 @@
       "title": "DeviceConfig",
       "type": "object"
     },
+    "DispatchTask": {
+      "additionalProperties": false,
+      "properties": {
+        "allocation": {
+          "enum": [
+            "capacity",
+            "observed_available"
+          ],
+          "title": "Allocation",
+          "type": "string"
+        },
+        "at_s": {
+          "minimum": 1,
+          "title": "At S",
+          "type": "integer"
+        },
+        "batch_interval_s": {
+          "default": 1.0,
+          "minimum": 0,
+          "title": "Batch Interval S",
+          "type": "number"
+        },
+        "batch_size": {
+          "default": 5,
+          "maximum": 30,
+          "minimum": 1,
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "dispatch_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Dispatch Id",
+          "type": "string"
+        },
+        "region_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+            "type": "string"
+          },
+          "title": "Region Ids",
+          "type": "array"
+        },
+        "total_kw": {
+          "minimum": 0,
+          "title": "Total Kw",
+          "type": "number"
+        }
+      },
+      "required": [
+        "dispatch_id",
+        "at_s",
+        "region_ids",
+        "total_kw",
+        "allocation"
+      ],
+      "title": "DispatchTask",
+      "type": "object"
+    },
     "FeederConfig": {
       "additionalProperties": false,
       "properties": {
@@ -648,6 +706,14 @@
       "title": "Devices",
       "type": "array"
     },
+    "dispatch_tasks": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/DispatchTask"
+      },
+      "title": "Dispatch Tasks",
+      "type": "array"
+    },
     "electrical_step_s": {
       "const": 1,
       "default": 1,
@@ -722,6 +788,13 @@
     },
     "weather": {
       "$ref": "#/$defs/WeatherConfig"
+    },
+    "weather_by_station": {
+      "additionalProperties": {
+        "$ref": "#/$defs/WeatherConfig"
+      },
+      "title": "Weather By Station",
+      "type": "object"
     }
   },
   "required": [

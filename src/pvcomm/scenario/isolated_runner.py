@@ -22,6 +22,7 @@ from pvcomm.config.multisite import V03Config
 from pvcomm.config.power import V02Config
 from pvcomm.network.isolated import IsolatedNetwork
 from pvcomm.network.regional import RegionalNetwork
+from pvcomm.scenario.resources import ResourceSampler
 from pvcomm.storage.events import RunRecorder
 
 
@@ -93,6 +94,7 @@ def run_isolated(
         scene_clock=SceneClock(root / "scene.json") if isinstance(power, V03Config) else None,
     )
     feeder = None
+    resources = ResourceSampler(root, origin) if isinstance(power, V03Config) else None
 
     def launch(role: str, namespace: str) -> subprocess.Popen[bytes]:
         log = (root / f"{role}.stderr.log").open("x", encoding="utf-8")
@@ -166,6 +168,11 @@ def run_isolated(
         interrupted = False
         resumed = False
         while master.poll() is None:
+            if resources is not None:
+                resources.sample(
+                    [p.pid for p in processes]
+                    + [c.process_id for c in captures if c.process_id is not None]
+                )
             if feeder is not None:
                 feeder.step()
             if any(process.poll() is not None for process in processes[:-1]):

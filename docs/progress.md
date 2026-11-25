@@ -197,3 +197,5 @@ V0.1 验收补齐启动：在 `feat/v01-acceptance` 上实施 `docs/plans/2026-1
 实际本地普通pytest106 passed/10 deselected，mypy69文件通过；Ruff检查/格式化执行后须最终检查；schema已生成0.3。初次新增SQLite测试揭示Windows退出句柄问题已修复；并站fixture的CA引用错误已修正，不调整验收门槛。真实断联120s回归已编写但此记录时尚未执行，V0.3未验收。下一步冻结代码后运行tests/lab/test_v03_prerequisites.py，持久化outputs，检查物理连续、恢复最新遥测、真实双端PCAP及独立QC；通过后方可扩大站点规模。
 
 首轮冻结834a7c0真实120s断联实验：outputs/v03_prerequisite_001/test_physics_continues_without0/v03_03_disconnect_001，completed且code_dirty=false，物理持续/恢复最新值断言通过，独立QC失败于PV01终端回调少一个停止期间S帧；P0/P1报文一致且无工具丢包。失败报告prerequisite-qc.json保留，不计通过。增加rtu_stopping精确边界，QC v3单列停止调用内的入站控制帧；边界外/I帧仍拒绝的回归通过，详ADR0006。普通107 passed/10 deselected、Ruff/mypy69通过；WSL power2 passed/114 deselected。834a7c0 push CI45604695138五job实际success。下一轮独立冻结重验不覆盖001。
+
+第二轮a15824f冻结三站断联：outputs/v03_prerequisite_002/test_physics_continues_without0/v03_03_disconnect_001，真实test1 passed，143.21s；completed/code_dirty=false/cleanup=[]，物理继续、云影变化、恢复最新遥测、独立协议/物理/Arrow全部通过。第一轮失败保留。下一切片增加空间平流、每站历史背景覆盖、独立馈线诊断、周期/死区上送、分站并行命令及区域分批容量/主站可观测资源分配，新增0.3规模配置/资源采样；普通113 passed/10 deselected、mypy73、Ruff通过，真实新功能尚待逐级验证。详ADR0007。

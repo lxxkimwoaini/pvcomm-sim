@@ -10,12 +10,13 @@ from typing import Any
 from pvcomm.config.multisite import V03Config
 from pvcomm.config.power import power_document
 from pvcomm.power.feeder import FeederNetwork
+from pvcomm.power.runtime import weather_directory
 from pvcomm.power.solar import SolarModel
 from pvcomm.qc.electrical import classify_feeder
 from pvcomm.qc.v01 import evaluate_run
 from pvcomm.storage.parquet import read_jsonl
 from pvcomm.storage.power_parquet import verify_power_parquet
-from pvcomm.weather import HistoricalWeather
+from pvcomm.weather import HistoricalWeather, station_weather
 
 VERSION = "v02-power-v6"
 TOLERANCE = 1e-6
@@ -48,7 +49,6 @@ def evaluate_power(root: Path) -> dict[str, Any]:
         hashlib.sha256((root / "truth/weather" / name).read_bytes()).hexdigest() == record["sha256"]
         for name, record in source["files"].items()
     )
-    weather = HistoricalWeather(root / "truth/weather/weather.json", config.weather)
     check(
         "weather_provenance",
         source_valid and source["canonical_sha256"] == config.weather.sha256,
@@ -67,7 +67,16 @@ def evaluate_power(root: Path) -> dict[str, Any]:
             (r for r in rows if r["station_id"] == device.station_id),
             key=lambda r: r["model_mono_ns"],
         )
-        model = SolarModel(device, config.weather)
+        weather_config = station_weather(config, device.station_id)
+        weather_root = weather_directory(root, config, device.station_id)
+        weather = HistoricalWeather(weather_root / "weather.json", weather_config)
+        station_source = json.loads((weather_root / "source.json").read_text())
+        if station_source["canonical_sha256"] != weather_config.sha256 or not all(
+            hashlib.sha256((weather_root / name).read_bytes()).hexdigest() == record["sha256"]
+            for name, record in station_source["files"].items()
+        ):
+            raise ValueError("station weather provenance mismatch")
+        model = SolarModel(device, weather_config)
         previous = None
         if not own:
             bounds = ramps = models = causal = False
@@ -109,7 +118,7 @@ def evaluate_power(root: Path) -> dict[str, Any]:
                     ]
                     causal &= len(accepts) == 1
             elapsed = (
-                datetime.fromisoformat(row["source_weather_ts"]) - config.weather.source_start
+                datetime.fromisoformat(row["source_weather_ts"]) - weather_config.source_start
             ).total_seconds()
             mapped_elapsed = (
                 max(
@@ -161,7 +170,14 @@ def evaluate_power(root: Path) -> dict[str, Any]:
     causal &= (
         len(accepted)
         == len(model_accepts)
-        == len(config.devices) * (2 + int(config.repeat_command_after_s is not None))
+        == (
+            sum(
+                sum(s.region_id in t.region_ids for s in config.protocol.stations)
+                for t in config.dispatch_tasks
+            )
+            if isinstance(config, V03Config) and config.dispatch_tasks
+            else len(config.devices) * (2 + int(config.repeat_command_after_s is not None))
+        )
     )
     for acceptance in accepted:
         matches = [

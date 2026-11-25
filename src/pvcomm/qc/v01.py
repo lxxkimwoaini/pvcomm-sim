@@ -10,11 +10,13 @@ import hashlib
 import json
 import math
 import tempfile
+from bisect import bisect_right
 from collections import Counter, defaultdict, deque
 from pathlib import Path
 from typing import Any
 
 from pvcomm.config.lab import load_v01_config, v01_config_sha256
+from pvcomm.config.multisite import V03Config
 from pvcomm.pipeline.iec104_parser import PARSER_VERSION
 from pvcomm.qc.commands import audit_commands
 from pvcomm.qc.pcap import read_apdus
@@ -265,6 +267,7 @@ def evaluate_run(run_dir: Path) -> dict[str, Any]:
         endpoint_evidence,
     )
 
+    power_config = None
     expected_commands = 2
     if (run_dir / "power_config.json").exists():
         from pvcomm.config.power import power_document
@@ -273,6 +276,11 @@ def evaluate_run(run_dir: Path) -> dict[str, Any]:
         expected_commands += int(power_config.repeat_command_after_s is not None)
     business = {}
     for station in config.stations:
+        station_expected = (
+            sum(station.region_id in t.region_ids for t in power_config.dispatch_tasks)
+            if isinstance(power_config, V03Config) and power_config.dispatch_tasks
+            else expected_commands
+        )
         observations = [r for r in master if r.get("station_id") == station.station_id]
         seen = {r["ioa"] for r in observations if r["event_type"] == "master_observed_point"}
         gi = {r["cot"] for r in parsed if r["type_id"] == 100 and r["ca"] == station.common_address}
@@ -283,20 +291,25 @@ def evaluate_run(run_dir: Path) -> dict[str, Any]:
             if r["event_type"] == "terminal_command_accepted"
             and r["station_id"] == station.station_id
         ]
-
-        def reachable_power(target: float, row: dict[str, Any]) -> float | None:
-            physical = [
+        physical_states = sorted(
+            (
                 s
                 for s in states
                 if s.get("source") == "pvlib_pvwatts_inverter_v02"
-                and s["station_id"] == row["station_id"]
-                and s["model_mono_ns"] <= row["ts_mono_ns"]
-            ]
-            return (
-                min(target, max(physical, key=lambda sample: sample["model_mono_ns"])["p_avail_kw"])
-                if physical
-                else None
-            )
+                and s["station_id"] == station.station_id
+            ),
+            key=lambda s: s["model_mono_ns"],
+        )
+        physical_times = [s["model_mono_ns"] for s in physical_states]
+
+        def reachable_power(
+            target: float,
+            row: dict[str, Any],
+            physical_times: list[int] = physical_times,
+            physical_states: list[dict[str, Any]] = physical_states,
+        ) -> float | None:
+            index = bisect_right(physical_times, row["ts_mono_ns"]) - 1
+            return min(target, physical_states[index]["p_avail_kw"]) if index >= 0 else None
 
         targets = audit_commands(
             master,
@@ -314,7 +327,7 @@ def evaluate_run(run_dir: Path) -> dict[str, Any]:
             "commands": targets,
             "passed": {1001, 1002, 1003, 1006, 2001}.issubset(seen)
             and {6, 7, 10}.issubset(gi)
-            and len(commands) == len(accepted) == expected_commands
+            and len(commands) == len(accepted) == station_expected
             and all(t["passed"] for t in targets),
         }
     check("three_station_business_loop", all(r["passed"] for r in business.values()), business)
