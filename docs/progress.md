@@ -227,3 +227,6 @@ a2187a6十站第二轮120s全QC通过（outputs/v03_scale_s2/v03_10_normal_001�
 30站360s预检55a2d1b全QC通过：/var/lib/pvcomm/runs/v03_scale_s4/v03_30_normal_001，41138完整APDU=100%、31路dropped=0、P99=3.335434ms/max56.908908ms，90命令正确认/接受/反馈独占证据通过，2次本地状态变化真实收到（8.683161/58.346122ms）。正常资源不足2044.4795kW明确保留；completed/clean/cleanup=[]。真实30站Web2 passed/1 skipped（空态），18.4秒真实M2/指标/回放/移动验证通过。
 
 方案6.1正常链路补齐：新增每区域/站点可选双向NetEm，开发配置合计名义10/40/100ms、抖动3/8/20ms、显式分方向seed，0额外丢包；全部仿真假设，非现场参数。独立probe实际确认内核支持seed，自动清理。ADR0009记录版本/参数及按规模重验要求；QC升v03-power-v3单独目录。0.1/0.2不受影响。当前120普通passed、mypy79/Ruff/schema及前端检查实际通过，新增NetEm真实规模结果待记录，仍未通过1h门禁。
+
+
+NetEm首轮三站4cea408运行completed，独立QC v3失败于重组归属帧（matched1090/2344），自动停止规模脚本；路径v03_scale_s5原始PCAP/解析/失败报告保留。定位独立TCP核验器未把补齐前序缺口的帧计入后序完整PDU的依赖时间，修复后续TCP在线因果边界，协议字段和packet_index严格对账不改。新增完整APDU乱序回归；版本v01-evidence-v4/v03-power-v4，待原证据重验。普通122 passed/10 deselected，mypy80、Ruff通过。新增NetEm读回错误seed拒绝回归，tc预检查移到创建运行目录前。V0.2原三站90秒新代码回归4cea408已真实completed，parse/Arrow/QC退出0，目录/var/lib/pvcomm/runs/v03_v02_regression_001/v02_clear_001，保留V0.2复现能力。

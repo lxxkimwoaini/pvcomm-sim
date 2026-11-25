@@ -37,7 +37,7 @@ def run_isolated(
 ) -> Path:
     if sys.platform != "linux":
         raise RuntimeError("isolated IEC 104 laboratory run requires Linux")
-    for name in ("ip", "tcpdump", "tshark"):
+    for name in ("ip", "tcpdump", "tshark", *(("tc",) if isinstance(power, V03Config) else ())):
         if shutil.which(name) is None:
             raise RuntimeError(f"lab tool is unavailable: {name}")
     dependencies = {name: version(name) for name in ("c104", "pydantic", "PyYAML")}

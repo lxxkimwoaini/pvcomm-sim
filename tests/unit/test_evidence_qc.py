@@ -30,6 +30,17 @@ def test_multiple_apdus_and_sequence_wrap() -> None:
     assert all(row["frame_type"] == "U" for row in rows)
 
 
+def test_complete_out_of_order_pdu_waits_for_tcp_sequence_gap() -> None:
+    stream = Stream(100)
+    later = bytes.fromhex("68040b000000")
+    earlier = bytes.fromhex("680407000000")
+    assert stream.feed(106, later, 1, 10) == []
+    rows = stream.feed(100, earlier, 2, 20)
+    assert [r["data_hex"] for r in rows] == [earlier.hex(), later.hex()]
+    assert rows[1]["source_frame_refs"] == [1, 2]
+    assert rows[1]["available_at"] == 20
+
+
 def test_truncated_capture_is_not_counted_as_parse_success(tmp_path: Path) -> None:
     path = tmp_path / "synthetic.pcap"
     path.write_bytes(

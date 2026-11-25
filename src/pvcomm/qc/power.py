@@ -20,7 +20,7 @@ from pvcomm.storage.power_parquet import verify_power_parquet
 from pvcomm.weather import HistoricalWeather, station_weather
 
 VERSION = "v02-power-v6"
-MULTISITE_VERSION = "v03-power-v3"
+MULTISITE_VERSION = "v03-power-v4"
 TOLERANCE = 1e-6
 
 

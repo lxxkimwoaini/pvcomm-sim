@@ -62,8 +62,11 @@ class Stream:
                     "ca": int.from_bytes(raw[10:12], "little")
                     if frame_type == "I" and len(raw) >= 12
                     else None,
-                    "source_frame_refs": sorted({item[1] for item in pieces}),
-                    "available_at": max(item[2] for item in pieces),
+                    # Complete later PDUs can wait behind a sequence gap even
+                    # when all their own bytes arrived earlier. The gap-closing
+                    # packet is a causal TCP delivery dependency, too.
+                    "source_frame_refs": sorted({index, *(item[1] for item in pieces)}),
+                    "available_at": max(timestamp, *(item[2] for item in pieces)),
                 }
             )
         return results
