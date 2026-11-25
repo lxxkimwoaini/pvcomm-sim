@@ -276,6 +276,7 @@ class C104StationEndpoint:
         )
 
     def stop(self) -> None:
+        self._record_event("rtu_stopping", {"station_id": self.config.station_id})
         self.server.stop()
         self._record_event("rtu_stopped", {"station_id": self.config.station_id})
 

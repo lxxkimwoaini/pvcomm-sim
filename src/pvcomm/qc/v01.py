@@ -20,7 +20,7 @@ from pvcomm.qc.commands import audit_commands
 from pvcomm.qc.pcap import read_apdus
 from pvcomm.storage.parquet import read_jsonl, verify_parquet
 
-QC_VERSION = "v01-evidence-v2"
+QC_VERSION = "v01-evidence-v3"
 SIGNATURE = (
     "src_ip",
     "dst_ip",
@@ -47,6 +47,16 @@ def shutdown_capture_tail(row: dict[str, Any], master: list[dict[str, Any]]) -> 
     stopped = [r["ts_event_utc_ns"] for r in master if r["event_type"] == "master_stopped"]
     return bool(
         finished and stopped and finished[0] <= row["available_at"] <= stopped[0] + 100_000_000
+    )
+
+
+def endpoint_stop_control(
+    row: dict[str, Any], address: str, windows: list[tuple[int, int]]
+) -> bool:
+    return bool(
+        row["dst_ip"] == address
+        and row["frame_type"] in ("S", "U")
+        and any(start <= row["available_at"] < end for start, end in windows)
     )
 
 
@@ -207,11 +217,43 @@ def evaluate_run(run_dir: Path) -> dict[str, Any]:
             ("rtu_send" if r["src_ip"] == address else "rtu_receive", r["data_hex"])
             for r in p1["apdus"]
         )
+        # lib60870 can close its application reader while TCP still receives a
+        # final S/U control frame. Retain and report only missing controls whose
+        # PCAP time is strictly inside an explicitly logged server.stop call.
+        # I frames, sends, extra callbacks, and controls outside it still fail.
+        lifecycle = sorted(
+            (
+                r
+                for r in terminal
+                if r.get("station_id") == station.station_id
+                and r["event_type"] in ("rtu_stopping", "rtu_stopped")
+            ),
+            key=lambda r: r["ts_mono_ns"],
+        )
+        stop_windows = [
+            (a["ts_event_utc_ns"], b["ts_event_utc_ns"])
+            for a, b in zip(lifecycle, lifecycle[1:], strict=False)
+            if a["event_type"] == "rtu_stopping" and b["event_type"] == "rtu_stopped"
+        ]
+        missing = p1_counts - terminal_counts
+        lifecycle_controls = []
+        for row in p1["apdus"]:
+            key = ("rtu_send" if row["src_ip"] == address else "rtu_receive", row["data_hex"])
+            if missing[key] and endpoint_stop_control(row, address, stop_windows):
+                missing[key] -= 1
+                lifecycle_controls.append(
+                    {
+                        "packet_index": row["packet_index"],
+                        "available_at": row["available_at"],
+                        "data_hex": row["data_hex"],
+                    }
+                )
         endpoint_evidence[station.station_id] = {
             "p0_apdus": len(station_p0),
             "p1_apdus": len(p1["apdus"]),
             "same_bytes": same,
-            "terminal_callback_match": terminal_counts == p1_counts,
+            "terminal_callback_match": not +missing and not +(terminal_counts - p1_counts),
+            "lifecycle_transport_controls": lifecycle_controls,
             "incomplete_bytes": p1["incomplete_byte_count"],
         }
     check(

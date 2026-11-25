@@ -195,3 +195,5 @@ V0.1 验收补齐启动：在 `feat/v01-acceptance` 上实施 `docs/plans/2026-1
 新增严格0.3配置、配置驱动区域聚合/站点接入资源、通用馈线适配；尚未做规模验收。0.1/0.2原配置不改。修正IPC为最多128KiB尾读；M2投影采用只读observed的临时SQLite增量索引，每次只摄入完整新增行，Windows退出连接回归通过。新增宿主映射与场景起点分离，0.3初始化时气象逻辑固定0，主站/RTU准备后屏障启动1×。新增物理电压/热限/功率平衡/反向潮流/Q斜率/快照时序QC；电气越限不推断通信标签。事务保留严格成功标准，另报告拒绝/超时/缺反馈，不将失败当成功。
 
 实际本地普通pytest106 passed/10 deselected，mypy69文件通过；Ruff检查/格式化执行后须最终检查；schema已生成0.3。初次新增SQLite测试揭示Windows退出句柄问题已修复；并站fixture的CA引用错误已修正，不调整验收门槛。真实断联120s回归已编写但此记录时尚未执行，V0.3未验收。下一步冻结代码后运行tests/lab/test_v03_prerequisites.py，持久化outputs，检查物理连续、恢复最新遥测、真实双端PCAP及独立QC；通过后方可扩大站点规模。
+
+首轮冻结834a7c0真实120s断联实验：outputs/v03_prerequisite_001/test_physics_continues_without0/v03_03_disconnect_001，completed且code_dirty=false，物理持续/恢复最新值断言通过，独立QC失败于PV01终端回调少一个停止期间S帧；P0/P1报文一致且无工具丢包。失败报告prerequisite-qc.json保留，不计通过。增加rtu_stopping精确边界，QC v3单列停止调用内的入站控制帧；边界外/I帧仍拒绝的回归通过，详ADR0006。普通107 passed/10 deselected、Ruff/mypy69通过；WSL power2 passed/114 deselected。834a7c0 push CI45604695138五job实际success。下一轮独立冻结重验不覆盖001。

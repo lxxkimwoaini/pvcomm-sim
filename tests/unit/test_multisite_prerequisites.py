@@ -25,6 +25,21 @@ def test_scene_weather_phase_does_not_include_initialization(tmp_path: Path) -> 
     assert SceneClock(other).elapsed(210_123_456_789) == clock.elapsed(115_123_456_789)
 
 
+def test_lifecycle_control_boundary_never_exempts_application_or_outside_frames() -> None:
+    from pvcomm.qc.v01 import endpoint_stop_control
+
+    row = {"dst_ip": "rtu", "frame_type": "S", "available_at": 10}
+    assert endpoint_stop_control(row, "rtu", [(10, 20)])
+    for change in (
+        {"available_at": 9},
+        {"available_at": 20},
+        {"frame_type": "I"},
+        {"dst_ip": "master"},
+    ):
+        assert not endpoint_stop_control({**row, **change}, "rtu", [(10, 20)])
+    assert not endpoint_stop_control(row, "rtu", [])
+
+
 def test_observed_index_ingests_only_new_complete_bytes_and_never_truth(tmp_path: Path) -> None:
     path = tmp_path / "master.jsonl"
     row = {
