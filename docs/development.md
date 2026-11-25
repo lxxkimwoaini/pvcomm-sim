@@ -65,6 +65,6 @@ PowerShell 设置 PVCOMM_RUN_ROOT 与 PVCOMM_E2E_REAL_ROOT 为同一个真实验
 
 ## V0.2开发验证
 
-`uv run --frozen python scripts/dev.py power-test`运行可选科学依赖专项；data-test另含电气Arrow读回、源哈希与拒绝覆盖。普通test排除lab/data/power，CI分别安装可选组。真实运行命令见README；同路径禁止重跑。historical下载脚本只写data，保留原始响应与政策快照，不提交外部数据。当前新增QC为v02-power-v3（此前历史三场景保留v1及其冻结源码，不以v2覆写），内部调用独立PCAP核验和v01-evidence-v2；旧QC不覆盖。
+`uv run --frozen python scripts/dev.py power-test`运行可选科学依赖专项；data-test另含电气Arrow读回、源哈希与拒绝覆盖。普通test排除lab/data/power，CI分别安装可选组。真实运行命令见README；同路径禁止重跑。historical下载脚本只写data，保留原始响应与政策快照，不提交外部数据。当前新增QC为v02-power-v4（此前历史三场景保留v1及其冻结源码，不以v2覆写），内部调用独立PCAP核验和v01-evidence-v2；旧QC不覆盖。
 
-真实 V0.2 浏览器验收另设置 `PVCOMM_E2E_RUN_NAME` 为运行目录名，例如 `v02_clear_001`；与两个运行根变量一起使用。新增 Oracle Arrow 契约为 `0.2-power-evidence.2`，输出 `parsed/parquet-v02-power-v3`；旧六表契约保持不变。
+真实 V0.2 浏览器验收另设置 `PVCOMM_E2E_RUN_NAME` 为运行目录名，例如 `v02_clear_001`；与两个运行根变量一起使用。新增 Oracle Arrow 契约为 `0.2-power-evidence.2`，输出 `parsed/parquet-v02-power-v4`；旧六表契约保持不变。
