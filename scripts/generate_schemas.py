@@ -6,6 +6,7 @@ from pathlib import Path
 
 from pvcomm.config import FoundationConfig
 from pvcomm.config.lab import V01Config
+from pvcomm.storage.parquet import APDU_FIELDS, EVENT_FIELDS, OBJECT_FIELDS, PACKET_FIELDS, REQUIRED
 from pvcomm.web.app import create_app
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +20,23 @@ def main() -> int:
         "foundation.schema.json": FoundationConfig.model_json_schema(),
         "v01-lab.schema.json": V01Config.model_json_schema(),
         "openapi.json": create_app().openapi(),
+        "v01-parquet.contract.json": {
+            "schema_version": "0.1-protocol-evidence",
+            "timezone": "UTC",
+            "utc_unit": "ns",
+            "tables": {
+                name: {
+                    field: {"arrow_type": kind, "nullable": field not in REQUIRED}
+                    for field, kind in fields.items()
+                }
+                for name, fields in (
+                    ("packets", PACKET_FIELDS),
+                    ("iec104_apdu", APDU_FIELDS),
+                    ("iec104_objects", OBJECT_FIELDS),
+                    ("endpoint_events", EVENT_FIELDS),
+                )
+            },
+        },
     }
     for name, contract in contracts.items():
         path = ROOT / "schemas" / name

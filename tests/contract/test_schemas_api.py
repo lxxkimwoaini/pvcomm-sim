@@ -51,5 +51,5 @@ def test_api_matches_cli_service(config_text: str) -> None:
         ).status_code
         == 422
     )
-    assert client.get("/api/runs").status_code == 404
+    assert client.get("/api/runs").status_code == 200
     assert client.get("/api/truth").status_code == 404

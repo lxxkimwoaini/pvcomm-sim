@@ -29,6 +29,18 @@ jobs:
       - run: uv run --frozen python scripts/generate_schemas.py --check
       - run: uv run --frozen pvcomm validate-config --config configs/foundation.yaml
 
+  data-contracts:
+    name: Arrow data contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
+        with:
+          version: '0.11.13'
+      - run: uv python install 3.11.15
+      - run: uv sync --frozen --group data
+      - run: uv run --frozen python scripts/dev.py data-test
+
   frontend:
     name: Frontend and browser
     runs-on: ubuntu-latest

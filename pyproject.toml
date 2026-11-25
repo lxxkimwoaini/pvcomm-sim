@@ -51,4 +51,4 @@ files = ["src", "scripts", "tests"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
-markers = ["lab: requires explicitly authorized isolated Linux resources"]
+markers = ["lab: requires explicitly authorized isolated Linux resources", "data: requires the optional Arrow data dependency group"]

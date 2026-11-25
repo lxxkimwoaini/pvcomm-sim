@@ -121,3 +121,15 @@ V0.1 验收补齐启动：在 `feat/v01-acceptance` 上实施 `docs/plans/2026-1
 - `git ls-remote --heads origin main` 与首次本地 HEAD 均为上述 SHA；推送后 `git status -sb` 为 `main...origin/main`，工作区干净。
 - GitHub CI run `45539355121`：https://github.com/lxxkimwoaini/pvcomm-sim/actions/runs/45539355121 ，实际 conclusion=success；Python (ubuntu-latest)、Python (windows-latest)、Frontend and browser 三个 job 全部 success。CI 检查的代码 SHA 为上述首次提交；本验收记录随后以仅文档提交入库，避免自引用尚未产生的本提交 SHA。
 - `uv run --frozen python scripts/dev.py test-lab` 实际退出 3，提示实验 harness 尚未实现；不是通过或已执行特权测试。
+
+## V0.1 验收补齐：独立 QC、Arrow 与 M2 Web（2026-11-25）
+
+- 冻结运行提交 `0847def76bab3082f20e7535cb1b9f01c5589f42`。正常独立端点 1800s 运行在 15:10 启动，当前仍在进行，尚不标记整阶段通过。
+- 新增独立 classic-PCAP/TCP 重组、完整 APDU 与 TShark 比对、双端与回调逐字节对应、P99、6条命令确认期限及功率反馈核验。新增可选 Arrow 六表、源/产物哈希与严格 schema 核验，CLI parse --parquet 和 qc，普通 CI 新增数据契约 job。
+- 新增实际 M2 运行 API/Vue 工作台，因果纳秒游标、3站拓扑/曲线/事件/P0列表；服务端拒绝 Oracle、真值和任意路径。ADR0003记录证据边界、测试模型参数及关闭尾帧。
+- Windows `scripts/dev.py check` 实际退出0：64 passed、6 deselected；Ruff、mypy46文件、schema/TS、ESLint/Prettier/vue-tsc、Vitest3项和构建通过。`data-test` 最终3 passed；首次新增测试发现列表子字段 item/element 的严格 schema 不一致，修复显式 element 后通过。
+- 真实根 Playwright 最终2 passed/1 skipped：真实配置和保留 c104 数据流程通过，空态因真实模式跳过；含选择运行、原始数据比对、回放、390px、离线与恢复。首次点击隐藏 combobox 被可见标签遮挡，改为真实选择框外壳；移动图表 ResizeObserver 尚未完成时曾瞬时溢出，图表容器约束与等待可测尺寸后通过，未延长超时或强制点击。
+- 维护 `v01_case_001` 与中断 `v01_case_002` completed，90s；P0分别620/611包、351/349完整APDU、578/574对象，解析率100%，4路内核丢包0。日志映射P99=6.045663/3.987475ms；每运行6条命令期限内确认与实际反馈，恢复核验通过。报告实际写入各自 qc/v01-evidence-v1，重复写拒绝。
+- 维护首次全回调对应失败，经原始字节定位2条I和2条S是业务结束后的关闭尾部。ADR0003公开覆盖边界；全部帧仍留在解析分母和双端核验中，未声称全时段主站回调覆盖。
+- 原两对照 manifest code_dirty=true，未改写；source-provenance旁证核对91个快照文件与Git blob完全一致，3份运行源配置与快照一致；archive SHA256=0daf969a550c75c511ee86a310fce2ec9a3b85b7515e20de1dc7bcfb761425d7。配对共享条件一致，保留group和source组审计；均仅开发证据，不创建正式划分。
+- Vite实际构建JS约808kB，保留>500kB构建提示；尚无30站资源测试，属于V0.3范围。剩余：正常1800s解析/QC、Linux lab回归、远程CI和逐门禁总报告。

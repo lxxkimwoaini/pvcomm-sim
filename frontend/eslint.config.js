@@ -16,7 +16,15 @@ export default ts.config(
   ...vue.configs['flat/recommended'],
   {
     files: ['**/*.vue'],
-    languageOptions: { parserOptions: { parser: ts.parser } },
+    languageOptions: {
+      parserOptions: { parser: ts.parser },
+      globals: {
+        HTMLDivElement: 'readonly',
+        ResizeObserver: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+      },
+    },
     rules: {
       'vue/multi-word-component-names': 'off',
       'vue/html-self-closing': 'off',

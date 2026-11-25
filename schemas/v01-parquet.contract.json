@@ -1,0 +1,355 @@
+{
+  "schema_version": "0.1-protocol-evidence",
+  "tables": {
+    "endpoint_events": {
+      "available_at": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "event_id": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "event_type": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "payload_json": {
+        "arrow_type": "string",
+        "nullable": true
+      },
+      "run_id": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "sim_elapsed_ms": {
+        "arrow_type": "int64",
+        "nullable": false
+      },
+      "station_id": {
+        "arrow_type": "string",
+        "nullable": true
+      },
+      "ts_event_utc_ns": {
+        "arrow_type": "int64",
+        "nullable": false
+      },
+      "ts_mono_ns": {
+        "arrow_type": "int64",
+        "nullable": false
+      }
+    },
+    "iec104_apdu": {
+      "apdu_id": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "available_at": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "ca": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "capture_id": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "cot": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "dst_ip": {
+        "arrow_type": "string",
+        "nullable": true
+      },
+      "dst_port": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "flow_id": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "frame_type": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "negative_confirm": {
+        "arrow_type": "bool",
+        "nullable": true
+      },
+      "oa": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "packet_index": {
+        "arrow_type": "int64",
+        "nullable": false
+      },
+      "packet_len": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "parse_status": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "recv_seq": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "run_id": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "send_seq": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "source_frame_refs": {
+        "arrow_type": "list_int64",
+        "nullable": false
+      },
+      "sq": {
+        "arrow_type": "bool",
+        "nullable": true
+      },
+      "src_ip": {
+        "arrow_type": "string",
+        "nullable": true
+      },
+      "src_port": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "tcp_flags": {
+        "arrow_type": "string",
+        "nullable": true
+      },
+      "tcp_payload_len": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "tcp_retransmission": {
+        "arrow_type": "bool",
+        "nullable": true
+      },
+      "test_flag": {
+        "arrow_type": "bool",
+        "nullable": true
+      },
+      "ts_capture_utc_ns": {
+        "arrow_type": "int64",
+        "nullable": false
+      },
+      "type_id": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "u_function": {
+        "arrow_type": "int64",
+        "nullable": true
+      }
+    },
+    "iec104_objects": {
+      "apdu_id": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "available_at": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "ca": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "capture_id": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "cot": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "dst_ip": {
+        "arrow_type": "string",
+        "nullable": true
+      },
+      "dst_port": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "flow_id": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "frame_type": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "ioa": {
+        "arrow_type": "int64",
+        "nullable": false
+      },
+      "negative_confirm": {
+        "arrow_type": "bool",
+        "nullable": true
+      },
+      "oa": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "object_index": {
+        "arrow_type": "int64",
+        "nullable": false
+      },
+      "packet_index": {
+        "arrow_type": "int64",
+        "nullable": false
+      },
+      "packet_len": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "parse_status": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "quality_raw": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "recv_seq": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "run_id": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "send_seq": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "source_frame_refs": {
+        "arrow_type": "list_int64",
+        "nullable": false
+      },
+      "sq": {
+        "arrow_type": "bool",
+        "nullable": true
+      },
+      "src_ip": {
+        "arrow_type": "string",
+        "nullable": true
+      },
+      "src_port": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "tcp_flags": {
+        "arrow_type": "string",
+        "nullable": true
+      },
+      "tcp_payload_len": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "tcp_retransmission": {
+        "arrow_type": "bool",
+        "nullable": true
+      },
+      "test_flag": {
+        "arrow_type": "bool",
+        "nullable": true
+      },
+      "ts_capture_utc_ns": {
+        "arrow_type": "int64",
+        "nullable": false
+      },
+      "ts_device": {
+        "arrow_type": "string",
+        "nullable": true
+      },
+      "type_id": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "u_function": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "value_enum": {
+        "arrow_type": "string",
+        "nullable": true
+      },
+      "value_num": {
+        "arrow_type": "float64",
+        "nullable": true
+      },
+      "value_status": {
+        "arrow_type": "string",
+        "nullable": true
+      }
+    },
+    "packets": {
+      "capture_id": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "dst_ip": {
+        "arrow_type": "string",
+        "nullable": true
+      },
+      "dst_port": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "flow_id": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "packet_index": {
+        "arrow_type": "int64",
+        "nullable": false
+      },
+      "packet_len": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "run_id": {
+        "arrow_type": "string",
+        "nullable": false
+      },
+      "src_ip": {
+        "arrow_type": "string",
+        "nullable": true
+      },
+      "src_port": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "tcp_flags": {
+        "arrow_type": "string",
+        "nullable": true
+      },
+      "tcp_payload_len": {
+        "arrow_type": "int64",
+        "nullable": true
+      },
+      "tcp_retransmission": {
+        "arrow_type": "bool",
+        "nullable": true
+      },
+      "ts_capture_utc_ns": {
+        "arrow_type": "int64",
+        "nullable": false
+      }
+    }
+  },
+  "timezone": "UTC",
+  "utc_unit": "ns"
+}

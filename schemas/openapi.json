@@ -1,6 +1,111 @@
 {
   "components": {
     "schemas": {
+      "EventView": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action"
+          },
+          "available_at": {
+            "title": "Available At",
+            "type": "string"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "ioa": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ioa"
+          },
+          "positive_confirmation": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Positive Confirmation"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "station_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Station Id"
+          },
+          "target_kw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Kw"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "event_id",
+          "event_type",
+          "available_at",
+          "station_id"
+        ],
+        "title": "EventView",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -37,6 +142,310 @@
           }
         },
         "title": "Health",
+        "type": "object"
+      },
+      "Point": {
+        "additionalProperties": false,
+        "properties": {
+          "available_at": {
+            "title": "Available At",
+            "type": "string"
+          },
+          "sim_elapsed_ms": {
+            "title": "Sim Elapsed Ms",
+            "type": "integer"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "available_at",
+          "sim_elapsed_ms",
+          "value"
+        ],
+        "title": "Point",
+        "type": "object"
+      },
+      "ProtocolView": {
+        "additionalProperties": false,
+        "properties": {
+          "apdu_id": {
+            "title": "Apdu Id",
+            "type": "string"
+          },
+          "available_at": {
+            "title": "Available At",
+            "type": "string"
+          },
+          "ca": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ca"
+          },
+          "cot": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cot"
+          },
+          "frame_type": {
+            "title": "Frame Type",
+            "type": "string"
+          },
+          "recv_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recv Seq"
+          },
+          "send_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Seq"
+          },
+          "type_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Id"
+          }
+        },
+        "required": [
+          "apdu_id",
+          "available_at",
+          "frame_type",
+          "type_id",
+          "cot",
+          "ca",
+          "send_seq",
+          "recv_seq"
+        ],
+        "title": "ProtocolView",
+        "type": "object"
+      },
+      "RunList": {
+        "additionalProperties": false,
+        "properties": {
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/RunSummary"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "title": "RunList",
+        "type": "object"
+      },
+      "RunSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor_utc_ns": {
+            "title": "Cursor Utc Ns",
+            "type": "string"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/EventView"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "first_available_at": {
+            "title": "First Available At",
+            "type": "string"
+          },
+          "last_available_at": {
+            "title": "Last Available At",
+            "type": "string"
+          },
+          "limitations": {
+            "default": "V0.1 协议测试模型；固定可用功率，未接入气象或潮流；功率为主站收到的遥测。",
+            "title": "Limitations",
+            "type": "string"
+          },
+          "mode": {
+            "const": "M2",
+            "default": "M2",
+            "title": "Mode",
+            "type": "string"
+          },
+          "protocol": {
+            "items": {
+              "$ref": "#/components/schemas/ProtocolView"
+            },
+            "title": "Protocol",
+            "type": "array"
+          },
+          "protocol_status": {
+            "enum": [
+              "parsed",
+              "not_yet_parsed"
+            ],
+            "title": "Protocol Status",
+            "type": "string"
+          },
+          "run_key": {
+            "title": "Run Key",
+            "type": "string"
+          },
+          "source": {
+            "const": "real_c104_protocol_simulation",
+            "default": "real_c104_protocol_simulation",
+            "title": "Source",
+            "type": "string"
+          },
+          "stations": {
+            "items": {
+              "$ref": "#/components/schemas/StationView"
+            },
+            "title": "Stations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "run_key",
+          "cursor_utc_ns",
+          "first_available_at",
+          "last_available_at",
+          "stations",
+          "events",
+          "protocol",
+          "protocol_status"
+        ],
+        "title": "RunSnapshot",
+        "type": "object"
+      },
+      "RunSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "run_key": {
+            "title": "Run Key",
+            "type": "string"
+          },
+          "source": {
+            "const": "real_c104_protocol_simulation",
+            "default": "real_c104_protocol_simulation",
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_key",
+          "status"
+        ],
+        "title": "RunSummary",
+        "type": "object"
+      },
+      "StationView": {
+        "additionalProperties": false,
+        "properties": {
+          "capacity_kw": {
+            "title": "Capacity Kw",
+            "type": "number"
+          },
+          "common_address": {
+            "title": "Common Address",
+            "type": "integer"
+          },
+          "connection_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connection State"
+          },
+          "latest_power_kw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Power Kw"
+          },
+          "power": {
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            },
+            "title": "Power",
+            "type": "array"
+          },
+          "power_available_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Power Available At"
+          },
+          "region_id": {
+            "title": "Region Id",
+            "type": "string"
+          },
+          "station_id": {
+            "title": "Station Id",
+            "type": "string"
+          },
+          "telemetry_period_s": {
+            "title": "Telemetry Period S",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "station_id",
+          "region_id",
+          "common_address",
+          "capacity_kw",
+          "telemetry_period_s",
+          "connection_state",
+          "latest_power_kw",
+          "power_available_at",
+          "power"
+        ],
+        "title": "StationView",
         "type": "object"
       },
       "ValidationError": {
@@ -148,6 +557,91 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/api/runs": {
+      "get": {
+        "operationId": "runs_api_runs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Runs"
+      }
+    },
+    "/api/runs/{run_key}/snapshot": {
+      "get": {
+        "operationId": "snapshot_api_runs__run_key__snapshot_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_key",
+            "required": true,
+            "schema": {
+              "title": "Run Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "at_ns",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "At Ns"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "const": "M2",
+              "default": "M2",
+              "title": "Mode",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Snapshot"
       }
     },
     "/api/scenarios/validate": {

@@ -31,3 +31,11 @@ ClockOrigin 的 ts_utc_ns / ts_mono_ns 为同宿主映射，mapping_uncertainty_
 manifest 区分 `completed` 与 `qc_status=pending`，保存代码 SHA/dirty 标记、配置哈希、时钟映射和采集结果。独立端点模式的 captures 包含 P0 和每站 P1 的 SHA256、tcpdump 返回码、捕获计数及内核丢包数。内核丢包为零不单独证明业务交付率或全链路无丢包。
 
 事件 ID 包含记录器端点角色、事件流及局部序号，避免各 RTU 独立进程从 1 计数导致跨文件重复；联合主键为 run_id/event_id。抓包使用 16384 KiB 缓冲区，实际值写入捕获统计 `buffer_size_kib`；不能以缓冲区配置代替实际丢包统计。
+
+## V0.1 验收证据与 Parquet
+
+实验配置增加 `topology=isolated` 与可选 `interruption`（station_id/start_s/duration_s/planned）。同端口只有独立端点模式可用，中断目标必须存在、在解除限发后开始且留出恢复观测。计划维护必须在实际中断前进入主站可观测事件；控制器的施加记录只进入 truth。
+
+`parsed/parquet-v01/` 保存 packets、iec104_apdu、iec104_objects、master_events、terminal_events、electrical_state 六表，模式 `0.1-protocol-evidence`。机器契约为 schemas/v01-parquet.contract.json；packet/APDU/object 的主键和重组引用保持 JSONL，整数时间使用 int64/ns/UTC，帧引用为 list<int64>，工程单位写入 schema 元数据。事件表公共字段有类型，其他字段保存在 payload_json；Oracle 表不能作为 M2 读取来源。校验必需列非空、metadata、行数、源与产物 SHA256，源路径用 POSIX 相对路径以跨 Windows/WSL 核验。
+
+`qc/v01-evidence-v1/report.json` 与原 manifest 分离，不改写原始 qc_status=pending。报告含完整 APDU 分母、解析对应、回调映射 P99、双端字节、期限内确认、实际功率和恢复证据。所有层次标签仅为 development_audit_only 的首周中断审计，不属于 V0.4 冻结标签、模型特征或正式划分。业务关闭尾部另列，完整帧不从解析分母删除，详见 ADR 0003。

@@ -38,7 +38,7 @@ PVCOMM_ALLOW_LAB=1 .venv-wsl/bin/python -m pytest -m lab
 .venv-wsl/bin/python -m pvcomm.cli parse --run-dir outputs/new_isolated_run/v01_smoke_001
 ```
 
-`test-lab` 只负责真实协议集成测试；普通 `make test` 明确使用 `-m "not lab"`。共享 checkout 中不可直接以默认 `uv run` 选择 WSL 环境；使用 `.venv-wsl/bin/python`，避免触碰 Windows `.venv`。
+`test-lab` 只负责真实协议集成测试；普通 `make test` 明确使用 `-m "not lab and not data"`。共享 checkout 中不可直接以默认 `uv run` 选择 WSL 环境；使用 `.venv-wsl/bin/python`，避免触碰 Windows `.venv`。
 
 运行目录保留配置源文、有效配置、manifest、PCAP、tcpdump stderr/统计和两端应用证据。`observed/` 仅存主站记录，RTU APDU、终端事件和设备状态存 `truth/`；旧版回环记录中的混合文件不应用于研究特征。解析写新的版本目录，成功后原子提交；重跑同版本不会覆盖。取消 CLI 返回 130，保留 manifest 和部分证据。`--isolated` 的宿主路由与 namespace 清理由 lab 测试前后比对。
 
@@ -56,3 +56,9 @@ pnpm --dir frontend test:e2e
 普通 CI 对 Ubuntu/Windows 执行 frozen 安装、Ruff/mypy/pytest/schema；前端 job 检查锁文件、lint/格式/类型/单测/build、生成类型和 Chromium e2e。没有特权、NetEm、PCAP 或正式数据 QC。完整 CI 状态见 progress，不能由本地结果推断远程通过。
 
 main 初始提交后保持稳定，新任务使用 feat/fix/chore/docs 分支。每个验收切片更新进度、审查 diff 后 Conventional Commit，在授权私有 origin 推送；不自动合并未审核 PR。不要提交 data/outputs、PCAP、Parquet、凭据、模型权重；新增 fixture 必须记录来源/许可/测试用途。
+
+## 可选 Arrow 数据契约与真实 UI 验收
+
+Windows：`uv sync --frozen --group data`；`uv run --frozen python scripts/dev.py data-test`。WSL 共享目录必须显式选择环境：`UV_PROJECT_ENVIRONMENT=.venv-wsl uv sync --frozen --group protocol --group data`，之后继续使用 `.venv-wsl/bin/python`。已实际安装 pyarrow 23.0.1，不能将基础安装没有该组当作数据测试通过。普通 CI 增加独立 Arrow job。
+
+PowerShell 设置 PVCOMM_RUN_ROOT 与 PVCOMM_E2E_REAL_ROOT 为同一个真实验收运行根，再执行 `pnpm --dir frontend test:e2e`，覆盖真实数据选择、回放、桌面/移动视口及浏览器离线与恢复。无该环境变量时，CI 明确跳过真实运行用例，另执行空运行与配置用例；不使用 Mock 冒充真实协议验收。截图与测试轨迹只保存在已忽略的 frontend/test-results。
