@@ -117,6 +117,7 @@ def main() -> None:
                         strict=True,
                     )
                 ),
+                managed_lifecycle=isinstance(power, V03Config),
             )
             endpoint.start()
             endpoint.wait_until_open()

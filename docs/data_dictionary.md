@@ -52,3 +52,5 @@ manifest 区分 `completed` 与 `qc_status=pending`，保存代码 SHA/dirty 标
 ## V0.3 开发点表增量（配置contract_revision=2）
 
 pvcomm-v03继承既有点表，新增M_ME_NC_1 IOA1009=站点入线loading_percent（%），1010=变压器loading_percent（%），1011=入线首端p_from（kW，上游→下游为正）。只有实际到达主站的遥测进入M2，不能按Oracle补值。原0.1/0.2 Arrow表保持版本和字段；扩展数值仍进入统一协议对象表，馈线诊断原始事件位于truth，不能作为默认观测。场景scene.json和0.3 sim_elapsed_ms不包含初始化时间，UTC/monotonic映射独立保留。
+
+当前独立核验输出为qc/v03-power-v4（V0.3）、qc/v02-power-v6（V0.2）；内部协议版本v01-evidence-v4。旧版本目录与失败证据不改写。TCP后序完整APDU在前序缺口填补后才可交付，source_frame_refs包含该依赖帧，available_at不早于其时间；packet_index仍参与与TShark的严格对账，详ADR0009。

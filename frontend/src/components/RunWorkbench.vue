@@ -348,7 +348,12 @@ onBeforeUnmount(() => {
   </section>
   <template v-if="snapshot">
     <ElAlert :title="snapshot.limitations" type="info" :closable="false" />
-    <section class="status-strip" aria-label="运行状态">
+    <section
+      class="status-strip"
+      aria-label="运行状态"
+      :data-observation-cursor-ns="snapshot.cursor_utc_ns"
+      :data-observation-mode="live ? 'live' : 'replay'"
+    >
       <div><span>数据来源</span><strong>真实协议仿真</strong></div>
       <div><span>观测模式</span><strong>M2 主站</strong></div>
       <div>
@@ -407,6 +412,8 @@ onBeforeUnmount(() => {
           v-for="station in visibleStations"
           :key="station.station_id"
           class="station-card"
+          :data-station-id="station.station_id"
+          :data-power-available-ns="station.power_available_at"
         >
           <span class="link-label"
             >主站 → {{ station.region_id }} 汇聚 → 站点接入</span

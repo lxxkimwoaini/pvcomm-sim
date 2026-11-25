@@ -2,6 +2,7 @@
 
 import json
 import math
+import sys
 from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from pathlib import Path
@@ -24,6 +25,111 @@ def distribution(values: Iterable[float]) -> dict[str, float | int | None]:
         "p95": ordered[math.ceil(len(ordered) * 0.95) - 1] if ordered else None,
         "p99": ordered[math.ceil(len(ordered) * 0.99) - 1] if ordered else None,
         "max": ordered[-1] if ordered else None,
+    }
+
+
+def web_performance_report(root: Path) -> dict[str, Any]:
+    """Summarize the explicit real-browser workload, retaining missing evidence."""
+    workload = json.loads((root / "workload.json").read_text(encoding="utf-8"))
+    origin, phase_s = workload["origin_utc_ms"], workload["phase_seconds"]
+    phases = list(records([root / "phases.jsonl"]))
+    requests = list(records([root / "requests.jsonl"]))
+    displays = list(records([root / "display.jsonl"]))
+    errors = list(records([root / "errors.jsonl"])) if (root / "errors.jsonl").exists() else []
+    api_root = workload["api_measurements_linux"]
+    if sys.platform == "win32":
+        api_root = "\\\\wsl.localhost\\Ubuntu" + api_root.replace("/", "\\")
+    api_rows = list(records([Path(api_root) / "resources.jsonl"]))
+    windows_rows = list(records([root / "windows-resources.jsonl"]))
+    browser_rows = list(records([root / "browser.jsonl"]))
+    delay = [
+        sample["master_available_to_paint_ms"]
+        for row in displays
+        if row["mode"] == "live" and phase_s <= row["elapsed_s"] < 2 * phase_s
+        for sample in row["newly_displayed_power"]
+    ]
+    delays = distribution(delay)
+    summaries = {}
+    for name, index in (("live", 1), ("replay", 2)):
+        subset = [r for r in requests if r["phase"] == name]
+        api = [
+            r
+            for r in api_rows
+            if index * phase_s <= (r["ts_utc_ns"] / 1e6 - origin) / 1000 < (index + 1) * phase_s
+        ]
+        windows = [
+            r
+            for r in windows_rows
+            if index * phase_s <= (r["ts_utc_ms"] - origin) / 1000 < (index + 1) * phase_s
+        ]
+        heap = [
+            metric["value"]
+            for r in browser_rows
+            if index * phase_s <= r["elapsed_s"] < (index + 1) * phase_s
+            for metric in r["metrics"]
+            if metric["name"] == "JSHeapUsedSize"
+        ]
+        summaries[name] = {
+            "requests": len(subset),
+            "request_span_s": (
+                max(r["elapsed_s"] for r in subset) - min(r["elapsed_s"] for r in subset)
+                if subset
+                else 0
+            ),
+            "non_200_responses": sum(r["status"] != 200 for r in subset),
+            "payload_bytes": sum(r["bytes"] for r in subset),
+            "request_end_to_end_ms": distribution(r["latency_ms"] for r in subset),
+            "server_ms": distribution(r["server_ms"] for r in subset),
+            "api_cpu_percent_one_core": distribution(
+                r["cpu_percent_one_core"] for r in api if r["cpu_percent_one_core"] is not None
+            ),
+            "api_rss_bytes": distribution(r["rss_bytes"] for r in api),
+            "api_disk_read_bytes_first_last": [
+                r["disk_read_bytes"] for r in api[:: max(1, len(api) - 1)]
+            ],
+            "api_disk_write_bytes_first_last": [
+                r["disk_write_bytes"] for r in api[:: max(1, len(api) - 1)]
+            ],
+            "windows_cpu_percent_one_core": distribution(
+                r["cpu_percent_one_core"] for r in windows if r["cpu_percent_one_core"] is not None
+            ),
+            "windows_working_set_bytes_sum": distribution(
+                r["working_set_bytes_sum"] for r in windows
+            ),
+            "browser_js_heap_bytes": distribution(heap),
+        }
+    passed = (
+        not workload["standalone"]
+        and not workload["client_code_dirty"]
+        and phase_s == 1200
+        and {r["phase"] for r in phases} >= {"off", "live", "replay", "completed"}
+        and bool(delay)
+        and min(delay) >= 0
+        and delays["p95"] is not None
+        and delays["p95"] <= 2000
+        and not errors
+        and all(
+            s["requests"] > 0
+            and s["request_span_s"] >= phase_s * 0.9
+            and s["non_200_responses"] == 0
+            and s["api_rss_bytes"]["samples"] > 0
+            and s["windows_working_set_bytes_sum"]["samples"] > 0
+            for s in summaries.values()
+        )
+    )
+    return {
+        "workload": workload,
+        "phase_markers": phases,
+        "by_phase": summaries,
+        "live_new_power_available_to_approximate_paint_ms": delays,
+        "errors": errors,
+        "passed": passed,
+        "limitations": (
+            "M2 master availability to approximate browser paint, excludes initial snapshots; "
+            "replay ages excluded. Windows process-tree memory can double count shared pages; "
+            "Linux API measured separately. Sequential phases are engineering diagnostics, "
+            "not a randomized causal performance experiment."
+        ),
     }
 
 

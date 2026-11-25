@@ -1,6 +1,6 @@
 // Explicit acceptance workload: real API/browser, never synthetic observations.
 import process from 'node:process'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import {
   appendFileSync,
   existsSync,
@@ -53,10 +53,41 @@ const record = (kind, row) =>
   )
 record('phases', { phase: 'off', standalone_replay_preflight: standalone })
 let api, vite, monitor, browserServer, browser
-const linuxMeasurements = `${rootLinux}/web-measurements-${name}`
+const measurementId = createHash('sha256')
+  .update(output)
+  .digest('hex')
+  .slice(0, 12)
+const linuxMeasurements = `${rootLinux}/web-measurements-${name}-${measurementId}`
 const windowsMeasurements = linuxMeasurements
   .replace(/^\//, '\\\\wsl.localhost\\Ubuntu\\')
   .replaceAll('/', '\\')
+if (existsSync(windowsMeasurements))
+  throw Error('API measurement output exists')
+const clientCode = execFileSync('git', ['rev-parse', 'HEAD'], {
+  encoding: 'utf8',
+}).trim()
+const clientDirty = !!execFileSync('git', ['status', '--porcelain'], {
+  encoding: 'utf8',
+}).trim()
+writeFileSync(
+  join(output, 'workload.json'),
+  JSON.stringify({
+    source_linux: sourceLinux,
+    run_root_linux: rootLinux,
+    run_name: name,
+    api_measurements_linux: linuxMeasurements,
+    client_code_version: clientCode,
+    client_code_dirty: clientDirty,
+    standalone,
+    phase_seconds: phaseSeconds,
+    origin_utc_ms: originMs,
+    node_version: process.version,
+    display_measurement:
+      'new latest M2 power per station after initial snapshot; two animation frames approximate paint',
+  }),
+)
+if (clientDirty && !standalone)
+  throw Error('formal browser measurements require clean committed source')
 try {
   while (elapsed() < phaseSeconds) await delay(1000)
   api = spawn(
@@ -95,6 +126,8 @@ try {
   )
   const readyDeadline = Date.now() + 60000
   while (true) {
+    if (api.exitCode !== null) throw Error(`API helper exited: ${api.exitCode}`)
+    if (vite.exitCode !== null) throw Error(`Vite exited: ${vite.exitCode}`)
     try {
       if (
         (await globalThis.fetch('http://127.0.0.1:8000/api/health')).ok &&
@@ -132,6 +165,52 @@ try {
   )
   const page = await browser.newPage({
     viewport: { width: 1440, height: 1000 },
+  })
+  await page.exposeFunction('pvcommRecordDisplay', (row) =>
+    record('display', row),
+  )
+  await page.addInitScript(() => {
+    // Measure genuine rendered M2 timestamps. Only newly displayed power
+    // samples after each station's initial snapshot contribute to live delay.
+    // Two animation frames approximate visible paint; they are not a sensor
+    // timestamp or a claim about display hardware scanout.
+    const { document, MutationObserver, requestAnimationFrame } = globalThis
+    let previousCursor = ''
+    const previousPower = new Map()
+    new MutationObserver(() => {
+      const status = document.querySelector('[data-observation-cursor-ns]')
+      const cursor = status?.getAttribute('data-observation-cursor-ns')
+      if (!cursor || cursor === previousCursor) return
+      previousCursor = cursor
+      const mode = status.getAttribute('data-observation-mode')
+      const samples = []
+      for (const card of document.querySelectorAll('[data-station-id]')) {
+        const site = card.getAttribute('data-station-id')
+        const stamp = card.getAttribute('data-power-available-ns')
+        if (stamp && stamp !== previousPower.get(site)) {
+          if (previousPower.has(site))
+            samples.push({ site, available_at: stamp })
+          previousPower.set(site, stamp)
+        }
+      }
+      const observedMs = Date.now()
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          const paintedMs = Date.now()
+          void globalThis.pvcommRecordDisplay({
+            mode,
+            cursor_ns: cursor,
+            dom_to_paint_ms: paintedMs - observedMs,
+            painted_utc_ms: paintedMs,
+            newly_displayed_power: samples.map((sample) => ({
+              ...sample,
+              master_available_to_paint_ms:
+                paintedMs - Number(BigInt(sample.available_at) / 1000000n),
+            })),
+          })
+        }),
+      )
+    }).observe(document, { subtree: true, childList: true, attributes: true })
   })
   page.on('pageerror', (error) => record('errors', { message: error.message }))
   page.on('response', async (response) => {

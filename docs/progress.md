@@ -230,3 +230,11 @@ a2187a6十站第二轮120s全QC通过（outputs/v03_scale_s2/v03_10_normal_001�
 
 
 NetEm首轮三站4cea408运行completed，独立QC v3失败于重组归属帧（matched1090/2344），自动停止规模脚本；路径v03_scale_s5原始PCAP/解析/失败报告保留。定位独立TCP核验器未把补齐前序缺口的帧计入后序完整PDU的依赖时间，修复后续TCP在线因果边界，协议字段和packet_index严格对账不改。新增完整APDU乱序回归；版本v01-evidence-v4/v03-power-v4，待原证据重验。普通122 passed/10 deselected，mypy80、Ruff通过。新增NetEm读回错误seed拒绝回归，tc预检查移到创建运行目录前。V0.2原三站90秒新代码回归4cea408已真实completed，parse/Arrow/QC退出0，目录/var/lib/pvcomm/runs/v03_v02_regression_001/v02_clear_001，保留V0.2复现能力。
+
+### NetEm逐级实测与生命周期修正
+
+6e42aa9的CI45616151461实际success。新冻结源码`/var/lib/pvcomm/sources/v03-s6`对S5三站原始PCAP执行v4 QC，全部通过：2344完整APDU严格对账，0工具丢失，P99=3.970862ms/max426.785181ms；旧v3失败不覆盖。运行代码4cea408和核验代码6e42aa9分别记录。十站S6（120s）全部QC通过：6772完整APDU=100%、11路0drop、P99=73.565552ms/max1251.581420ms。二十站S6（120s）completed、物理及解析通过，但日志P99=860.012185ms/max2128.690613ms、PV15少一个入站S回调，独立QC失败；自动停止，不进入30站。
+
+逐帧及c104 v2.2.1源码核对后，修正V0.3初始化/停止生命周期，详ADR0010；保留原V0.1/V0.2默认。新源码待实际逐级重验。测量脚本增加真实DOM游标/功率时间、近似绘制时间和干净代码要求，实时与回放年龄分开。预检003因重复辅助输出目录失败，记录保留；独立测量编号修正后004完成30秒真实off/live/replay，无fatal，不能作为一小时验收。Windows总check实际122普通测试、mypy80、Ruff/schema/前端质量/Vitest3/build通过；随后新增测量汇总4项单元测试通过，生命周期回归及最终总检另记。当前V0.3仍未通过。
+
+生命周期修正后的Windows完整check退出0：129 passed/10 deselected、mypy81、Ruff/format/schema、前端ESLint（仍2条缩进warning）/Prettier/vue-tsc/Vitest3/build通过，Vite817kB提示保留。首次类型检查发现单元替身lambda依赖append返回值，改为显式返回bool后通过，未删测试。该普通check不计真实协议验收。

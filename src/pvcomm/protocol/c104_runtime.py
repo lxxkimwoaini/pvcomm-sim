@@ -349,6 +349,7 @@ class C104Master:
         record_event: RecordEvent,
         record_raw: RecordRaw,
         station_hosts: dict[str, str] | None = None,
+        managed_lifecycle: bool = False,
     ) -> None:
         c104 = importlib.import_module("c104")
         self._c104 = c104
@@ -357,6 +358,9 @@ class C104Master:
         self._stations = stations
         self._record_event = record_event
         self._record_raw = record_raw
+        self._managed_lifecycle = managed_lifecycle
+        self._lifecycle_condition = threading.Condition()
+        self._callback_states: dict[str, str] = {}
         self.client = c104.Client(tick_rate_ms=100, command_timeout_ms=3000)
         self._connections: dict[str, Any] = {}
         self._remote_stations: dict[str, Any] = {}
@@ -376,6 +380,9 @@ class C104Master:
                 "master_connection_state",
                 {"station_id": station_config.station_id, "state": state.name},
             )
+            with self._lifecycle_condition:
+                self._callback_states[station_config.station_id] = state.name
+                self._lifecycle_condition.notify_all()
 
         _set_callback_annotations(
             on_state_change,
@@ -407,7 +414,7 @@ class C104Master:
             connection = self.client.add_connection(
                 ip=self._station_hosts.get(station_config.station_id, self._host),
                 port=station_config.port,
-                init=c104.Init.ALL,
+                init=c104.Init.NONE if self._managed_lifecycle else c104.Init.ALL,
             )
             if connection is None:
                 raise RuntimeError(f"failed to create connection for {station_config.station_id}")
@@ -533,6 +540,19 @@ class C104Master:
                     "success": result,
                 },
             )
+            if self._managed_lifecycle:
+                # Init.ALL executes synchronous GI/clock waits on c104's raw
+                # callback scheduler. Explicit initialization here leaves that
+                # scheduler available to timestamp actual callbacks promptly.
+                synced = connection.clock_sync(
+                    common_address=station_config.common_address, wait_for_response=True
+                )
+                self._record_event(
+                    "master_clock_synchronization",
+                    {"station_id": station_config.station_id, "success": synced},
+                )
+                if not synced:
+                    raise RuntimeError(f"clock synchronization failed: {station_config.station_id}")
             if not result:
                 raise RuntimeError(f"interrogation failed for {station_config.station_id}")
 
@@ -641,5 +661,32 @@ class C104Master:
         return sample[0]
 
     def stop(self) -> None:
-        self.client.stop()
+        try:
+            if self._managed_lifecycle:
+                self._quiesce_connections()
+        finally:
+            self.client.stop()
         self._record_event("master_stopped", {})
+
+    def _wait_callback_states(self, stations: list[str], expected: str) -> None:
+        with self._lifecycle_condition:
+            if not self._lifecycle_condition.wait_for(
+                lambda: all(self._callback_states.get(s) == expected for s in stations),
+                timeout=3,
+            ):
+                raise TimeoutError(f"protocol lifecycle callbacks did not reach {expected}")
+
+    def _quiesce_connections(self) -> None:
+        """Drain ordered STOPDT and CLOSED callbacks before stopping c104."""
+        self._record_event("master_quiescing", {})
+        opened = []
+        for station, connection in self._connections.items():
+            if connection.state.name == "OPEN":
+                if not connection.mute():
+                    raise RuntimeError(f"STOPDT request failed: {station}")
+                opened.append(station)
+        self._wait_callback_states(opened, "OPEN_MUTED")
+        for connection in self._connections.values():
+            connection.disconnect()
+        self._wait_callback_states(list(self._connections), "CLOSED")
+        self._record_event("master_quiesced", {})
