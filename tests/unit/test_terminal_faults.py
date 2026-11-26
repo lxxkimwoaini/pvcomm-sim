@@ -155,11 +155,20 @@ def test_lazy_confirmation_never_fabricates_acceptance(accepted: bool, sent: boo
             transmissions.append(cause)
             return sent
 
-    class ReceivedPoint(Point):
+    class ReceivedPoint:
+        io_address = 3001
+
         @property
         def value(self) -> float:
             # Installed c104 incoming command information is immutable.
             return 20.0
+
+        def on_receive(self, callback: Any) -> None:
+            callbacks.append(callback)
+
+        def transmit(self, cause: str) -> bool:
+            transmissions.append(cause)
+            return sent
 
     def decide(target: float, now: float) -> bool:
         decisions.append(target)
