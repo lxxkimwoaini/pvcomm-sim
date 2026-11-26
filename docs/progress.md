@@ -338,3 +338,13 @@ V0.4b第二轮18/21项真实用例已完成（N01–N09各两个变体），尚�
 V0.4b真实批次已实际结束：21 passed/2907.66s、退出0；N01–N10各两个变体，另含N02日落。全部原始manifest clean/completed/cleanup=[]、v1 QC通过。开始使用独立f48d114源码对原件生成v2严格QC并顺序执行兼容回归；该重验尚在进行，不提前宣布V0.4b通过。
 
 真实截图复核修正两项生产UI一致性：页眉阶段由后端health.stage提供，跟随最新时滑块及秒数同步实际快照游标；不改API、观测数据或仿真逻辑。新增浏览器断言验证页眉与游标，真实UUID回放2 passed/1 skipped、5.3s、1380点；旧V0.1回放2 passed/1 skipped、4.5s、111点，证据outputs/v04b-ui-stage-cursor-uuid和-v01。web-test与web-build均退出0、Vitest3通过；仅保留既有2条缩进warning及新构建817.73kB提示。首轮新增Tag换行warning已修正，最终无新增warning。
+
+最新UI修正另对原30站/1小时真实证据备份执行回归：Playwright 2 passed/1 skipped、25.0s，核对27183个显示点，页眉/实际游标及电气曲线断言通过；证据outputs/v04b-ui-stage-cursor-30site。该结果是只读历史回放兼容性，不冒称重新运行30站1小时。251c881的push CI45754356008及PR CI45754360861实际success。
+
+### V0.4b三站正常场景开发验收通过
+
+真实批次21 passed/2907.66s，运行4ab3fc58485bb010acd0887c53a1c7270ec890ea clean，证据/var/lib/pvcomm/runs/v04b_s2。最终f48d114048d48650533e8aac7d40646144be724d源码逐项生成v04-normal-schedule-v2，21份全部通过：26132/26132完整APDU、解析100%、工具drop0、日志P99最大3.840095ms；14事务=12 accepted_complete+2 rejected，任务起点最大迟到1ms，8306物理样本通过。全部manifest completed/clean/cleanup=[]；旧normal_regression=false保留。21份保留127517958B、PCAP10479522B、Parquet4899784B，失败首轮和副本另计；4个原始日期共同来源组映射已写覆盖报告，没有执行数据集划分。
+
+同f48d114最终真实回归顺序完成：旧协议/断联/取消/尾包5 passed/185.35s（V0.3 2131/2131 APDU、P99=2.720530ms）；V0.4a降级2 passed/235.15s（2527/2527、P99=3.813604ms），silent超时3.000418187s、同会话隔离、另一站accepted。旧V0.2 90s CLI run/parse/Arrow/默认QC均退出0，453/453、P99=5.696731ms。新CLI validate-scenario/run-scenario/parse/Arrow/schedule-QC均退出0，额外run_936bfe63db414081bfb028905b55b4be、1117/1117、P99=3.662255ms；默认唯一ID、新共同来源组、空调度无命令均验证。根/var/lib/pvcomm/runs/v04b_final包含全部日志/命令/耗时/证据，最终namespace实际为空；没有并行namespace实验。WSL科学/Arrow189 passed/28 deselected、11.79s，Windows完整182 passed/35 deselected及相关前端检查、三类真实UI回放通过（具体冻结归属见报告）。
+
+报告docs/reports/2026-11-26-v04b-normal-coverage.md已补齐21个run_id、原/共同来源映射、SHA、CLI复现、旧版兼容、失败保留、存储及未完成项；README和阶段计划同步。V0.4b仅三站正常开发门禁通过；六类P0、配对/正式标签、场景表单/队列/标签页面、多站与30站复验仍待V0.4c–f；未进入720h或训练、未做现场高频校准。当前远程仍为https://github.com/lxxkimwoaini/pvcomm-sim，lxxkimwoaini、PUBLIC、默认main；PR #1→#2→#3→#4→#5均OPEN，#3–#5 draft，不合并。最后已验证的源代码交付为251c881，push CI45754356008及PR CI45754360861 success；本次验收文档的提交/推送/CI以随后实际远程核验为准，不把前一提交CI当作后一提交结果。

@@ -2,7 +2,7 @@
 
 分布式光伏电力—通信联合仿真平台。研究依据为 [V1.3 方案](docs/分布式光伏电力—通信联合仿真数据集构建方案_V1.3.md) 和 [AGENTS.md](AGENTS.md)。
 
-当前版本为 0.4.0.dev0，V0.4a 前置修复及真实兼容门禁已通过，后续进入 V0.4b 正常场景切片，**V0.4 尚未验收**。V0.3 多站点开发门禁已通过：完成3→10→20→30站逐级实跑，以及30站、3通信区域、3600秒电力—通信联合仿真和关闭Web/实时监测/历史回放资源验收。保留已验收的V0.0基础、V0.1真实协议和V0.2三站物理复现能力；当前提供配置驱动多站点、真实c104、pvlib/pandapower、独立P0/P1、Arrow、独立QC及M2只读工作台。未发布正式科研数据集或异常检测结果。实测、适用边界和复现方式见 [V0.3验收报告](docs/reports/2026-11-25-v03-acceptance.md) 及 [进度](docs/progress.md)。
+当前版本为 0.4.0.dev0，V0.4a 前置修复及 V0.4b 配置化正常场景的三站开发验收已通过，**V0.4 尚未验收**。V0.3 多站点开发门禁已通过：完成3→10→20→30站逐级实跑，以及30站、3通信区域、3600秒电力—通信联合仿真和关闭Web/实时监测/历史回放资源验收。保留已验收的V0.0基础、V0.1真实协议和V0.2三站物理复现能力；当前提供配置驱动多站点、真实c104、pvlib/pandapower、独立P0/P1、Arrow、独立QC及M2只读工作台。未发布正式科研数据集或异常检测结果。实测、适用边界和复现方式见 [V0.3验收报告](docs/reports/2026-11-25-v03-acceptance.md) 及 [进度](docs/progress.md)。
 
 ## 安装与复现
 
@@ -118,7 +118,7 @@ Web继续只读实际M2，新增区域覆盖率、配置双拓扑、空间遥测
 
 ## V0.4a 开发入口
 
-实施边界与分阶段门禁见 [V0.4计划](docs/plans/2026-11-26-v04.md)，实际验证见 [V0.4a记录](docs/reports/2026-11-26-v04a-acceptance.md)，后续正常场景设计见 [V0.4b计划](docs/plans/2026-11-26-v04b-normal-scenes.md)。正常验收仍使用默认 `qc --profile normal`。独立实验质量入口 `qc --profile experiment` 仅评估运行完整性和数据质量，并保留正常业务失败结果；其通过不代表故障施加、业务标签或整个V0.4验收通过。
+实施边界与分阶段门禁见 [V0.4计划](docs/plans/2026-11-26-v04.md)，实际验证见 [V0.4a记录](docs/reports/2026-11-26-v04a-acceptance.md)，正常场景计划见 [V0.4b计划](docs/plans/2026-11-26-v04b-normal-scenes.md)。正常验收仍使用默认 `qc --profile normal`。独立实验质量入口 `qc --profile experiment` 仅评估运行完整性和数据质量，并保留正常业务失败结果；其通过不代表故障施加、业务标签或整个V0.4验收通过。
 
 ```sh
 .venv-wsl/bin/python -m pvcomm.cli qc --profile experiment --run-dir <new_parsed_run>
@@ -130,9 +130,9 @@ uv run pvcomm validate-weather-source --config <historical_source_descriptor.jso
 存储审计只读，归档保留原件并核验解压SHA256，禁止删除源文件。新气象描述符支持显式日期、位置和产品版本，当前仅实现离线NASA POWER小时数据适配；旧0.2/0.3配置及哈希保持可复现。新来源必须具备完整原始数据、许可/引用快照与哈希。未接入独立M3来源。N01–N10、P0故障、配对标签与任务队列尚待后续切片实现；`label`仍返回3。
 
 
-## V0.4b 显式正常业务计划（验收中）
+## V0.4b 显式正常业务计划（三站开发验收通过）
 
-新增 `0.4-scenario.1` 组合契约，单站设定值、站点子集分配及运行中总召唤共用现有通信路径；空计划不发送旧固定限发/解除指令。旧 `run` 行为保留。来源组、场景代码、配对信息和完整未来计划只存诊断侧。N01～N10开发模板不等于真实覆盖结论，正式异常和标签仍未实现。
+新增 `0.4-scenario.1` 组合契约，单站设定值、站点子集分配及运行中总召唤共用现有通信路径；空计划不发送旧固定限发/解除指令。旧 `run` 行为保留。来源组、场景代码、配对信息和完整未来计划只存诊断侧。N01～N10已完成21项三站真实开发用例及v2严格复核；正式异常、配对和标签仍未实现。
 
 ```sh
 uv run python scripts/make_normal_scenario.py --scene N04 --variant 1 --output outputs/new-normal.yaml
@@ -143,4 +143,4 @@ PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli parse --run-dir <实际返回�
 PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli qc --profile schedule --run-dir <实际返回运行目录>
 ```
 
-运行默认分配不含场景代码的唯一ID，已有目录拒绝覆盖。`qc --profile schedule`核验实际计划和独立证据，保留旧normal回归结果；不是异常标签。历史输入继续使用归档NASA小时背景，云影为显式模型扰动，未进行现场高频校准。详见[实施计划](docs/plans/2026-11-26-v04b-normal-scenes.md)。
+运行默认分配不含场景代码的唯一ID，已有目录拒绝覆盖。`qc --profile schedule`核验实际计划和独立证据，保留旧normal回归结果；不是异常标签。历史输入继续使用归档NASA小时背景，云影为显式模型扰动，未进行现场高频校准。实测26,132个完整APDU全部匹配、工具丢包0、日志P99最大3.840095ms；兼容回归及新CLI全链路通过。完整运行清单、来源组映射和边界见[覆盖报告](docs/reports/2026-11-26-v04b-normal-coverage.md)与[实施计划](docs/plans/2026-11-26-v04b-normal-scenes.md)。下一切片为[单故障机制](docs/plans/2026-11-26-v04c-single-faults.md)，不将三站正常覆盖冒称完整V0.4验收。
