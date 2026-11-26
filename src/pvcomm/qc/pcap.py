@@ -49,6 +49,8 @@ class Stream:
             frame_type = "I" if raw[2] & 1 == 0 else "S" if raw[2] & 3 == 1 else "U"
             results.append(
                 {
+                    "tcp_start_seq": (self.base_seq + self.cursor - len(self.assembled) - size)
+                    % 2**32,
                     "data_hex": raw.hex(),
                     "frame_type": frame_type,
                     "send_seq": int.from_bytes(raw[2:4], "little") >> 1
@@ -71,12 +73,32 @@ class Stream:
             )
         return results
 
+    def fragment(self) -> dict[str, Any]:
+        result: dict[str, Any] = dict(
+            assembled_bytes=len(self.assembled),
+            pending_bytes=len(self.pending),
+            next_expected_tcp_seq=(self.base_seq + self.cursor) % 2**32,
+        )
+        if self.pending and len(self.pending) <= 255:
+            offsets = sorted(self.pending)
+            pieces = [self.pending[i] for i in offsets]
+            result.update(
+                gap_bytes=offsets[0] - self.cursor,
+                pending_tcp_seq=(self.base_seq + offsets[0]) % 2**32,
+                contiguous=offsets == list(range(offsets[0], offsets[-1] + 1)),
+                data_hex=bytes(p[0] for p in pieces).hex(),
+                source_frame_refs=sorted({p[1] for p in pieces}),
+                first_capture_utc_ns=min(p[2] for p in pieces),
+                last_capture_utc_ns=max(p[2] for p in pieces),
+            )
+        return result
+
 
 def read_apdus(path: Path) -> dict[str, Any]:
     streams: dict[tuple[str, str, int, int], Stream] = {}
     generations: dict[tuple[str, str, int, int], int] = defaultdict(int)
     records: list[dict[str, Any]] = []
-    completed_streams: list[Stream] = []
+    completed_streams: list[tuple[tuple[str, str, int, int], int, Stream]] = []
     packet_count = 0
     with path.open("rb") as source:
         header = source.read(24)
@@ -123,7 +145,7 @@ def read_apdus(path: Path) -> dict[str, Any]:
             syn = bool(tcp[13] & 2)
             if syn and (key not in streams or streams[key].base_seq != (seq + 1) % 2**32):
                 if key in streams:
-                    completed_streams.append(streams[key])
+                    completed_streams.append((key, generations[key], streams[key]))
                 streams[key] = Stream((seq + 1) % 2**32)
                 generations[key] += 1
             payload = tcp[(tcp[12] >> 4) * 4 :]
@@ -145,11 +167,26 @@ def read_apdus(path: Path) -> dict[str, Any]:
                         "connection_generation": generations[key],
                     }
                 )
-    all_streams = [*completed_streams, *streams.values()]
-    incomplete = sum(len(s.assembled) + len(s.pending) for s in all_streams)
+    all_streams = [
+        *completed_streams,
+        *((key, generations[key], value) for key, value in streams.items()),
+    ]
+    incomplete = sum(len(s.assembled) + len(s.pending) for _, _, s in all_streams)
     return {
         "packet_count": packet_count,
         "complete_apdu_count": len(records),
         "incomplete_byte_count": incomplete,
+        "incomplete_streams": [
+            dict(
+                src_ip=key[0],
+                dst_ip=key[1],
+                src_port=key[2],
+                dst_port=key[3],
+                connection_generation=generation,
+                **stream.fragment(),
+            )
+            for key, generation, stream in all_streams
+            if stream.assembled or stream.pending
+        ],
         "apdus": records,
     }

@@ -154,3 +154,5 @@ authorized_maintenance.stations逐站区分connection_recovered_utc_ns、protoco
 相似性0.4-similarity.1及0.4-similarity-calibration.1固定P0特征、窗口、距离和local/global逐项阈值。v04-traffic-similarity-v1记录evaluation_valid、business_contrast、matched、hard_pair_selected、特征和失败原因；matched=false不使有效实验变invalid。报告仅供Oracle离线配对子集选择，不进入M2在线特征。
 
 0.4-batch.1包含matrix_id、normal/fault/pair任务、最多3次尝试、固定串行并发、RetentionPolicy、容量限额和可选冻结matching输入。manifest记录矩阵/代码指纹、每次尝试状态、产物路径/字节/哈希及覆盖计数。实际run_id/pair_id为UUID，source_group_id保持历史来源；一次任务的首次有效尝试贡献运行覆盖，不以站点或窗口膨胀数量。中断的实时协议尝试不从中间续传，保留并消耗预算。所有队列配置及结果均为Oracle管理数据，当前M2 API不读取这些字段。
+
+A01 QC v5（Oracle诊断）保留独立PCAP重组器的tcp_start_seq、connection_generation及incomplete_streams（next_expected_tcp_seq/pending_tcp_seq、缺口和待处理字节、原帧引用及时间）。严格限定已证实阻断内的目标下行S控制缺口，分类不完整传输残片，不将它计成完整APDU或业务接收，不进入M0/M1/M2特征。v4报告和严格正常比较保留，规则及负测试见ADR0028。

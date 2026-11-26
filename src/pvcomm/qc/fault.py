@@ -13,11 +13,12 @@ from typing import Any
 from pvcomm.config.faults import FaultScenarioConfig, instantiate_fault, load_fault_scenario
 from pvcomm.config.scenes import canonical_hash
 from pvcomm.qc.experiment import evaluate_experiment
+from pvcomm.qc.fault_fragments import account_control_gaps
 from pvcomm.qc.pcap import read_apdus
 from pvcomm.qc.socket_audit import account_socket_quality, audit_unobserved_tests
 from pvcomm.storage.parquet import read_jsonl
 
-VERSION = "v04-a01-mechanism-v4"
+VERSION = "v04-a01-mechanism-v5"
 
 
 def audit_operations(
@@ -289,18 +290,30 @@ def evaluate_fault(root: Path) -> dict[str, Any]:
     experiment = evaluate_experiment(root)
     effects = None
     socket_evidence = None
+    fragment_evidence = None
     if operations["passed"]:
         socket_evidence = audit_unobserved_tests(root, events, config.target_stations())
         # Normal regression remains strict. Only independently audited, pre-write
         # TESTFR attempts during this A01 block can resolve extra send callbacks.
         # Every received callback and every actual captured APDU still corresponds.
         account_socket_quality(experiment, socket_evidence)
+        captures = {
+            Path(c["path"]).stem: read_apdus(root / c["path"]) for c in manifest["captures"]
+        }
+        fragment_evidence = account_control_gaps(
+            experiment,
+            captures,
+            [(s.station_id, s.address) for s in config.background.simulation.protocol.stations],
+            config.target_stations(),
+            next(e["ts_event_utc_ns"] for e in events if e["event_type"] == "fault_active"),
+            min(e["ts_event_utc_ns"] for e in events if e["event_type"] == "restore_requested"),
+        )
         effects = communication_effects(
             config,
             events,
             read_jsonl(list((root / "observed").glob("master_events*.jsonl"))),
             read_jsonl(list((root / "truth").glob("electrical_state*.jsonl"))),
-            {Path(c["path"]).stem: read_apdus(root / c["path"]) for c in manifest["captures"]},
+            captures,
         )
     repository = Path(__file__).resolve().parents[3]
     evaluator = subprocess.check_output(
@@ -323,6 +336,7 @@ def evaluate_fault(root: Path) -> dict[str, Any]:
         },
         "communication_effects": effects,
         "socket_evidence": socket_evidence,
+        "transport_fragment_evidence": fragment_evidence,
         "label_quality": {"status": "not_evaluated"},
         "passed": experiment["passed"]
         and configuration_ok

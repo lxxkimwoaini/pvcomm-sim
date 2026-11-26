@@ -105,6 +105,9 @@ def load_label_inputs(root: Path, *, indexed: bool = True) -> LabelInputs:
         config = FaultScenarioConfig.model_validate_json(fault.read_bytes())
         if config.fault.fault_type == "A01":
             from pvcomm.qc.fault import VERSION as qc_version
+
+            if not (root / "qc" / qc_version / "report.json").exists():
+                qc_version = "v04-a01-mechanism-v4"  # Existing frozen evidence remains readable.
         elif config.fault.fault_type == "A02":
             from pvcomm.qc.delay import VERSION as qc_version
         else:
