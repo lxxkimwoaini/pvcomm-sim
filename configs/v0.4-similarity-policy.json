@@ -1,0 +1,48 @@
+{
+  "schema_version": "0.4-similarity.1",
+  "pre_event_s": 5,
+  "post_event_s": 20,
+  "capture": "primary",
+  "scalar_distance": "symmetric_relative_max",
+  "distribution_distance": "sqrt_jensen_shannon_base2",
+  "match_strategy": "all_features_all_targets_and_global",
+  "length_bounds": [
+    0,
+    64,
+    128,
+    256,
+    512,
+    1024,
+    1518,
+    9000
+  ],
+  "iat_bounds_s": [
+    0.0,
+    0.001,
+    0.01,
+    0.1,
+    0.5,
+    1.0,
+    2.0,
+    5.0,
+    10.0,
+    30.0,
+    60.0
+  ],
+  "rate_bounds": [
+    0,
+    1,
+    2,
+    4,
+    8,
+    16,
+    32,
+    64,
+    128,
+    256
+  ],
+  "burst_gap_s": 0.1,
+  "burst_min_packets": 3,
+  "minimum_calibration_pairs": 6,
+  "threshold_rule": "min_1_max_005_125_times_calibration_max"
+}

@@ -1,0 +1,63 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "pair_ids": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 6,
+      "title": "Pair Ids",
+      "type": "array"
+    },
+    "policy_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Policy Sha256",
+      "type": "string"
+    },
+    "purpose": {
+      "const": "independent_normal_repeat_calibration",
+      "default": "independent_normal_repeat_calibration",
+      "title": "Purpose",
+      "type": "string"
+    },
+    "run_ids": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 12,
+      "title": "Run Ids",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "0.4-similarity-calibration.1",
+      "default": "0.4-similarity-calibration.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_hashes": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Source Hashes",
+      "type": "object"
+    },
+    "thresholds": {
+      "additionalProperties": {
+        "maximum": 1,
+        "minimum": 0.05,
+        "type": "number"
+      },
+      "title": "Thresholds",
+      "type": "object"
+    }
+  },
+  "required": [
+    "policy_sha256",
+    "pair_ids",
+    "run_ids",
+    "source_hashes",
+    "thresholds"
+  ],
+  "title": "CalibratedSimilarity",
+  "type": "object"
+}

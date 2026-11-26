@@ -13,8 +13,8 @@ from pvcomm.domain.labels import EventLabel
 from pvcomm.pipeline.iec104_parser import PARSER_VERSION
 from pvcomm.pipeline.labels import VERSION as LABEL_VERSION
 from pvcomm.pipeline.labels import file_sha256
+from pvcomm.pipeline.traffic import jsonl_records
 from pvcomm.qc.labels import VERSION as LABEL_QC_VERSION
-from pvcomm.storage.parquet import read_jsonl
 
 VERSION = "v04-pair-qc-v2"
 
@@ -99,19 +99,23 @@ def traffic_statistics(root: Path, start_s: float, end_s: float) -> dict[str, fl
     start = origin["ts_utc_ns"] + clock - origin["ts_mono_ns"] + int(start_s * 1e9)
     end = start + int((end_s - start_s) * 1e9)
     addresses = set(manifest["network"]["addresses"])
-    packets = read_jsonl([root / "parsed" / PARSER_VERSION / "packets.jsonl"])
+    packet_times: dict[str, list[int]] = {"up": [], "down": []}
+    byte_counts = {"up": 0, "down": 0}
+    for row in jsonl_records(root / "parsed" / PARSER_VERSION / "packets.jsonl"):
+        if not start <= row["ts_capture_utc_ns"] < end:
+            continue
+        direction = (
+            "up" if row["src_ip"] in addresses else "down" if row["dst_ip"] in addresses else None
+        )
+        if direction is not None:
+            packet_times[direction].append(row["ts_capture_utc_ns"])
+            byte_counts[direction] += row["packet_len"]
     result: dict[str, float | int] = {"window_duration_s": end_s - start_s}
     for direction in ("up", "down"):
-        own = [
-            r
-            for r in packets
-            if start <= r["ts_capture_utc_ns"] < end
-            and (r["src_ip"] in addresses if direction == "up" else r["dst_ip"] in addresses)
-        ]
-        times = sorted(r["ts_capture_utc_ns"] for r in own)
+        times = sorted(packet_times[direction])
         gaps = sorted((b - a) / 1e9 for a, b in zip(times, times[1:], strict=False))
-        result[f"{direction}_packets"] = len(own)
-        result[f"{direction}_bytes"] = sum(r["packet_len"] for r in own)
+        result[f"{direction}_packets"] = len(times)
+        result[f"{direction}_bytes"] = byte_counts[direction]
         result[f"{direction}_active_duration_s"] = (times[-1] - times[0]) / 1e9 if times else 0.0
         result[f"{direction}_iat_mean_s"] = statistics.mean(gaps) if gaps else 0.0
         result[f"{direction}_iat_p50_s"] = statistics.median(gaps) if gaps else 0.0
@@ -152,8 +156,12 @@ def qc_pair(directory: Path) -> dict[str, Any]:
         shared &= actual == wanted
         shared &= canonical_hash(config.shared_conditions(effective)) == config.shared_sha256()
         shared &= ledger["shared_sha256"] == config.shared_sha256()
-        master = read_jsonl(list((root / "observed").glob("master_events*.jsonl")))
-        begin = [r for r in master if r["event_type"] == "master_business_started"]
+        begin = [
+            r
+            for path in sorted((root / "observed").glob("master_events*.jsonl"))
+            for r in jsonl_records(path)
+            if r["event_type"] == "master_business_started"
+        ]
         starts &= len(begin) == 1 and 0 <= begin[0]["sim_elapsed_ms"] <= 100
         members_ok &= (
             manifest["status"] == "completed"
