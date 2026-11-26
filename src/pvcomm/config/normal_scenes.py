@@ -98,7 +98,12 @@ def normal_scenario(code: str, variant: int = 0) -> ScenarioConfig:
         dict(
             schema_version="0.4-scenario.1",
             purpose="normal_scenario_development",
-            source_group_id=f"normal_development_{code}_{variant}",
+            # V1.3 §14.1: the same original weather date shares a source group,
+            # including different normal business intents and cloud perturbations.
+            source_group_id=(
+                f"weather_{simulation['weather']['sha256'][:12]}_"
+                + simulation["weather"]["source_start"][:10].replace("-", "")
+            ),
             normal_scene=code,
             simulation=simulation,
             business_schedule=tasks,

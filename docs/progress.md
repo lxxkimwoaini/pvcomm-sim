@@ -322,3 +322,7 @@ README旧“V0.4尚未开展”及开发指南过期QC版本已修正，新增�
 候选最终普通总检 `uv run --frozen python scripts/dev.py check` 实际退出0：179 passed/35 deselected，mypy98文件，Ruff/format/schema/前端生成类型、ESLint/Prettier/vue-tsc/Vitest3/build通过。保留既有2条HTML缩进warning和817.61kB包提示。真实21项正常场景尚未运行，普通通过不替代实际验收。
 
 首轮冻结dfa09aa已push，push CI45748744637实际success；WSL科学/Arrow186 passed/28 deselected、11.62s。原生源码/var/lib/pvcomm/sources/v04b_s1，证据/var/lib/pvcomm/runs/v04b_s1。代码复核发现缓存先于available_at记录发布的并发因果窗口，故主动SIGINT终止首轮真实批次；pytest退出2、130.82s、no tests ran（没有完整通过用例），原始部分运行保留，不当作验收。修正为同一观测锁内先记录再发布缓存，写入失败不暴露未记录值；新增并发及I/O失败负测试，39项相关测试通过、mypy98通过。下一轮将冻结新提交完整重跑。
+
+新冻结4ab3fc5在/var/lib/pvcomm/sources/v04b_s2顺序运行21项真实正常场景，证据/var/lib/pvcomm/runs/v04b_s2；截至本次记录N01两变体、N02夜间/日出及首个N03共5项已通过，后续仍在运行，不预报最终结论。4ab3fc5 push CI45749164612和PR CI45749169821均实际success。普通最终181 passed/35 deselected，Ruff/format/mypy98通过。
+
+独立审查修正开发模板来源组：V1.3 §14.1要求同一原始气象日期跨场景共同分组，不能将模板N代码或种子当分区边界。新模板按NASA来源哈希+UTC日期产生source_group_id，18项相关回归通过；当前4ab3fc5冻结物理/协议实验不修改，原始模板ID保留，覆盖报告将另给共同来源映射。本阶段没有生成任何训练/验证/测试划分。此元数据修正不改变调度、随机种子、气象、电气或通信行为。

@@ -263,6 +263,9 @@ def test_normal_case_templates_are_explicit_and_differentiated() -> None:
         assert all(v.simulation.repeat_command_after_s is None for v in variants)
         if code in ("N01", "N02", "N03", "N10"):
             assert all(not v.expanded_schedule() for v in variants)
+    shared = {normal_scenario(code).source_group_id for code in SCENE_CODES if code != "N07"}
+    assert len(shared) == 1  # Day, night, cloud and business variants share the source date.
+    assert normal_scenario("N02", 1).source_group_id == normal_scenario("N01", 0).source_group_id
 
 
 def test_normal_audit_requires_proven_transaction_and_legal_rejection_state() -> None:

@@ -1,6 +1,6 @@
 schema_version: 0.4-scenario.1
 purpose: normal_scenario_development
-source_group_id: normal_development_N01_0
+source_group_id: weather_72a8d6275ef8_20240623
 pair_id: null
 normal_scene: N01
 simulation:
