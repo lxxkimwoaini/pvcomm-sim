@@ -5,6 +5,7 @@ import json
 import threading
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -127,6 +128,88 @@ def test_delayed_business_processing_does_not_block_protocol_reader(
     runtime._finish_pending(16 * 10**9, cancel=False)
     assert completed == [True]
     assert events[-1][1]["cancelled"] is False
+
+
+@pytest.mark.parametrize("accepted,sent", [(True, True), (False, True), (True, False)])
+def test_lazy_confirmation_never_fabricates_acceptance(accepted: bool, sent: bool) -> None:
+    """Callback-only synthetic protocol fixture, never counted as c104 evidence."""
+    pending: list[Any] = []
+    transmissions: list[str] = []
+    decisions: list[float] = []
+    callbacks: list[Any] = []
+
+    class Point:
+        value = 20.0
+        io_address = 3001
+
+        def on_receive(self, callback: Any) -> None:
+            callbacks.append(callback)
+
+        def on_before_auto_transmit(self, callback: Any) -> None:
+            pass
+
+        def on_before_read(self, callback: Any) -> None:
+            pass
+
+        def transmit(self, cause: str) -> bool:
+            transmissions.append(cause)
+            return sent
+
+    class ReceivedPoint(Point):
+        @property
+        def value(self) -> float:
+            # Installed c104 incoming command information is immutable.
+            return 20.0
+
+    def decide(target: float, now: float) -> bool:
+        decisions.append(target)
+        return accepted
+
+    endpoint: Any = C104StationEndpoint.__new__(C104StationEndpoint)
+    endpoint._c104 = SimpleNamespace(
+        Point=Point,
+        Information=object,
+        IncomingMessage=object,
+        Server=object,
+        ResponseState=SimpleNamespace(SUCCESS="success", FAILURE="failure", NONE="none"),
+        Cot=SimpleNamespace(ACTIVATION_CON="ACT_CON", SPONTANEOUS="SPONTANEOUS"),
+    )
+    endpoint._lock = threading.RLock()
+    endpoint._record_event = lambda *_: None
+    endpoint.config = terminal_scenario("A05", SCOPE, 15).background.simulation.protocol.stations[0]
+    endpoint.state = SimpleNamespace(accept=decide, accepted_setpoint_kw=20.0)
+
+    def defer(callback: Any) -> bool:
+        pending.append(callback)
+        return True
+
+    endpoint.fault = SimpleNamespace(defer_response=defer, accepted=lambda: None)
+    endpoint.command_point = ReceivedPoint()
+    endpoint.power_point = endpoint.reactive_point = endpoint.voltage_point = (
+        endpoint.status_point
+    ) = Point()
+    endpoint.accepted_setpoint_point = Point()
+    endpoint.extra_points = {}
+    endpoint._reporting_mask = frozenset()
+    endpoint.server = SimpleNamespace(on_send_raw=lambda cb: None, on_receive_raw=lambda cb: None)
+    endpoint._install_callbacks()
+    assert (
+        callbacks[0](
+            endpoint.command_point,
+            object(),
+            SimpleNamespace(cot=SimpleNamespace(name="ACTIVATION")),
+        )
+        == "none"
+    )
+    assert not decisions and not transmissions  # No early accept, feedback or confirmation.
+    if accepted and sent:
+        pending[0]()
+        assert transmissions == ["SPONTANEOUS", "ACT_CON"]
+    else:
+        with pytest.raises(RuntimeError, match="confirmation"):
+            pending[0]()
+        if not accepted:
+            assert not transmissions
 
 
 def test_monitoring_decoder_rejects_truncated_payload() -> None:

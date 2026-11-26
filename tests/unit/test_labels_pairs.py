@@ -8,11 +8,13 @@ from typing import Any
 
 import pytest
 
+from pvcomm.config.fault_scenes import terminal_scenario
+from pvcomm.config.faults import StationScope
 from pvcomm.config.normal_scenes import normal_scenario
 from pvcomm.config.pairs import PairConfig, development_pair
 from pvcomm.domain.labels import EventLabel, EvidenceRef
 from pvcomm.pipeline.iec104_parser import PARSER_VERSION
-from pvcomm.pipeline.labels import build_labels, load_label_inputs
+from pvcomm.pipeline.labels import build_labels, file_sha256, load_label_inputs
 from pvcomm.qc.commands import audit_commands
 from pvcomm.qc.labels import audit_label_records
 from pvcomm.qc.schedule import VERSION as SCHEDULE_QC_VERSION
@@ -253,6 +255,30 @@ def test_invalid_quality_is_never_a_normal_negative_example(tmp_path: Path) -> N
     inputs.report["experiment_quality"]["passed"] = False
     rows = build_labels(inputs)
     assert all(r.label_status == "invalid" and r.service_violation is None for r in rows)
+
+
+def test_applied_fault_without_business_violation_remains_negative(tmp_path: Path) -> None:
+    inputs = fixture_inputs(tmp_path)
+    fault = terminal_scenario("A05", StationScope(kind="station", station_ids=("PV01",)), 2)
+    path = tmp_path / "truth/fault/effective.json"
+    path.parent.mkdir()
+    path.write_text(fault.model_dump_json(), encoding="utf-8")
+    journal = path.with_name("events.jsonl")
+    journal.write_text(
+        "\n".join(
+            json.dumps(dict(event_type=k, ts_event_utc_ns=t, after=dict(station_id="PV01")))
+            for k, t in [("apply_verified", 20 * 10**9), ("restore_verified", 50 * 10**9)]
+        ),
+        encoding="utf-8",
+    )
+    inputs.hashes.update(
+        {p.relative_to(tmp_path).as_posix(): file_sha256(p) for p in (path, journal)}
+    )
+    inputs.report["fault_verification"] = {"passed": True}
+    rows = build_labels(inputs)
+    assert rows[0].fault_applied is True and rows[0].service_violation is False
+    assert rows[0].observable_anomaly is False
+    assert audit_label_records(inputs, rows)["passed"]
 
 
 @pytest.mark.parametrize(

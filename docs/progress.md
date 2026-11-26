@@ -458,3 +458,6 @@ S1冻结7972e24（/var/lib/pvcomm/sources/v04c_terminal_s1；证据/var/lib/pvco
 A05高档run_183fbabf9e39414e8359132f4af6613c失败，203.439s后矩阵停止，A06/A08三档及末尾兼容未执行。真实15秒处理等待、P0/P1字节一致、恢复GI及物理连续通过；PV03在40.074s重连，随后12条I帧未进入主站原始回调，business_callback_correspondence失败。未放宽门槛，原PCAP/回调/报告保留。最小修复改用c104公开延后正确认，释放协议读线程，物理与T1/3秒期限不改；补充有界待处理、取消及失败路径测试，见ADR0019增补。新冻结先复验该失败用例再继续剩余矩阵。
 
 V0.4d独立代码已实际编写：配对严格共享条件、原运行器复用、正式分层标签schema/JSONL/Arrow、独立标签QC、CLI及22项合成单元负测试。实际只读探针核验已完成的S2原件，A04各档/A05低中标签与独立核验一致，A05低档故障实际施加而无业务违约，保留false；失败高档为invalid，不当正常负例。尚未写入正式冻结标签或执行真实配对。Windows普通293 passed/67 deselected/7.92s，Ruff/format176文件、mypy127和schema均通过；后续A05修正另测，不套用此结果为新代码最终检查。
+
+
+92335bfb1cc97377d0ffab0246840218d3c05298已push，CI45785260313/45785269459均success。新冻结/var/lib/pvcomm/sources/v04c_terminal_s3科学测试退出0（外层20.231s），首项A05高档在实际确认路径遇到`ValueError: Information is read-only!`，64.204s退出1，run_a6b00973fe6f4bcf9dfd2660e82028fc及stderr/PCAP/失败manifest完整保留。原因是收到命令后c104信息对象只读，延后确认前重复给point.value赋相同值仍被库拒绝。最小修复保留原接收值，仅校验未被其他事务改变后调用协议栈延后确认；新增只读接收点单元fixture、实际拒绝/发送失败不伪造成功及故障无违约负标签回归。后续任务均未执行，不将科学测试或CI成功当真实验收。

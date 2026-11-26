@@ -316,7 +316,8 @@ class C104StationEndpoint:
                     # but no negative flag for a deferred control point response.
                     # Fail the experiment rather than fabricate a positive ACK.
                     raise RuntimeError("c104 cannot emit a deferred negative confirmation")
-                point.value = target
+                if abs(float(point.value) - target) > 1e-6:
+                    raise RuntimeError("pending command point changed before deferred confirmation")
                 if not point.transmit(cause=c104.Cot.ACTIVATION_CON):
                     raise RuntimeError("deferred c104 confirmation transmission failed")
 
