@@ -8,10 +8,10 @@ from pvcomm.config.scenes import ScenarioConfig
 SCENE_CODES = tuple(f"N{i:02d}" for i in range(1, 11))
 
 
-def normal_scenario(code: str, variant: int = 0) -> ScenarioConfig:
+def normal_scenario(code: str, variant: int = 0, *, site_count: int = 3) -> ScenarioConfig:
     if code not in SCENE_CODES or variant not in (0, 1, 2):
         raise ValueError("unknown normal scene or development variant")
-    simulation = configuration(3, 180 if code == "N06" else 120)
+    simulation = configuration(site_count, 180 if code == "N06" else 120)
     simulation.update(dispatch_tasks=[], repeat_command_after_s=None, spatial_cloud=None)
     simulation["weather"]["cloud_shadow"] = None
     simulation["weather"]["source_start"] = f"2024-06-{23 + variant:02d}T04:00:00Z"

@@ -212,4 +212,16 @@ PVCOMM_ALLOW_LAB=1 PYTHONPATH=src .venv-wsl/bin/python scripts/run_v04_batch.py 
   --matrix configs/v0.4-pair-repeat-matrix.json --output /var/lib/pvcomm/runs/NEW_BATCH --resume
 ```
 
-场景.2支持显式站点组/区域维护，故障目标可为维护成员子集；旧场景.1序列化和哈希保持兼容。A08分组实际实验及启动顺序缺陷复验进行中，尚不宣称多站恢复全部通过。批量Web管理、30站异常与正式重复覆盖、全流程临时峰值及并发吞吐仍待实现或验收。
+场景.2支持显式站点组/区域维护，故障目标可为维护成员子集；旧场景.1序列化和哈希保持兼容。A08三站区域/站点组及混合恢复三项真实复验通过，见[分组维护报告](docs/reports/2026-11-26-v04-grouped-maintenance.md)。串行队列两项真实运行及完成后续跑通过，见[队列验证报告](docs/reports/2026-11-26-v04-batch-pipeline.md)。固定12组独立配对复验执行中，尚无完整结论。
+
+六类异常构造器支持配置驱动的10/30站，默认三站72组模板规范哈希与8519edb一致。覆盖矩阵预声明各40次（3站4次、10站12次、30站24次），先后分成scale-10、scale-30与coverage三个队列，先通过规模门禁再启动后一级。矩阵不是已完成的实验次数，见ADR0025：
+
+```bash
+# 在项目根目录生成；拒绝覆盖已有矩阵。另两级使用scale-30、coverage。
+uv run --frozen python scripts/create_v04_fault_matrix.py --stage scale-10 --output outputs/NEW_SCALE_MATRIX.json
+# 使用冻结代码和真实历史输入，输出目录必须首次使用。
+PVCOMM_ALLOW_LAB=1 PYTHONPATH=src .venv-wsl/bin/python scripts/run_v04_batch.py \
+  --matrix outputs/NEW_SCALE_MATRIX.json --output /var/lib/pvcomm/runs/NEW_SCALE_BATCH
+```
+
+批量Web管理、30站异常与正式重复覆盖、全流程临时峰值及并发吞吐仍待实现或验收。

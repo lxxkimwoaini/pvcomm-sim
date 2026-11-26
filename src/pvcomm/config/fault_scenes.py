@@ -1,4 +1,4 @@
-"""Small A01 development configurations, not formal dataset parameters."""
+"""Bounded development configurations, not formal dataset parameters."""
 
 from typing import Any
 
@@ -6,18 +6,35 @@ from pvcomm.config.faults import FaultScenarioConfig, FaultScope
 from pvcomm.config.normal_scenes import normal_scenario
 
 
-def a01_scenario(scope: FaultScope, duration_s: int, variant: int = 0) -> FaultScenarioConfig:
-    background = normal_scenario("N03", variant).model_dump(mode="json")
+def control_station(config: FaultScenarioConfig) -> str | None:
+    """Use an actual non-target endpoint; retain the legacy three-site choice."""
+    if len(config.background.simulation.protocol.stations) == 3:
+        return "PV03" if "PV03" not in config.target_stations() else None
+    return next(
+        (
+            s.station_id
+            for s in reversed(config.background.simulation.protocol.stations)
+            if s.station_id not in config.target_stations()
+        ),
+        None,
+    )
+
+
+def a01_scenario(
+    scope: FaultScope, duration_s: int, variant: int = 0, *, site_count: int = 3
+) -> FaultScenarioConfig:
+    background = normal_scenario("N03", variant, site_count=site_count).model_dump(mode="json")
     simulation = background["simulation"]
     simulation["protocol"]["duration_s"] = 180 if duration_s == 60 else 150
-    simulation["regions"] = simulation["regions"][:2]
-    for station, region, address in zip(
-        simulation["protocol"]["stations"],
-        ("R1", "R1", "R2"),
-        ("10.204.1.2", "10.204.1.3", "10.204.2.2"),
-        strict=True,
-    ):
-        station.update(region_id=region, address=address)
+    if site_count == 3:
+        simulation["regions"] = simulation["regions"][:2]
+        for station, region, address in zip(
+            simulation["protocol"]["stations"],
+            ("R1", "R1", "R2"),
+            ("10.204.1.2", "10.204.1.3", "10.204.2.2"),
+            strict=True,
+        ):
+            station.update(region_id=region, address=address)
     raw: dict[str, Any] = {
         "schema_version": "0.4-fault.1",
         "purpose": "single_fault_development",
@@ -33,14 +50,15 @@ def a01_scenario(scope: FaultScope, duration_s: int, variant: int = 0) -> FaultS
     config = FaultScenarioConfig.model_validate(raw)
     targets = config.target_stations()
     tasks = []
-    if "PV03" not in targets:
+    control = control_station(config)
+    if control:
         tasks.append(
             {
                 "kind": "setpoint",
                 "schedule_id": "task_1",
                 "at_s": 22,
-                "station_ids": ["PV03"],
-                "targets_kw": {"PV03": 35.0},
+                "station_ids": [control],
+                "targets_kw": {control: 35.0},
             }
         )
     tasks.append(
@@ -56,10 +74,15 @@ def a01_scenario(scope: FaultScope, duration_s: int, variant: int = 0) -> FaultS
 
 
 def a02_scenario(
-    scope: FaultScope, additional_delay_ms: int, direction: str, variant: int = 0
+    scope: FaultScope,
+    additional_delay_ms: int,
+    direction: str,
+    variant: int = 0,
+    *,
+    site_count: int = 3,
 ) -> FaultScenarioConfig:
-    """Bounded three-site delay experiment; strengths are fixed by V1.3."""
-    raw = a01_scenario(scope, 20, variant).model_dump(mode="json")
+    """Bounded delay experiment; strengths are fixed by V1.3."""
+    raw = a01_scenario(scope, 20, variant, site_count=site_count).model_dump(mode="json")
     raw["schema_version"] = "0.4-fault.2"
     raw["background"]["simulation"]["protocol"]["duration_s"] = 160
     raw["fault"] = dict(
@@ -87,15 +110,16 @@ def a02_scenario(
             station_ids=list(config.target_stations()),
         ),
     ]
-    if "PV03" not in config.target_stations():
+    control = control_station(config)
+    if control:
         tasks.insert(
             0,
             dict(
                 kind="setpoint",
                 schedule_id="background",
                 at_s=24,
-                station_ids=["PV03"],
-                targets_kw={"PV03": 35.0},
+                station_ids=[control],
+                targets_kw={control: 35.0},
             ),
         )
     raw["background"]["business_schedule"] = tasks
@@ -103,10 +127,11 @@ def a02_scenario(
 
 
 def terminal_scenario(
-    code: str, scope: FaultScope, strength: int, variant: int = 0
+    code: str, scope: FaultScope, strength: int, variant: int = 0, *, site_count: int = 3
 ) -> FaultScenarioConfig:
-    """Implemented RTU mechanisms using the same three-site background and runner."""
-    raw = a01_scenario(scope, 20, variant).model_dump(mode="json")
+    """Implemented RTU mechanisms using the same background and runner."""
+    base = a01_scenario(scope, 20, variant, site_count=site_count)
+    raw = base.model_dump(mode="json")
     raw["schema_version"] = "0.4-fault.3"
     protocol = raw["background"]["simulation"]["protocol"]
     raw["background"]["business_schedule"] = []
@@ -118,7 +143,7 @@ def terminal_scenario(
     }
     if code not in fields:
         raise ValueError("unknown terminal fault")
-    targets = a01_scenario(scope, 20, variant).target_stations()
+    targets = base.target_stations()
     duration = (
         max(s["telemetry_period_s"] for s in protocol["stations"] if s["station_id"] in targets)
         * strength
@@ -181,14 +206,15 @@ def terminal_scenario(
                 targets_kw={s: 20.0 for s in targets},
             )
         )
-    if "PV03" not in targets:
+    control = control_station(base)
+    if control:
         tasks.append(
             dict(
                 kind="setpoint",
                 schedule_id="background",
                 at_s=26,
-                station_ids=["PV03"],
-                targets_kw={"PV03": 35.0},
+                station_ids=[control],
+                targets_kw={control: 35.0},
             )
         )
     tasks.append(
