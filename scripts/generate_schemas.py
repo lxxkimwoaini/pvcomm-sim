@@ -8,9 +8,11 @@ from pvcomm.config import FoundationConfig
 from pvcomm.config.faults import FaultScenarioConfig
 from pvcomm.config.lab import V01Config
 from pvcomm.config.multisite import V03Config
+from pvcomm.config.pairs import PairConfig
 from pvcomm.config.power import V02Config
 from pvcomm.config.scenes import ScenarioConfig
 from pvcomm.config.weather import HistoricalInput
+from pvcomm.domain.labels import EventLabel
 from pvcomm.storage.parquet import APDU_FIELDS, EVENT_FIELDS, OBJECT_FIELDS, PACKET_FIELDS, REQUIRED
 from pvcomm.storage.power_parquet import TABLES as POWER_TABLES
 from pvcomm.storage.retention import RetentionPolicy
@@ -30,6 +32,8 @@ def main() -> int:
         "v03-multisite.schema.json": V03Config.model_json_schema(),
         "v04-scenario.schema.json": ScenarioConfig.model_json_schema(),
         "v04-fault.schema.json": FaultScenarioConfig.model_json_schema(),
+        "v04-pair.schema.json": PairConfig.model_json_schema(),
+        "v04-label.schema.json": EventLabel.model_json_schema(),
         "v04-weather-source.schema.json": HistoricalInput.model_json_schema(),
         "v04-retention.schema.json": RetentionPolicy.model_json_schema(),
         "openapi.json": create_app().openapi(),

@@ -42,12 +42,18 @@ def test_run_and_parse_invalid_inputs_preserve_output_root(tmp_path: Path) -> No
     assert not (tmp_path / "missing").exists()
 
 
-@pytest.mark.parametrize("command", ["label", "split", "features", "benchmark"])
+@pytest.mark.parametrize("command", ["split", "features", "benchmark"])
 def test_unimplemented_fails(command: str, tmp_path: Path) -> None:
     result = invoke(command, "--output-root", str(tmp_path / "outputs"))
     assert result.returncode == 3
     assert "not implemented" in result.stderr
     assert not (tmp_path / "outputs").exists()
+
+
+def test_label_requires_actual_evidence(tmp_path: Path) -> None:
+    result = invoke("label", "--run-dir", str(tmp_path / "missing"))
+    assert result.returncode == 1
+    assert not (tmp_path / "missing").exists()
 
 
 @pytest.mark.parametrize(

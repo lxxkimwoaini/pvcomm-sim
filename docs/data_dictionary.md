@@ -81,7 +81,7 @@ qc/v04-normal-schedule-v2仅为Oracle正常场景验收；command_assessments保
 
 ## V0.4c A01开发契约
 
-`schemas/v04-fault.schema.json`版本`0.4-fault.1`组合既有正常背景与单个A01事件。fault字段为event_id、fault_type=A01、逻辑start_s、duration_s=5/20/60及互斥scope；station允许站点子集，region指定单个配置区域，global使用全部区域。未知引用、重复站点、混合范围和不足预热/恢复窗均拒绝。此旧版本仅接受A01；新增A02的`0.4-fault.2`契约见下文，A04/A05/A06/A08尚不可执行。
+`schemas/v04-fault.schema.json`版本`0.4-fault.1`组合既有正常背景与单个A01事件。fault字段为event_id、fault_type=A01、逻辑start_s、duration_s=5/20/60及互斥scope；station允许站点子集，region指定单个配置区域，global使用全部区域。未知引用、重复站点、混合范围和不足预热/恢复窗均拒绝。此旧版本仅接受A01；新增A02的`0.4-fault.2`契约见下文，A04/A05/A06/A08须使用下文0.4-fault.3契约。
 
 `truth/fault/source.yaml/effective.json/events.jsonl`均为Oracle。manifest.fault_contract保存版本、源/有效配置SHA256、结束时事件文件SHA256及Oracle范围。背景仍独立保存truth/scenario，主站执行背景到期业务，不读取故障计划。既有六表Arrow和电力契约不变。
 
@@ -97,7 +97,7 @@ socket_audit文件项另保留`trace_exit_code`；completed仅表示跟踪有完
 
 ## V0.4c A02增量契约
 
-v04-fault.schema.json新增0.4-fault.2与LinkDelay（A02）：start_s、duration_s（开发作用时长）、additional_delay_ms严格取200/1000/3000、direction=master_to_rtu/rtu_to_master及原scope。旧0.4-fault.1 A01保持有效；A04/A05/A06/A08尚不可执行。每个选定方向必须有显式NormalLink基线。
+v04-fault.schema.json新增0.4-fault.2与LinkDelay（A02）：start_s、duration_s（开发作用时长）、additional_delay_ms严格取200/1000/3000、direction=master_to_rtu/rtu_to_master及原scope。旧0.4-fault.1 A01保持有效；A04/A05/A06/A08须使用下文0.4-fault.3契约。每个选定方向必须有显式NormalLink基线。
 
 复用truth/fault及manifest哈希，A02操作before/after保存namespace/interface和完整tc JSON actual（options/handle/qlen/drops/backlog等）。queue_drained保留恢复参数后真实排空读回；取消的fault_finished含recovery_censored=true，不当作成功恢复。诊断证据不进入原六表的观测白名单。
 
@@ -110,3 +110,16 @@ A02 v2另记录manifest.network.delay_segments（配置端点、内部namespace/
 0.4-fault.3新增TerminalFault（A04/A05/A06/A08），保留旧A01/A02配置。强度字段分别为missing_cycles=2/5/12、response_delay_s=2/5/15、feedback_duration_s=10/30/60、recovery_cycles=1/3/5，拒绝混用及非整数。A04各站持续自身周期数，外层duration_s为最大值；A06从接受触发保持，A08沿用15秒恢复观察周期且首片只接受与计划维护相同的单站。
 
 truth/fault/<station>.state.json保存有界最新状态；terminal_fault_applied/feedback_hold/restored记录原始事件、单调时间、受抑制IOA和实际注册点；truth/fault/control.json仅允许本次事件restore。主站不加载这些文件。v04-terminal-mechanism-v2为独立机制核验，label_quality仍not_evaluated，正式标签另在V0.4d实现。
+
+
+## V0.4d配对与正式标签开发契约
+
+`v04-pair.schema.json`为0.4-pair.1；pair_type=P03/P04/P06/P03_recovery，pair_id/source_group_id供Oracle分组，不能作为模型输入。normal/changed分别引用正常场景和单故障。共享条件校验仅排除run_id、诊断normal_scene，P03另允许维护授权字段差异。天气、设备、网络、种子、初态、业务计划不得排除。实际run_id使用独立UUID，不编码成员类别。业务起点使用已有场景时钟，不能以进程启动时间代替。
+
+`v04-label.schema.json`为0.4-label.1，输出`labels/v04-label-v1/event_labels.jsonl`及Zstandard Parquet（Oracle）。每站记录run_id、anomaly_id、station_id、region_id、scope、fault_applied/fault_type、实际施加区间、transport_impact、service_violation、observable_anomaly、operating_context、label_status、findings、evidence、M2观测模式与独立信息不可用标志。未知保留null，invalid不作正常负例。
+
+findings记录命令/接收新鲜度约束，含task_id或IOA、实际outcome、独立违约布尔、UTC纳秒半开区间、observable_at_utc_ns、recovery_utc_ns和recovery_censored。确认依据实际3秒期限，反馈沿用每条命令execution_deadline_ms。功率未达到目标但符合可用功率限制不等于反馈异常；消息已交付而物理执行不符时为execution_result_uncertain，不能直接强标通信缺失。新鲜度按主站既有2周期+1秒的有效接收政策，维护按提前发布计划加15秒恢复宽限；不声称无时标数据的设备采样年龄。
+
+evidence包含run相对路径、SHA256、原event_id或apdu_id:object_index、tier、available_at及online/retrospective用途。在线引用不能来自Oracle或晚于可判定点；恢复/事后设备证据不回填在线输入。manifest记录原PCAP、原事件、配置、机制/正常QC哈希及标签计算代码归属。Arrow显式run_id/station_id/service_violation/label_status索引及完整嵌套JSON负载逐值读回。独立qc/v04-label-qc-v1重新核对外键、覆盖、期限、维护、新鲜度及业务证据，不调用标签生成器自证。
+
+独立配对QC记录共享条件、起点、成员与标签质量，并报告固定上下行包数/字节数、窗口及活动持续时间、到达间隔均值/P50/P95及相对距离。contrast_observed与配对条件有效性分开，不伪造相似度或修改报文。该首片不声称完成统计匹配、正式划分或40次/类覆盖。

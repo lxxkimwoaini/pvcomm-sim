@@ -1,0 +1,1600 @@
+{
+  "$defs": {
+    "AllocationTask": {
+      "additionalProperties": false,
+      "properties": {
+        "allocation": {
+          "enum": [
+            "capacity",
+            "observed_available"
+          ],
+          "title": "Allocation",
+          "type": "string"
+        },
+        "at_s": {
+          "minimum": 1,
+          "title": "At S",
+          "type": "integer"
+        },
+        "batch_interval_s": {
+          "default": 1.0,
+          "minimum": 0,
+          "title": "Batch Interval S",
+          "type": "number"
+        },
+        "batch_size": {
+          "default": 5,
+          "maximum": 30,
+          "minimum": 1,
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "jitter_s": {
+          "default": 0,
+          "maximum": 300,
+          "minimum": 0,
+          "title": "Jitter S",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "dispatch",
+          "title": "Kind",
+          "type": "string"
+        },
+        "schedule_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Schedule Id",
+          "type": "string"
+        },
+        "station_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 120,
+          "minItems": 1,
+          "title": "Station Ids",
+          "type": "array"
+        },
+        "total_kw": {
+          "minimum": 0,
+          "title": "Total Kw",
+          "type": "number"
+        }
+      },
+      "required": [
+        "schedule_id",
+        "at_s",
+        "station_ids",
+        "kind",
+        "total_kw",
+        "allocation"
+      ],
+      "title": "AllocationTask",
+      "type": "object"
+    },
+    "CloudShadow": {
+      "additionalProperties": false,
+      "properties": {
+        "center_s": {
+          "exclusiveMinimum": 0,
+          "title": "Center S",
+          "type": "number"
+        },
+        "half_width_m": {
+          "exclusiveMinimum": 0,
+          "title": "Half Width M",
+          "type": "number"
+        },
+        "model": {
+          "const": "advected_grey_optical_layer",
+          "title": "Model",
+          "type": "string"
+        },
+        "optical_depth": {
+          "exclusiveMinimum": 0,
+          "maximum": 10,
+          "title": "Optical Depth",
+          "type": "number"
+        },
+        "speed_m_s": {
+          "exclusiveMinimum": 0,
+          "title": "Speed M S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model",
+        "optical_depth",
+        "half_width_m",
+        "speed_m_s",
+        "center_s"
+      ],
+      "title": "CloudShadow",
+      "type": "object"
+    },
+    "DeviceConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "azimuth_degrees": {
+          "default": 180.0,
+          "exclusiveMaximum": 360,
+          "minimum": 0,
+          "title": "Azimuth Degrees",
+          "type": "number"
+        },
+        "connected": {
+          "default": true,
+          "title": "Connected",
+          "type": "boolean"
+        },
+        "dc_ac_ratio": {
+          "default": 1.2,
+          "exclusiveMinimum": 0,
+          "title": "Dc Ac Ratio",
+          "type": "number"
+        },
+        "dc_loss_fraction": {
+          "default": 0.14,
+          "exclusiveMaximum": 1,
+          "minimum": 0,
+          "title": "Dc Loss Fraction",
+          "type": "number"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "eta_inv_nom": {
+          "default": 0.96,
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Eta Inv Nom",
+          "type": "number"
+        },
+        "faulted": {
+          "default": false,
+          "title": "Faulted",
+          "type": "boolean"
+        },
+        "gamma_pdc_per_c": {
+          "default": -0.004,
+          "exclusiveMaximum": 0,
+          "minimum": -0.01,
+          "title": "Gamma Pdc Per C",
+          "type": "number"
+        },
+        "initial_setpoint_kw": {
+          "minimum": 0,
+          "title": "Initial Setpoint Kw",
+          "type": "number"
+        },
+        "q_ramp_kvar_s": {
+          "exclusiveMinimum": 0,
+          "title": "Q Ramp Kvar S",
+          "type": "number"
+        },
+        "q_target_kvar": {
+          "default": 0.0,
+          "title": "Q Target Kvar",
+          "type": "number"
+        },
+        "ramp_down_kw_s": {
+          "exclusiveMinimum": 0,
+          "title": "Ramp Down Kw S",
+          "type": "number"
+        },
+        "ramp_up_kw_s": {
+          "exclusiveMinimum": 0,
+          "title": "Ramp Up Kw S",
+          "type": "number"
+        },
+        "rated_kva": {
+          "exclusiveMinimum": 0,
+          "title": "Rated Kva",
+          "type": "number"
+        },
+        "rated_kw": {
+          "exclusiveMinimum": 0,
+          "title": "Rated Kw",
+          "type": "number"
+        },
+        "station_id": {
+          "title": "Station Id",
+          "type": "string"
+        },
+        "tilt_degrees": {
+          "default": 30.0,
+          "maximum": 90,
+          "minimum": 0,
+          "title": "Tilt Degrees",
+          "type": "number"
+        }
+      },
+      "required": [
+        "station_id",
+        "rated_kw",
+        "rated_kva",
+        "ramp_up_kw_s",
+        "ramp_down_kw_s",
+        "q_ramp_kvar_s",
+        "initial_setpoint_kw"
+      ],
+      "title": "DeviceConfig",
+      "type": "object"
+    },
+    "DispatchTask": {
+      "additionalProperties": false,
+      "properties": {
+        "allocation": {
+          "enum": [
+            "capacity",
+            "observed_available"
+          ],
+          "title": "Allocation",
+          "type": "string"
+        },
+        "at_s": {
+          "minimum": 1,
+          "title": "At S",
+          "type": "integer"
+        },
+        "batch_interval_s": {
+          "default": 1.0,
+          "minimum": 0,
+          "title": "Batch Interval S",
+          "type": "number"
+        },
+        "batch_size": {
+          "default": 5,
+          "maximum": 30,
+          "minimum": 1,
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "dispatch_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Dispatch Id",
+          "type": "string"
+        },
+        "region_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+            "type": "string"
+          },
+          "title": "Region Ids",
+          "type": "array"
+        },
+        "total_kw": {
+          "minimum": 0,
+          "title": "Total Kw",
+          "type": "number"
+        }
+      },
+      "required": [
+        "dispatch_id",
+        "at_s",
+        "region_ids",
+        "total_kw",
+        "allocation"
+      ],
+      "title": "DispatchTask",
+      "type": "object"
+    },
+    "FaultScenarioConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "background": {
+          "$ref": "#/$defs/ScenarioConfig"
+        },
+        "fault": {
+          "discriminator": {
+            "mapping": {
+              "A01": "#/$defs/LinkInterruption",
+              "A02": "#/$defs/LinkDelay",
+              "A04": "#/$defs/TerminalFault",
+              "A05": "#/$defs/TerminalFault",
+              "A06": "#/$defs/TerminalFault",
+              "A08": "#/$defs/TerminalFault"
+            },
+            "propertyName": "fault_type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/LinkInterruption"
+            },
+            {
+              "$ref": "#/$defs/LinkDelay"
+            },
+            {
+              "$ref": "#/$defs/TerminalFault"
+            }
+          ],
+          "title": "Fault"
+        },
+        "purpose": {
+          "const": "single_fault_development",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "schema_version": {
+          "enum": [
+            "0.4-fault.1",
+            "0.4-fault.2",
+            "0.4-fault.3"
+          ],
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "purpose",
+        "background",
+        "fault"
+      ],
+      "title": "FaultScenarioConfig",
+      "type": "object"
+    },
+    "FeederConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "hv_kv": {
+          "default": 20.0,
+          "exclusiveMinimum": 0,
+          "title": "Hv Kv",
+          "type": "number"
+        },
+        "line_length_km": {
+          "default": 0.05,
+          "exclusiveMinimum": 0,
+          "title": "Line Length Km",
+          "type": "number"
+        },
+        "line_max_i_ka": {
+          "default": 0.6,
+          "exclusiveMinimum": 0,
+          "title": "Line Max I Ka",
+          "type": "number"
+        },
+        "line_r_ohm_km": {
+          "default": 0.125,
+          "exclusiveMinimum": 0,
+          "title": "Line R Ohm Km",
+          "type": "number"
+        },
+        "line_x_ohm_km": {
+          "default": 0.08,
+          "exclusiveMinimum": 0,
+          "title": "Line X Ohm Km",
+          "type": "number"
+        },
+        "load_kvar_per_bus": {
+          "default": 10.0,
+          "minimum": 0,
+          "title": "Load Kvar Per Bus",
+          "type": "number"
+        },
+        "load_kw_per_bus": {
+          "default": 50.0,
+          "exclusiveMinimum": 0,
+          "title": "Load Kw Per Bus",
+          "type": "number"
+        },
+        "lv_kv": {
+          "default": 0.4,
+          "exclusiveMinimum": 0,
+          "title": "Lv Kv",
+          "type": "number"
+        },
+        "parameter_basis": {
+          "const": "synthetic_engineering_assumption",
+          "title": "Parameter Basis",
+          "type": "string"
+        },
+        "transformer_i0_percent": {
+          "default": 0.3,
+          "exclusiveMinimum": 0,
+          "title": "Transformer I0 Percent",
+          "type": "number"
+        },
+        "transformer_mva": {
+          "default": 0.63,
+          "exclusiveMinimum": 0,
+          "title": "Transformer Mva",
+          "type": "number"
+        },
+        "transformer_pfe_kw": {
+          "default": 0.8,
+          "exclusiveMinimum": 0,
+          "title": "Transformer Pfe Kw",
+          "type": "number"
+        },
+        "transformer_vk_percent": {
+          "default": 6.0,
+          "exclusiveMinimum": 0,
+          "title": "Transformer Vk Percent",
+          "type": "number"
+        },
+        "transformer_vkr_percent": {
+          "default": 1.2,
+          "exclusiveMinimum": 0,
+          "title": "Transformer Vkr Percent",
+          "type": "number"
+        }
+      },
+      "required": [
+        "parameter_basis"
+      ],
+      "title": "FeederConfig",
+      "type": "object"
+    },
+    "FeederGroup": {
+      "additionalProperties": false,
+      "properties": {
+        "feeder_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Feeder Id",
+          "type": "string"
+        },
+        "parameters": {
+          "$ref": "#/$defs/FeederConfig"
+        }
+      },
+      "required": [
+        "feeder_id",
+        "parameters"
+      ],
+      "title": "FeederGroup",
+      "type": "object"
+    },
+    "GlobalScope": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "global",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "GlobalScope",
+      "type": "object"
+    },
+    "InterrogationTask": {
+      "additionalProperties": false,
+      "properties": {
+        "at_s": {
+          "minimum": 1,
+          "title": "At S",
+          "type": "integer"
+        },
+        "jitter_s": {
+          "default": 0,
+          "maximum": 300,
+          "minimum": 0,
+          "title": "Jitter S",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "interrogation",
+          "title": "Kind",
+          "type": "string"
+        },
+        "schedule_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Schedule Id",
+          "type": "string"
+        },
+        "station_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 120,
+          "minItems": 1,
+          "title": "Station Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schedule_id",
+        "at_s",
+        "station_ids",
+        "kind"
+      ],
+      "title": "InterrogationTask",
+      "type": "object"
+    },
+    "InterruptionConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_s": {
+          "enum": [
+            5,
+            20,
+            60
+          ],
+          "title": "Duration S",
+          "type": "integer"
+        },
+        "planned": {
+          "title": "Planned",
+          "type": "boolean"
+        },
+        "start_s": {
+          "minimum": 1,
+          "title": "Start S",
+          "type": "integer"
+        },
+        "station_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Station Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "station_id",
+        "start_s",
+        "duration_s",
+        "planned"
+      ],
+      "title": "InterruptionConfig",
+      "type": "object"
+    },
+    "LinkDelay": {
+      "additionalProperties": false,
+      "properties": {
+        "additional_delay_ms": {
+          "enum": [
+            200,
+            1000,
+            3000
+          ],
+          "title": "Additional Delay Ms",
+          "type": "integer"
+        },
+        "direction": {
+          "enum": [
+            "master_to_rtu",
+            "rtu_to_master"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "duration_s": {
+          "minimum": 10,
+          "title": "Duration S",
+          "type": "integer"
+        },
+        "event_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "fault_type": {
+          "const": "A02",
+          "title": "Fault Type",
+          "type": "string"
+        },
+        "scope": {
+          "discriminator": {
+            "mapping": {
+              "global": "#/$defs/GlobalScope",
+              "region": "#/$defs/RegionScope",
+              "station": "#/$defs/StationScope"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/StationScope"
+            },
+            {
+              "$ref": "#/$defs/RegionScope"
+            },
+            {
+              "$ref": "#/$defs/GlobalScope"
+            }
+          ],
+          "title": "Scope"
+        },
+        "start_s": {
+          "minimum": 1,
+          "title": "Start S",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "event_id",
+        "fault_type",
+        "start_s",
+        "duration_s",
+        "additional_delay_ms",
+        "direction",
+        "scope"
+      ],
+      "title": "LinkDelay",
+      "type": "object"
+    },
+    "LinkInterruption": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_s": {
+          "enum": [
+            5,
+            20,
+            60
+          ],
+          "title": "Duration S",
+          "type": "integer"
+        },
+        "event_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "fault_type": {
+          "const": "A01",
+          "title": "Fault Type",
+          "type": "string"
+        },
+        "scope": {
+          "discriminator": {
+            "mapping": {
+              "global": "#/$defs/GlobalScope",
+              "region": "#/$defs/RegionScope",
+              "station": "#/$defs/StationScope"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/StationScope"
+            },
+            {
+              "$ref": "#/$defs/RegionScope"
+            },
+            {
+              "$ref": "#/$defs/GlobalScope"
+            }
+          ],
+          "title": "Scope"
+        },
+        "start_s": {
+          "minimum": 1,
+          "title": "Start S",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "event_id",
+        "fault_type",
+        "start_s",
+        "duration_s",
+        "scope"
+      ],
+      "title": "LinkInterruption",
+      "type": "object"
+    },
+    "MultisiteProtocol": {
+      "additionalProperties": false,
+      "properties": {
+        "capture_filter": {
+          "default": "tcp",
+          "title": "Capture Filter",
+          "type": "string"
+        },
+        "capture_interface": {
+          "const": "lo",
+          "default": "lo",
+          "title": "Capture Interface",
+          "type": "string"
+        },
+        "command_after_s": {
+          "minimum": 1,
+          "title": "Command After S",
+          "type": "integer"
+        },
+        "command_kw": {
+          "exclusiveMinimum": 0,
+          "title": "Command Kw",
+          "type": "number"
+        },
+        "duration_s": {
+          "maximum": 86400,
+          "minimum": 5,
+          "title": "Duration S",
+          "type": "integer"
+        },
+        "host": {
+          "const": "127.0.0.1",
+          "default": "127.0.0.1",
+          "title": "Host",
+          "type": "string"
+        },
+        "interruption": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InterruptionConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "parameter_basis": {
+          "const": "simulation_assumption",
+          "title": "Parameter Basis",
+          "type": "string"
+        },
+        "purpose": {
+          "const": "iec104_lab",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "release_after_s": {
+          "minimum": 2,
+          "title": "Release After S",
+          "type": "integer"
+        },
+        "run_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "seed": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "title": "Seed",
+          "type": "integer"
+        },
+        "stations": {
+          "items": {
+            "$ref": "#/$defs/SiteConfig"
+          },
+          "maxItems": 120,
+          "minItems": 1,
+          "title": "Stations",
+          "type": "array"
+        },
+        "topology": {
+          "default": "loopback",
+          "enum": [
+            "loopback",
+            "isolated"
+          ],
+          "title": "Topology",
+          "type": "string"
+        },
+        "warmup_s": {
+          "minimum": 1,
+          "title": "Warmup S",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "purpose",
+        "parameter_basis",
+        "run_id",
+        "seed",
+        "duration_s",
+        "warmup_s",
+        "command_after_s",
+        "release_after_s",
+        "command_kw",
+        "stations"
+      ],
+      "title": "MultisiteProtocol",
+      "type": "object"
+    },
+    "NormalDeviceOperation": {
+      "additionalProperties": false,
+      "description": "Local planned enable/disable, independent of remote dispatch and faults.",
+      "properties": {
+        "at_s": {
+          "minimum": 1,
+          "title": "At S",
+          "type": "integer"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "reason": {
+          "const": "planned_local_operation",
+          "default": "planned_local_operation",
+          "title": "Reason",
+          "type": "string"
+        },
+        "station_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Station Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "station_id",
+        "at_s",
+        "enabled"
+      ],
+      "title": "NormalDeviceOperation",
+      "type": "object"
+    },
+    "NormalLink": {
+      "additionalProperties": false,
+      "properties": {
+        "delay_ms": {
+          "maximum": 150,
+          "minimum": 0,
+          "title": "Delay Ms",
+          "type": "number"
+        },
+        "jitter_ms": {
+          "maximum": 30,
+          "minimum": 0,
+          "title": "Jitter Ms",
+          "type": "number"
+        },
+        "seed": {
+          "maximum": 4294967294,
+          "minimum": 0,
+          "title": "Seed",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "delay_ms",
+        "jitter_ms",
+        "seed"
+      ],
+      "title": "NormalLink",
+      "type": "object"
+    },
+    "RegionConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "region_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Region Id",
+          "type": "string"
+        },
+        "uplink": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NormalLink"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "region_id"
+      ],
+      "title": "RegionConfig",
+      "type": "object"
+    },
+    "RegionScope": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "region",
+          "title": "Kind",
+          "type": "string"
+        },
+        "region_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Region Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "region_id"
+      ],
+      "title": "RegionScope",
+      "type": "object"
+    },
+    "ScenarioConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "business_schedule": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "dispatch": "#/$defs/AllocationTask",
+                "interrogation": "#/$defs/InterrogationTask",
+                "setpoint": "#/$defs/SetpointTask"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/SetpointTask"
+              },
+              {
+                "$ref": "#/$defs/AllocationTask"
+              },
+              {
+                "$ref": "#/$defs/InterrogationTask"
+              }
+            ]
+          },
+          "maxItems": 120,
+          "title": "Business Schedule",
+          "type": "array"
+        },
+        "normal_scene": {
+          "enum": [
+            "N01",
+            "N02",
+            "N03",
+            "N04",
+            "N05",
+            "N06",
+            "N07",
+            "N08",
+            "N09",
+            "N10"
+          ],
+          "title": "Normal Scene",
+          "type": "string"
+        },
+        "pair_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pair Id"
+        },
+        "purpose": {
+          "const": "normal_scenario_development",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "0.4-scenario.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "simulation": {
+          "$ref": "#/$defs/V03Config"
+        },
+        "source_group_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Source Group Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "purpose",
+        "source_group_id",
+        "normal_scene",
+        "simulation",
+        "business_schedule"
+      ],
+      "title": "ScenarioConfig",
+      "type": "object"
+    },
+    "SetpointTask": {
+      "additionalProperties": false,
+      "properties": {
+        "at_s": {
+          "minimum": 1,
+          "title": "At S",
+          "type": "integer"
+        },
+        "jitter_s": {
+          "default": 0,
+          "maximum": 300,
+          "minimum": 0,
+          "title": "Jitter S",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "setpoint",
+          "title": "Kind",
+          "type": "string"
+        },
+        "schedule_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Schedule Id",
+          "type": "string"
+        },
+        "station_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 120,
+          "minItems": 1,
+          "title": "Station Ids",
+          "type": "array"
+        },
+        "targets_kw": {
+          "patternProperties": {
+            "^[A-Za-z][A-Za-z0-9_-]{0,63}$": {
+              "minimum": 0,
+              "type": "number"
+            }
+          },
+          "title": "Targets Kw",
+          "type": "object"
+        }
+      },
+      "required": [
+        "schedule_id",
+        "at_s",
+        "station_ids",
+        "kind",
+        "targets_kw"
+      ],
+      "title": "SetpointTask",
+      "type": "object"
+    },
+    "SiteConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "access_link": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NormalLink"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "address": {
+          "pattern": "^10\\.204\\.(?:[0-9]{1,3})\\.(?:[0-9]{1,3})$",
+          "title": "Address",
+          "type": "string"
+        },
+        "available_kw": {
+          "exclusiveMinimum": 0,
+          "title": "Available Kw",
+          "type": "number"
+        },
+        "capacity_kw": {
+          "exclusiveMinimum": 0,
+          "title": "Capacity Kw",
+          "type": "number"
+        },
+        "common_address": {
+          "maximum": 65534,
+          "minimum": 1,
+          "title": "Common Address",
+          "type": "integer"
+        },
+        "deadband_fraction": {
+          "default": 0.01,
+          "maximum": 0.02,
+          "minimum": 0.005,
+          "title": "Deadband Fraction",
+          "type": "number"
+        },
+        "feeder_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Feeder Id",
+          "type": "string"
+        },
+        "initial_setpoint_kw": {
+          "exclusiveMinimum": 0,
+          "title": "Initial Setpoint Kw",
+          "type": "number"
+        },
+        "point_table": {
+          "default": "pvcomm-v03",
+          "enum": [
+            "pvcomm-v02",
+            "pvcomm-v03"
+          ],
+          "title": "Point Table",
+          "type": "string"
+        },
+        "port": {
+          "maximum": 65535,
+          "minimum": 1024,
+          "title": "Port",
+          "type": "integer"
+        },
+        "ramp_kw_per_s": {
+          "exclusiveMinimum": 0,
+          "title": "Ramp Kw Per S",
+          "type": "number"
+        },
+        "reactive_kvar": {
+          "default": 0.0,
+          "title": "Reactive Kvar",
+          "type": "number"
+        },
+        "region_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Region Id",
+          "type": "string"
+        },
+        "station_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Station Id",
+          "type": "string"
+        },
+        "telemetry_period_s": {
+          "maximum": 10,
+          "minimum": 2,
+          "title": "Telemetry Period S",
+          "type": "integer"
+        },
+        "telemetry_phase_s": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Telemetry Phase S",
+          "type": "number"
+        },
+        "voltage_kv": {
+          "default": 0.4,
+          "exclusiveMinimum": 0,
+          "title": "Voltage Kv",
+          "type": "number"
+        },
+        "x_m": {
+          "title": "X M",
+          "type": "number"
+        },
+        "y_m": {
+          "title": "Y M",
+          "type": "number"
+        }
+      },
+      "required": [
+        "station_id",
+        "region_id",
+        "common_address",
+        "port",
+        "capacity_kw",
+        "available_kw",
+        "initial_setpoint_kw",
+        "ramp_kw_per_s",
+        "telemetry_period_s",
+        "x_m",
+        "y_m",
+        "feeder_id",
+        "address"
+      ],
+      "title": "SiteConfig",
+      "type": "object"
+    },
+    "SpatialCloud": {
+      "additionalProperties": false,
+      "properties": {
+        "crosswind_width_m": {
+          "exclusiveMinimum": 0,
+          "title": "Crosswind Width M",
+          "type": "number"
+        },
+        "direction_degrees": {
+          "exclusiveMaximum": 360,
+          "minimum": 0,
+          "title": "Direction Degrees",
+          "type": "number"
+        }
+      },
+      "required": [
+        "direction_degrees",
+        "crosswind_width_m"
+      ],
+      "title": "SpatialCloud",
+      "type": "object"
+    },
+    "StationScope": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "station",
+          "title": "Kind",
+          "type": "string"
+        },
+        "station_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 120,
+          "minItems": 1,
+          "title": "Station Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "station_ids"
+      ],
+      "title": "StationScope",
+      "type": "object"
+    },
+    "TerminalFault": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_s": {
+          "minimum": 1,
+          "title": "Duration S",
+          "type": "integer"
+        },
+        "event_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "fault_type": {
+          "enum": [
+            "A04",
+            "A05",
+            "A06",
+            "A08"
+          ],
+          "title": "Fault Type",
+          "type": "string"
+        },
+        "feedback_duration_s": {
+          "anyOf": [
+            {
+              "enum": [
+                10,
+                30,
+                60
+              ],
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Feedback Duration S"
+        },
+        "missing_cycles": {
+          "anyOf": [
+            {
+              "enum": [
+                2,
+                5,
+                12
+              ],
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Missing Cycles"
+        },
+        "recovery_cycles": {
+          "anyOf": [
+            {
+              "enum": [
+                1,
+                3,
+                5
+              ],
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recovery Cycles"
+        },
+        "response_delay_s": {
+          "anyOf": [
+            {
+              "enum": [
+                2,
+                5,
+                15
+              ],
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Response Delay S"
+        },
+        "scope": {
+          "discriminator": {
+            "mapping": {
+              "global": "#/$defs/GlobalScope",
+              "region": "#/$defs/RegionScope",
+              "station": "#/$defs/StationScope"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/StationScope"
+            },
+            {
+              "$ref": "#/$defs/RegionScope"
+            },
+            {
+              "$ref": "#/$defs/GlobalScope"
+            }
+          ],
+          "title": "Scope"
+        },
+        "start_s": {
+          "minimum": 1,
+          "title": "Start S",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "event_id",
+        "fault_type",
+        "start_s",
+        "duration_s",
+        "scope"
+      ],
+      "title": "TerminalFault",
+      "type": "object"
+    },
+    "V03Config": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_revision": {
+          "default": 1,
+          "enum": [
+            1,
+            2
+          ],
+          "title": "Contract Revision",
+          "type": "integer"
+        },
+        "device_operations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/NormalDeviceOperation"
+          },
+          "title": "Device Operations",
+          "type": "array"
+        },
+        "devices": {
+          "items": {
+            "$ref": "#/$defs/DeviceConfig"
+          },
+          "maxItems": 120,
+          "minItems": 1,
+          "title": "Devices",
+          "type": "array"
+        },
+        "dispatch_tasks": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DispatchTask"
+          },
+          "title": "Dispatch Tasks",
+          "type": "array"
+        },
+        "electrical_step_s": {
+          "const": 1,
+          "default": 1,
+          "title": "Electrical Step S",
+          "type": "integer"
+        },
+        "feeders": {
+          "items": {
+            "$ref": "#/$defs/FeederGroup"
+          },
+          "maxItems": 12,
+          "minItems": 1,
+          "title": "Feeders",
+          "type": "array"
+        },
+        "parameter_basis": {
+          "const": "simulation_assumption_not_field_calibrated",
+          "title": "Parameter Basis",
+          "type": "string"
+        },
+        "powerflow_step_s": {
+          "const": 5,
+          "default": 5,
+          "title": "Powerflow Step S",
+          "type": "integer"
+        },
+        "protocol": {
+          "$ref": "#/$defs/MultisiteProtocol"
+        },
+        "purpose": {
+          "const": "multisite_power_protocol_development",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "regions": {
+          "items": {
+            "$ref": "#/$defs/RegionConfig"
+          },
+          "maxItems": 12,
+          "minItems": 1,
+          "title": "Regions",
+          "type": "array"
+        },
+        "repeat_command_after_s": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repeat Command After S"
+        },
+        "schema_version": {
+          "const": "0.3",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "spatial_cloud": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpatialCloud"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "weather": {
+          "$ref": "#/$defs/WeatherConfig"
+        },
+        "weather_by_station": {
+          "additionalProperties": {
+            "$ref": "#/$defs/WeatherConfig"
+          },
+          "title": "Weather By Station",
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema_version",
+        "purpose",
+        "parameter_basis",
+        "protocol",
+        "weather",
+        "devices",
+        "regions",
+        "feeders"
+      ],
+      "title": "V03Config",
+      "type": "object"
+    },
+    "WeatherConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "altitude_m": {
+          "default": 330.63,
+          "title": "Altitude M",
+          "type": "number"
+        },
+        "cloud_shadow": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CloudShadow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "directory": {
+          "title": "Directory",
+          "type": "string"
+        },
+        "latitude": {
+          "default": 35.4,
+          "title": "Latitude",
+          "type": "number"
+        },
+        "longitude": {
+          "default": 113.8,
+          "title": "Longitude",
+          "type": "number"
+        },
+        "sampling": {
+          "const": "hourly_mean_zero_order_hold",
+          "default": "hourly_mean_zero_order_hold",
+          "title": "Sampling",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "source_id": {
+          "const": "NASA_POWER_Hourly_huixian_20240601_30",
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_start": {
+          "format": "date-time",
+          "title": "Source Start",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "directory",
+        "sha256",
+        "source_start"
+      ],
+      "title": "WeatherConfig",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "changed": {
+      "$ref": "#/$defs/FaultScenarioConfig"
+    },
+    "normal": {
+      "$ref": "#/$defs/ScenarioConfig"
+    },
+    "pair_id": {
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+      "title": "Pair Id",
+      "type": "string"
+    },
+    "pair_type": {
+      "enum": [
+        "P03",
+        "P04",
+        "P06",
+        "P03_recovery"
+      ],
+      "title": "Pair Type",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "0.4-pair.1",
+      "default": "0.4-pair.1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "pair_type",
+    "pair_id",
+    "normal",
+    "changed"
+  ],
+  "title": "PairConfig",
+  "type": "object"
+}

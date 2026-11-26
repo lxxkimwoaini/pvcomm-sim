@@ -40,7 +40,9 @@ def main(argv: list[str] | None = None) -> int:
     qc = commands.add_parser("qc", help="independent protocol and physical verification")
     qc.add_argument("--run-dir", type=Path, required=True)
     qc.add_argument(
-        "--profile", choices=("normal", "experiment", "schedule", "fault"), default="normal"
+        "--profile",
+        choices=("normal", "experiment", "schedule", "fault", "labels"),
+        default="normal",
     )
     storage = commands.add_parser("storage-audit", help="read-only inventory and capacity budget")
     storage.add_argument("--run-dir", type=Path, required=True)
@@ -72,10 +74,29 @@ def main(argv: list[str] | None = None) -> int:
     run_fault.add_argument("--config", type=Path, required=True)
     run_fault.add_argument("--output-root", type=Path, required=True)
     run_fault.add_argument("--run-id", help="optional unique identity; existing output is refused")
-    for name in ("label", "split", "features", "benchmark"):
+    run_pair = commands.add_parser(
+        "run-pair", help="run and audit a frozen pair in the isolated lab"
+    )
+    run_pair.add_argument("--config", type=Path, required=True)
+    run_pair.add_argument("--output-root", type=Path, required=True)
+    label = commands.add_parser("label", help="derive evidence-linked Oracle labels; requires QC")
+    label.add_argument("--run-dir", type=Path, required=True)
+    for name in ("split", "features", "benchmark"):
         reserved = commands.add_parser(name, help="not implemented in this development version")
         reserved.add_argument("arguments", nargs=argparse.REMAINDER)
     args, unknown = parser.parse_known_args(argv)
+    if args.command == "label":
+        if unknown:
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}")
+        from pvcomm.pipeline.labels import label_run
+
+        try:
+            label_report = label_run(args.run_dir)
+        except (OSError, ValueError, RuntimeError, ImportError, KeyError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(json.dumps(label_report, sort_keys=True))
+        return 0
     if args.command == "validate-weather-source":
         if unknown:
             parser.error(f"unrecognized arguments: {' '.join(unknown)}")
@@ -204,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return 0
-    if args.command in ("run", "run-scenario", "run-fault"):
+    if args.command in ("run", "run-scenario", "run-fault", "run-pair"):
         if unknown:
             parser.error(f"unrecognized arguments: {' '.join(unknown)}")
         previous_sigterm = signal.getsignal(signal.SIGTERM)
@@ -214,6 +235,15 @@ def main(argv: list[str] | None = None) -> int:
 
         signal.signal(signal.SIGTERM, request_cancellation)
         try:
+            if args.command == "run-pair":
+                from pvcomm.config.pairs import PairConfig
+                from pvcomm.scenario.pairs import run_pair as execute_pair
+
+                pair = PairConfig.model_validate_json(args.config.read_bytes())
+                pair_dir = execute_pair(pair, args.output_root)
+                pair_state = json.loads((pair_dir / "pair-manifest.json").read_bytes())
+                print(json.dumps({"status": pair_state["status"], "pair_dir": str(pair_dir)}))
+                return 0 if pair_state["status"] == "completed" else 1
             scenario = None
             fault = None
             isolated = args.command in ("run-scenario", "run-fault") or args.isolated
@@ -284,7 +314,11 @@ def main(argv: list[str] | None = None) -> int:
         from pvcomm.qc.v01 import qc_run
 
         try:
-            if args.profile == "fault":
+            if args.profile == "labels":
+                from pvcomm.qc.labels import qc_labels
+
+                report = qc_labels(args.run_dir)
+            elif args.profile == "fault":
                 from pvcomm.qc.fault import qc_fault
 
                 report = qc_fault(args.run_dir)
