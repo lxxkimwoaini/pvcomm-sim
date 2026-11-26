@@ -2,7 +2,7 @@
 
 分布式光伏电力—通信联合仿真平台。研究依据为 [V1.3 方案](docs/分布式光伏电力—通信联合仿真数据集构建方案_V1.3.md) 和 [AGENTS.md](AGENTS.md)。
 
-当前版本为 0.4.0.dev0，V0.4a 前置修复及 V0.4b 配置化正常场景的三站开发验收已通过，**V0.4 尚未验收**。V0.3 多站点开发门禁已通过：完成3→10→20→30站逐级实跑，以及30站、3通信区域、3600秒电力—通信联合仿真和关闭Web/实时监测/历史回放资源验收。保留已验收的V0.0基础、V0.1真实协议和V0.2三站物理复现能力；当前提供配置驱动多站点、真实c104、pvlib/pandapower、独立P0/P1、Arrow、独立QC及M2只读工作台。未发布正式科研数据集或异常检测结果。实测、适用边界和复现方式见 [V0.3验收报告](docs/reports/2026-11-25-v03-acceptance.md) 及 [进度](docs/progress.md)。
+当前版本为 0.4.0.dev0，V0.4a 前置修复、V0.4b 配置化正常场景及 V0.4c 的 A01 三站开发切片已通过，**V0.4 尚未验收**。V0.3 多站点开发门禁已通过：完成3→10→20→30站逐级实跑，以及30站、3通信区域、3600秒电力—通信联合仿真和关闭Web/实时监测/历史回放资源验收。保留已验收的V0.0基础、V0.1真实协议和V0.2三站物理复现能力；当前提供配置驱动多站点、真实c104、pvlib/pandapower、独立P0/P1、Arrow、独立QC及M2只读工作台。未发布正式科研数据集或异常检测结果。实测、适用边界和复现方式见 [V0.3验收报告](docs/reports/2026-11-25-v03-acceptance.md) 及 [进度](docs/progress.md)。
 
 ## 安装与复现
 
@@ -145,7 +145,7 @@ PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli qc --profile schedule --run-di
 
 运行默认分配不含场景代码的唯一ID，已有目录拒绝覆盖。`qc --profile schedule`核验实际计划和独立证据，保留旧normal回归结果；不是异常标签。历史输入继续使用归档NASA小时背景，云影为显式模型扰动，未进行现场高频校准。实测26,132个完整APDU全部匹配、工具丢包0、日志P99最大3.840095ms；兼容回归及新CLI全链路通过。完整运行清单、来源组映射和边界见[覆盖报告](docs/reports/2026-11-26-v04b-normal-coverage.md)与[实施计划](docs/plans/2026-11-26-v04b-normal-scenes.md)。下一切片为[单故障机制](docs/plans/2026-11-26-v04c-single-faults.md)，不将三站正常覆盖冒称完整V0.4验收。
 
-## V0.4c A01候选（真实验收待执行）
+## V0.4c A01（三站机制开发验收通过）
 
 新增独立故障外层及A01自有桥端口中断，站点/子集/区域/全局范围共用运行器；不停止电力模型。操作前后实际读回、失败及finally撤销保存在Oracle，M2不读取故障计划。其余五类P0尚未实现。
 
@@ -160,4 +160,6 @@ PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli parse --run-dir <实际返回�
 PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli qc --profile fault --run-dir <实际返回运行目录>
 ```
 
-`fault` profile核验实验质量和A01施加事实，单列真实影响与恢复，不生成正式业务异常标签。旧正常门禁不变。设计见[ADR0016](docs/decisions/0016-v04-owned-link-interruption.md)；候选代码不代表A01或完整V0.4验收通过。
+`fault` profile核验实验质量和A01施加事实，单列真实影响与恢复，不生成正式业务异常标签。五项真实运行覆盖5/20/60秒及单站/子集/区域/全局，P0共8190/8190完整APDU、20路工具drop0、日志P99最大21.352394ms；取消1项、旧版兼容5项、正常N01/N09对照2项均通过。v4独立QC及恢复后真实总召唤复核通过，运行和核验SHA分别记录；原失败和正常门禁保留。
+
+完整清单、实际证据、限制和复现见[A01报告](docs/reports/2026-11-26-v04c-a01-acceptance.md)及[ADR0016](docs/decisions/0016-v04-owned-link-interruption.md)。其余五类P0、正式标签、配对和新工作台仍待实施，不代表完整V0.4c/V0.4验收。下一片先按[A02单向时延设计](docs/plans/2026-11-26-v04c-a02-delay.md)验证内核队列与受控撤销。

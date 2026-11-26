@@ -399,3 +399,17 @@ S3诊断退出1、194.041s，依旧只失败于原主站多余TESTFR回调；实
 发现fault QC从调用目录查询Git可能记录错误核验版本，修正v4为实际加载模块所在仓库，并拒绝dirty核验；原始run SHA不改，v3原报告保留。新增仓库外调用回归，相关38 passed/0.53s、Ruff/格式通过。A01 lab另增加既有audit_schedule对恢复后完整GI及未受影响站点业务的核验，不把首条恢复遥测视为最新状态。此改不修改正在运行的S5冻结树，最终须另行冻结核验并保存独立版本归属。
 
 追溯修复Windows完整check实际退出0：220 passed/41 deselected、4.69s，Ruff/format、mypy109文件、schema/生成类型、前端lint/typecheck/Vitest3/build通过；日志outputs/v04c-s6-check.log。既有两条HTML缩进warning和817.73kB包提示保留；本次未修改前端。真实运行及兼容结果仍以S5批次结束后的记录为准。
+
+### V0.4c A01三站单故障开发验收通过
+
+S5冻结b240eac960699204468a479018da196650464c34的批次实际全部结束：五项A01 5 passed/887.92s、取消1 passed/41.95s、旧真实兼容5 passed/186.72s、正常N01/N09 2 passed/19 deselected/272.54s；六步命令退出0，精确参数/外层耗时在/var/lib/pvcomm/runs/v04c_a01_s5/commands.jsonl。再次核对namespace为空、无剩余lab_worker/端点strace，final-evidence.json保存各manifest/QC哈希与最终状态；取消不算completed样本。
+
+五份原始运行completed/clean/cleanup=[]，支持单站5s/20s、双站5s、R1区域20s和全两区60s。P0共8190/8190完整APDU、解析100%、20路P0/P1工具drop0、日志P99最大21.352394ms；2436条物理样本通过适用pvlib/潮流/Arrow核验，作用期间最大更新间隔1.010740123s。共68条真实P1测量APDU未在撤销前交付，四个非全局用例的未选PV03调控均accepted_complete；无Oracle补齐M2。
+
+最终核验冻结40f329901b5e320327859c586b92e4c714aee3fd，源码/var/lib/pvcomm/sources/v04c_a01_eval_s6；从运行证据目录调用，五份v04-a01-mechanism-v4和恢复后背景总召唤均通过，原运行SHA及v3报告不变。1140个非QC原文件哈希逐项前后一致，a01-metrics-v4.json SHA256=3c63a47e59b39423929ab00530d38c7b4a5411e39bafbcaa30efff854021a044。六条TESTFR写入尝试按ADR0017独立内核证据核算，strict_normal_comparison、其他质量门槛及全部旧失败保留，不将尝试当作已上线。九个恢复GI具有新请求、确认/数据/结束证据；首次撤销后观测仍可能为排队旧值，不直接生成恢复标签。
+
+正常N01 run_a5845edc4ba54f3fac7d128bdbbfbd21与N09 run_7ed18692251546bb8d0e0e3d5739d0d6的v2严格QC均通过，分别1118/1118与1165/1165完整APDU、P99=3.777648/3.903548ms；N09保留真实合法拒绝及旧逐事务passed=false，没有强判为通信异常。五个A01成功run及QC保留54,476,283B（PCAP3,243,300B、Parquet1,506,454B、系统调用15,248,618B包含于其他项），失败/取消/兼容及源码另计。三站短运行不替代V0.3资源预算或正式并发测量。
+
+完整证据、失败清单、限制和复现已写docs/reports/2026-11-26-v04c-a01-acceptance.md，README、总计划及单故障计划同步；新增下一切片docs/plans/2026-11-26-v04c-a02-delay.md，仅设计尚未实现。当前仅A01开发门禁通过：A02/A04/A05/A06/A08、配对/正式标签、工作台、多站与30站复验、40次/类正式覆盖仍未完成，label_quality=not_evaluated。没有生成720小时或训练模型。
+
+40f3299已实际push，push CI45764024273及PR CI45764029573均completed/success。远程https://github.com/lxxkimwoaini/pvcomm-sim、lxxkimwoaini、PUBLIC、默认main不变；PR #1→#2→#3→#4→#5正确堆叠且OPEN，#3–#5 draft，未合并。后续验收文档交付SHA/push/CI另以实际远程查询和outputs/v04c-delivery.json为准，不借用前一提交CI。
