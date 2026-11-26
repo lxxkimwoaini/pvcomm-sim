@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from collections import namedtuple
 from contextlib import closing
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,13 @@ def matrix(*, attempts: int = 2) -> BatchConfig:
 def authorized_fixture(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PVCOMM_ALLOW_LAB", "1")
     monkeypatch.setattr("pvcomm.scenario.batch.code_version", lambda: "unit-only-code")
+    # Queue bookkeeping fixtures must not depend on the host's temporary filesystem.
+    # The explicit low-space test overrides this; real lab runs use actual disk usage.
+    DiskUsage = namedtuple("DiskUsage", "total used free")
+    monkeypatch.setattr(
+        "pvcomm.scenario.batch.shutil.disk_usage",
+        lambda _: DiskUsage(1024**4, 0, 1024**4),
+    )
 
 
 def test_finite_retry_retains_failed_artifacts_and_resume_skips_complete(
