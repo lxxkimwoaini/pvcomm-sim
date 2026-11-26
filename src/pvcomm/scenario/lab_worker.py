@@ -43,6 +43,10 @@ def main() -> None:
     }:
         raise ValueError("unknown worker role")
     metadata = json.loads((root / "runtime.json").read_text(encoding="utf-8"))
+    scenario_metadata = json.loads((root / "manifest.json").read_text())
+    explicit_scenario = "scenario_contract" in scenario_metadata
+    if (root / "truth/scenario").exists() and not explicit_scenario:
+        raise ValueError("missing explicit scenario contract")
     origin = ClockOrigin(**metadata["clock_origin"])
     recorder = RunRecorder(
         root,
@@ -179,6 +183,11 @@ def main() -> None:
                         (root / "master.maintenance-closed").touch(exist_ok=False)
                         wait_until(maintenance_event.start_s + maintenance_event.duration_s)
                         master_endpoint.resume_connection(maintenance_event.station_id)
+                        if explicit_scenario:
+                            wait_until(maintenance_event.start_s + maintenance_event.duration_s + 1)
+                            master_endpoint.recover(
+                                maintenance_event.station_id, raise_on_failure=False
+                            )
                     except Exception as exc:
                         maintenance_errors.append(exc)
                         stop.set()
@@ -188,7 +197,21 @@ def main() -> None:
                 )
                 maintenance.start()
 
-            if isinstance(power, V03Config) and power.dispatch_tasks:
+            if explicit_scenario:
+                from pvcomm.business.schedule import execute_schedule
+                from pvcomm.config.scenes import ScenarioConfig, canonical_hash
+
+                scenario = ScenarioConfig.model_validate_json(
+                    (root / "truth/scenario/effective.json").read_bytes()
+                )
+                if (
+                    scenario.simulation != power
+                    or canonical_hash(scenario.model_dump(mode="json"))
+                    != scenario_metadata["scenario_contract"]["effective_sha256"]
+                ):
+                    raise ValueError("scenario effective contract mismatch")
+                execute_schedule(scenario, endpoint, wait_until, recorder.record_event)
+            elif isinstance(power, V03Config) and power.dispatch_tasks:
                 from pvcomm.business.dispatch import execute_dispatches
 
                 execute_dispatches(power, endpoint, wait_until, recorder.record_event)
@@ -203,7 +226,7 @@ def main() -> None:
                 wait_until(config.release_after_s)
                 for station in config.stations:
                     endpoint.send_setpoint(station, station.initial_setpoint_kw, "release")
-            if interruption is not None:
+            if interruption is not None and not explicit_scenario:
                 wait_until(interruption.start_s + interruption.duration_s + 1)
                 endpoint.recover(
                     interruption.station_id, raise_on_failure=not isinstance(power, V03Config)

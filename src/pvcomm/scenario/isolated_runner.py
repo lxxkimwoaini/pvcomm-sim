@@ -22,6 +22,7 @@ from pvcomm.clock import ClockOrigin, SceneClock
 from pvcomm.config.lab import V01Config, v01_config_sha256
 from pvcomm.config.multisite import V03Config
 from pvcomm.config.power import V02Config
+from pvcomm.config.scenes import ScenarioConfig, canonical_hash, instantiate_scenario, load_scenario
 from pvcomm.network.isolated import IsolatedNetwork
 from pvcomm.network.regional import RegionalNetwork
 from pvcomm.scenario.resources import ResourceSampler
@@ -34,6 +35,7 @@ def run_isolated(
     output_root: Path,
     *,
     power: V02Config | V03Config | None = None,
+    scenario: ScenarioConfig | None = None,
 ) -> Path:
     if sys.platform != "linux":
         raise RuntimeError("isolated IEC 104 laboratory run requires Linux")
@@ -41,9 +43,28 @@ def run_isolated(
         if shutil.which(name) is None:
             raise RuntimeError(f"lab tool is unavailable: {name}")
     dependencies = {name: version(name) for name in ("c104", "pydantic", "PyYAML")}
+    if scenario is not None:
+        if scenario.simulation != power or scenario.simulation.protocol != config:
+            raise ValueError("scenario and compiled simulation disagree")
+        template = load_scenario(source)
+        if instantiate_scenario(template, config.run_id) != scenario:
+            raise ValueError("scenario source and effective document disagree")
     root = (output_root / config.run_id).resolve()
     root.mkdir(parents=True, exist_ok=False)
-    (root / "scenario.yaml").write_bytes(source.read_bytes())
+    if scenario is None:
+        (root / "scenario.yaml").write_bytes(source.read_bytes())
+    else:
+        diagnostic = root / "truth/scenario"
+        diagnostic.mkdir(parents=True)
+        (diagnostic / "source.yaml").write_bytes(source.read_bytes())
+        (diagnostic / "effective.json").write_text(
+            scenario.model_dump_json(indent=2), encoding="utf-8"
+        )
+        plan = [t.model_dump(mode="json") for t in scenario.expanded_schedule()]
+        (diagnostic / "expanded-plan.json").write_text(json.dumps(plan, indent=2), encoding="utf-8")
+        (root / "scenario.yaml").write_text(
+            scenario.simulation.model_dump_json(indent=2), encoding="utf-8"
+        )
     (root / "effective_config.json").write_text(config.model_dump_json(indent=2), encoding="utf-8")
     network = RegionalNetwork(power) if isinstance(power, V03Config) else IsolatedNetwork()
     origin = ClockOrigin.capture()
@@ -74,6 +95,14 @@ def run_isolated(
             "default_route": None,
         },
     }
+    if scenario is not None:
+        manifest["scenario_contract"] = {
+            "version": scenario.schema_version,
+            "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+            "effective_sha256": canonical_hash(scenario.model_dump(mode="json")),
+            "plan_sha256": canonical_hash(plan),
+            "scope": "Oracle",
+        }
 
     def save_manifest() -> None:
         temp = root / "manifest.json.tmp"

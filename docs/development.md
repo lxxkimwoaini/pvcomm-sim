@@ -79,3 +79,12 @@ M2事件索引采用临时SQLite、追加字节摄入和联合时间/ID索引；
 当前独立QC版本：V0.2 v02-power-v7；V0.3 v03-power-v5，内部协议核验v01-evidence-v5，实验完整性/质量v04-experiment-quality-v1。历史v1/v2/v3及失败报告保持原样，不覆盖。v4修正TCP前序缺口补齐时的后序完整APDU可用时间/归属帧，不删除严格比较项。normal_device_operations及物理/电气诊断保持原门槛。Windows与WSL解释器/虚拟环境继续分离。V0.3通过与否须依据完整规模/1h/界面资源实测，不能由单测或CI替代。
 
 `frontend/scripts/measure-v03.mjs`在实际页面记录请求耗时、服务耗时和DOM更新后两次animation frame的近似绘制时间；DOM属性仅包含已有M2游标及功率接收时间。实时显示延迟统计每站初始快照之后、新显示的最近功率观测相对主站available_at的时间，不将2/5/10s采样间隔误算为网页延迟；回放旧样本单独标记。该测量不是传感器端到端延迟或显示硬件扫描测量。
+
+
+## V0.4b显式计划
+
+`validate-scenario`和`run-scenario`仅接受新外层契约；旧加载器不扩大0.1/0.2/0.3语义。schema由`generate_schemas.py`生成；开发模板用`scripts/make_normal_scenario.py --scene N01 --variant 0 --output <新文件>`生成，所有数值仅为小规模功能验证假设。唯一run_id可由编排自动分配，也可`--run-id <unique>`指定，不能复用已有目录。
+
+`tests/lab/test_normal_scenarios.py`为真实三站、NASA/pvlib/pandapower和独立抓包验收，20个两变体用例另加日落用例，共21项；必须冻结干净代码、新持久目录、顺序运行，可用pytest -k选择小切片。普通CI不运行这些特权用例。N02变体0/1/2分别为夜间/日出/日落的真实历史时刻（UTC），不倍速推进。来源小时零阶保持与模型太阳几何不构成真实秒级气象。完整覆盖仅以实际lab结果为准。
+
+新增qc/v04-normal-schedule-v1在独立实验质量后验证任务成员、命令独占证据、实际总召唤、正常本地停机拒绝和维护恢复。保留旧normal_regression=false等结果，不能用新profile把原正常回归改成成功。标签和故障核验仍未实现。相关决策见ADR0015。

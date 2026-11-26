@@ -67,3 +67,14 @@ pvcomm-v03继承既有点表，新增M_ME_NC_1 IOA1009=站点入线loading_perce
 master_command_sent追加sent_mono_ns/sent_utc_ns/connection_epoch；master_command_confirmation保存实际raw ACT_CON、接收单调时刻、匹配结果及task_id。master_command_response的positive_confirmation可空，outcome与stack_result分离。master_command_not_sent用于连接不可用/隔离，不能伪造为已发命令。终端接受事件仍仅由实际协议回调产生。master_dispatch_allocated增加排除原因、eligible_station_count和degradation_policy，排除不代表可用功率为0。
 
 schemas/v04-weather-source.schema.json为独立来源契约；旧WeatherConfig不改变。schemas/v04-retention.schema.json提供full_evidence/verified_archive/derived_rebuildable保留等级，delete_sources固定false。预算采用V0.3实测1,383,250,188 B/h，720h×1.5=1,493,910,203,040 B；备份另计，已知单PDML 11,275,084,964 B仅为临时空间下界，未替代峰值和并发测试。
+
+
+## V0.4b显式调度契约
+
+`schemas/v04-scenario.schema.json`版本0.4-scenario.1组合V03Config，business_schedule为必需数组，空数组没有远方控制。schedule_id、at_s、jitter_s、station_ids及kind= setpoint/dispatch/interrogation定义已知业务；setpoint明确targets_kw，dispatch明确total_kw/allocation/批次。全抖动区间内同站保守60s窗口不重叠。底层legacy command_after/release字段仅为旧契约兼容，新入口不执行它们。
+
+truth/scenario保存source.yaml、effective.json、expanded-plan.json；manifest.scenario_contract保存源文件SHA256、规范化有效配置/计划SHA256和Oracle范围。source_group_id、pair_id和normal_scene只在该诊断区域，不投影到M2。主站仅在任务到期记录master_schedule_started/finished和实际命令或master_interrogation_requested/result；available_at仍按实际写入时刻。未知未来业务不提前发布。
+
+master_dispatch_allocated附加observed_available_kw（容量分配为null），记录真正消费的主站链路观测，不是可信独立M3气象/电气信息。调度QC验证这些值在分配前确已接收且未过期；不读取Oracle填补主站缺失值。六表Arrow字段不改，附加信息仍保存在已版本化payload_json中。
+
+qc/v04-normal-schedule-v1仅为Oracle正常场景验收；command_assessments保留accepted_complete/rejected/timeout等独立证据，不生成正式异常标签。旧profile及QC目录均不变。

@@ -309,3 +309,14 @@ README旧“V0.4尚未开展”及开发指南过期QC版本已修正，新增�
 ### V0.4a远程交付核验
 
 验收文档提交ac4ed18c852ad581637c6f569fe8a348f2cc2f0f已push，git ls-remote与本地一致；push CI45745825098及pull_request CI45745834313实际success，五job均成功。草稿PR #5：https://github.com/lxxkimwoaini/pvcomm-sim/pull/5 ，OPEN/isDraft=true，base=feat/v03-multisite，head=feat/v04-scenarios。PR #1→#2→#3→#4→#5正确堆叠，均未合并。源代码冻结和真实验收仍归属097a616，不将文档提交冒称实跑。交付检查25个本地Markdown链接无断链、无data/outputs/PCAP/Parquet/密钥路径进入提交，CLI实际0.4.0.dev0，工作区只有本次文档补记；最终分支CI以远程实际结果和交付回复为准。新增仅文档补记不会修改冻结实验或旧证据。
+
+
+## V0.4b显式调度候选（2026-11-26）
+
+继续feat/v04-scenarios，基线1599f928，工作区初始干净；AGENTS、V1.3相关契约、进度、V0.4a最终报告及ADR0011/0012已核对。PR #1→#2→#3→#4→#5仍OPEN，#3–#5 draft，未合并。工具Git2.52.0、gh2.102.0、uv0.11.13、Python3.11.15（Windows/WSL）、Node24.14.0、pnpm11.5.1可用，gh实际账号lxxkimwoaini；WSL以root运行授权隔离实验，namespace初始为空，Linux卷可用约907GiB（动态磁盘数值不是宿主真实空闲承诺）。
+
+新增ADR0015和0.4-scenario.1组合契约，显式空调度、确定性时序、单站/子集分配/总召唤、新CLI入口和诊断侧完整计划；保留旧run、配置和QC门槛。正常维护的恢复召唤在独立维护任务内及时执行，避免被后续业务计划阻塞；旧路径不变。新增场景独立QC和N01–N10小规模开发模板，尚未把模板声明为真实覆盖或正式标签。
+
+当前16项新增调度/因果/证据负测试通过，普通全量先前176 passed/14 deselected（随后新增3项单元及21项lab待最终总检），mypy98文件与Ruff通过。已实际以归档输入/pvlib核对日出日落候选：2024-06-23日出21:12:31 UTC，2024-06-24日落11:42:03 UTC，取120秒场景跨越该模型几何边界；小时背景不冒称秒级实测。下一步冻结clean候选、三站逐类两变体真实运行、原始证据保留、解析/Arrow/独立QC；任何失败停止后续批次。V0.4b当前未验收，六类异常/正式标签/配对/UI队列未开展，本次不生成720h或训练。
+
+候选最终普通总检 `uv run --frozen python scripts/dev.py check` 实际退出0：179 passed/35 deselected，mypy98文件，Ruff/format/schema/前端生成类型、ESLint/Prettier/vue-tsc/Vitest3/build通过。保留既有2条HTML缩进warning和817.61kB包提示。真实21项正常场景尚未运行，普通通过不替代实际验收。

@@ -128,3 +128,19 @@ uv run pvcomm validate-weather-source --config <historical_source_descriptor.jso
 ```
 
 存储审计只读，归档保留原件并核验解压SHA256，禁止删除源文件。新气象描述符支持显式日期、位置和产品版本，当前仅实现离线NASA POWER小时数据适配；旧0.2/0.3配置及哈希保持可复现。新来源必须具备完整原始数据、许可/引用快照与哈希。未接入独立M3来源。N01–N10、P0故障、配对标签与任务队列尚待后续切片实现；`label`仍返回3。
+
+
+## V0.4b 显式正常业务计划（验收中）
+
+新增 `0.4-scenario.1` 组合契约，单站设定值、站点子集分配及运行中总召唤共用现有通信路径；空计划不发送旧固定限发/解除指令。旧 `run` 行为保留。来源组、场景代码、配对信息和完整未来计划只存诊断侧。N01～N10开发模板不等于真实覆盖结论，正式异常和标签仍未实现。
+
+```sh
+uv run python scripts/make_normal_scenario.py --scene N04 --variant 1 --output outputs/new-normal.yaml
+uv run pvcomm validate-scenario --config outputs/new-normal.yaml
+# 以下需要授权Linux、归档历史输入和protocol/power/data依赖：
+PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli run-scenario --config configs/v0.4b-steady.yaml --output-root /var/lib/pvcomm/runs/NEW_ROOT
+PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli parse --run-dir <实际返回运行目录> --parquet
+PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli qc --profile schedule --run-dir <实际返回运行目录>
+```
+
+运行默认分配不含场景代码的唯一ID，已有目录拒绝覆盖。`qc --profile schedule`核验实际计划和独立证据，保留旧normal回归结果；不是异常标签。历史输入继续使用归档NASA小时背景，云影为显式模型扰动，未进行现场高频校准。详见[实施计划](docs/plans/2026-11-26-v04b-normal-scenes.md)。

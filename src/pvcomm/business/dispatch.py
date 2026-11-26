@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Protocol
 
 from pvcomm.config.lab import V01StationConfig
-from pvcomm.config.multisite import V03Config
+from pvcomm.config.multisite import DispatchTask, V03Config
 from pvcomm.domain.command import CommandResult, ObservationUnavailable
 from pvcomm.protocol.c104_runtime import RecordEvent
 
@@ -58,64 +58,78 @@ def execute_dispatches(
 ) -> None:
     for task in config.dispatch_tasks:
         wait_until(task.at_s)
-        stations = [s for s in config.protocol.stations if s.region_id in task.region_ids]
-        requested_count = len(stations)
-        excluded: dict[str, str] = {}
-        availability = None
-        if task.allocation == "observed_available":
-            availability = {}
-            for station in stations:
-                try:
-                    availability[station.station_id] = master.available_power(station)
-                except ObservationUnavailable as exc:
-                    excluded[station.station_id] = exc.reason
-            stations = [s for s in stations if s.station_id not in excluded]
-        targets, unallocated = (
-            allocate(task.total_kw, {s.station_id: s.capacity_kw for s in stations}, availability)
-            if stations
-            else ({}, task.total_kw)
-        )
-        record(
-            "master_dispatch_allocated",
-            {
-                "dispatch_id": task.dispatch_id,
-                "region_ids": list(task.region_ids),
-                "requested_kw": task.total_kw,
-                "allocated_kw": sum(targets.values()),
-                "unallocated_kw": unallocated,
-                "allocation": task.allocation,
-                "targets_kw": targets,
-                "requested_station_count": requested_count,
-                "eligible_station_count": len(stations),
-                "excluded_observations": excluded,
-                "degradation_policy": "exclude_unavailable_observations_continue_eligible",
-            },
-        )
-        with ThreadPoolExecutor(max_workers=task.batch_size) as pool:
-            for offset in range(0, len(stations), task.batch_size):
-                wait_until(task.at_s + offset // task.batch_size * (3 + task.batch_interval_s))
-                batch = stations[offset : offset + task.batch_size]
-                futures = {
-                    s.station_id: pool.submit(
-                        master.send_setpoint,
-                        s,
-                        targets[s.station_id],
-                        "dispatch",
-                        dispatch_id=task.dispatch_id,
-                        raise_on_failure=False,
-                    )
-                    for s in batch
-                }
-                for station_id, future in futures.items():
-                    result = future.result()
-                    record(
-                        "master_dispatch_station_result",
-                        {
-                            "dispatch_id": task.dispatch_id,
-                            "station_id": station_id,
-                            "task_id": result.task_id,
-                            "outcome": result.outcome,
-                            "positive_confirmation": result.positive_confirmation,
-                        },
-                    )
-        record("master_dispatch_transmissions_finished", {"dispatch_id": task.dispatch_id})
+        stations: list[V01StationConfig] = [
+            s for s in config.protocol.stations if s.region_id in task.region_ids
+        ]
+        execute_dispatch(task, stations, master, wait_until, record)
+
+
+def execute_dispatch(
+    task: DispatchTask,
+    stations: list[V01StationConfig],
+    master: DispatchMaster,
+    wait_until: Callable[[float], None],
+    record: RecordEvent,
+) -> None:
+    """Shared transmission path; explicit callers may select a region subset."""
+    requested_count = len(stations)
+    excluded: dict[str, str] = {}
+    availability = None
+    if task.allocation == "observed_available":
+        availability = {}
+        for station in stations:
+            try:
+                availability[station.station_id] = master.available_power(station)
+            except ObservationUnavailable as exc:
+                excluded[station.station_id] = exc.reason
+        stations = [s for s in stations if s.station_id not in excluded]
+    targets, unallocated = (
+        allocate(task.total_kw, {s.station_id: s.capacity_kw for s in stations}, availability)
+        if stations
+        else ({}, task.total_kw)
+    )
+    record(
+        "master_dispatch_allocated",
+        {
+            "dispatch_id": task.dispatch_id,
+            "region_ids": list(task.region_ids),
+            "requested_kw": task.total_kw,
+            "allocated_kw": sum(targets.values()),
+            "unallocated_kw": unallocated,
+            "allocation": task.allocation,
+            "targets_kw": targets,
+            "requested_station_count": requested_count,
+            "eligible_station_count": len(stations),
+            "excluded_observations": excluded,
+            "observed_available_kw": availability,
+            "degradation_policy": "exclude_unavailable_observations_continue_eligible",
+        },
+    )
+    with ThreadPoolExecutor(max_workers=task.batch_size) as pool:
+        for offset in range(0, len(stations), task.batch_size):
+            wait_until(task.at_s + offset // task.batch_size * (3 + task.batch_interval_s))
+            batch = stations[offset : offset + task.batch_size]
+            futures = {
+                s.station_id: pool.submit(
+                    master.send_setpoint,
+                    s,
+                    targets[s.station_id],
+                    "dispatch",
+                    dispatch_id=task.dispatch_id,
+                    raise_on_failure=False,
+                )
+                for s in batch
+            }
+            for station_id, future in futures.items():
+                result = future.result()
+                record(
+                    "master_dispatch_station_result",
+                    {
+                        "dispatch_id": task.dispatch_id,
+                        "station_id": station_id,
+                        "task_id": result.task_id,
+                        "outcome": result.outcome,
+                        "positive_confirmation": result.positive_confirmation,
+                    },
+                )
+    record("master_dispatch_transmissions_finished", {"dispatch_id": task.dispatch_id})

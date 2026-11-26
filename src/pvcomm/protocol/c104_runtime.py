@@ -590,6 +590,35 @@ class C104Master:
             if not result:
                 raise RuntimeError(f"interrogation failed for {station_config.station_id}")
 
+    def interrogate(
+        self, station_config: V01StationConfig, *, dispatch_id: str, raise_on_failure: bool = True
+    ) -> bool:
+        """Runtime GI, separate from startup clock synchronization and recovery."""
+        station_id = station_config.station_id
+        with self._station_locks[station_id]:
+            self._record_event(
+                "master_interrogation_requested",
+                {
+                    "station_id": station_id,
+                    "common_address": station_config.common_address,
+                    "dispatch_id": dispatch_id,
+                },
+            )
+            result = bool(
+                self._connections[station_id].interrogation(
+                    common_address=station_config.common_address,
+                    cause=self._c104.Cot.ACTIVATION,
+                    wait_for_response=True,
+                )
+            )
+            self._record_event(
+                "master_interrogation_result",
+                {"station_id": station_id, "dispatch_id": dispatch_id, "success": result},
+            )
+            if not result and raise_on_failure:
+                raise RuntimeError(f"runtime interrogation failed for {station_id}")
+            return result
+
     def recover(self, station_id: str, *, raise_on_failure: bool = True) -> bool:
         connection = self._connections[station_id]
         deadline = time.monotonic() + 15

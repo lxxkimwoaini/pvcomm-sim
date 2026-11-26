@@ -4,6 +4,7 @@ import argparse
 import json
 import signal
 import sys
+import uuid
 from pathlib import Path
 
 from pvcomm import __version__
@@ -38,7 +39,7 @@ def main(argv: list[str] | None = None) -> int:
     parse.add_argument("--parquet", action="store_true", help="also export versioned Arrow tables")
     qc = commands.add_parser("qc", help="independent protocol and physical verification")
     qc.add_argument("--run-dir", type=Path, required=True)
-    qc.add_argument("--profile", choices=("normal", "experiment"), default="normal")
+    qc.add_argument("--profile", choices=("normal", "experiment", "schedule"), default="normal")
     storage = commands.add_parser("storage-audit", help="read-only inventory and capacity budget")
     storage.add_argument("--run-dir", type=Path, required=True)
     storage.add_argument("--policy", type=Path, required=True)
@@ -49,6 +50,16 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--config", type=Path, required=True)
     run.add_argument("--output-root", type=Path, required=True)
     run.add_argument("--isolated", action="store_true", help="owned Linux namespace P0/P1 lab")
+    validate_scene = commands.add_parser(
+        "validate-scenario", help="validate and expand an explicit V0.4 business schedule"
+    )
+    validate_scene.add_argument("--config", type=Path, required=True)
+    run_scene = commands.add_parser(
+        "run-scenario", help="run an explicit V0.4 scene in the owned isolated Linux lab"
+    )
+    run_scene.add_argument("--config", type=Path, required=True)
+    run_scene.add_argument("--output-root", type=Path, required=True)
+    run_scene.add_argument("--run-id", help="optional unique identity; existing output is refused")
     for name in ("label", "split", "features", "benchmark"):
         reserved = commands.add_parser(name, help="not implemented in this development version")
         reserved.add_argument("arguments", nargs=argparse.REMAINDER)
@@ -136,7 +147,31 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return 0
-    if args.command == "run":
+    if args.command == "validate-scenario":
+        if unknown:
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}")
+        from pvcomm.config.scenes import canonical_hash, load_scenario
+
+        try:
+            template = load_scenario(args.config)
+        except (OSError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        print(
+            json.dumps(
+                {
+                    "valid": True,
+                    "schema_version": template.schema_version,
+                    "config_sha256": canonical_hash(template.model_dump(mode="json")),
+                    "expanded_plan": [
+                        t.model_dump(mode="json") for t in template.expanded_schedule()
+                    ],
+                    "scope": "Oracle_configuration_not_M2",
+                }
+            )
+        )
+        return 0
+    if args.command in ("run", "run-scenario"):
         if unknown:
             parser.error(f"unrecognized arguments: {' '.join(unknown)}")
         previous_sigterm = signal.getsignal(signal.SIGTERM)
@@ -146,15 +181,25 @@ def main(argv: list[str] | None = None) -> int:
 
         signal.signal(signal.SIGTERM, request_cancellation)
         try:
-            document = load_lab_document(args.config)
+            scenario = None
+            isolated = args.command == "run-scenario" or args.isolated
+            if args.command == "run-scenario":
+                from pvcomm.config.scenes import instantiate_scenario, load_scenario
+
+                scenario = instantiate_scenario(
+                    load_scenario(args.config), args.run_id or f"run_{uuid.uuid4().hex}"
+                )
+            document = load_lab_document(args.config) if scenario is None else scenario.simulation
             power = document if not isinstance(document, V01Config) else None
             lab_config = power.protocol if power is not None else load_v01_config(args.config)
-            if power is not None and not args.isolated:
+            if power is not None and not isolated:
                 raise ValueError("physical simulation requires --isolated")
-            if args.isolated:
+            if isolated:
                 from pvcomm.scenario.isolated_runner import run_isolated
 
-                run_dir = run_isolated(lab_config, args.config, args.output_root, power=power)
+                run_dir = run_isolated(
+                    lab_config, args.config, args.output_root, power=power, scenario=scenario
+                )
             else:
                 run_dir = V01Runner(lab_config, args.config, args.output_root).run()
         except (OSError, ValueError, RuntimeError, TimeoutError, ImportError) as exc:
@@ -193,7 +238,11 @@ def main(argv: list[str] | None = None) -> int:
         from pvcomm.qc.v01 import qc_run
 
         try:
-            if args.profile == "experiment":
+            if args.profile == "schedule":
+                from pvcomm.qc.schedule import qc_schedule
+
+                report = qc_schedule(args.run_dir)
+            elif args.profile == "experiment":
                 from pvcomm.qc.experiment import qc_experiment
 
                 report = qc_experiment(args.run_dir)
