@@ -348,3 +348,9 @@ V0.4b真实批次已实际结束：21 passed/2907.66s、退出0；N01–N10各�
 同f48d114最终真实回归顺序完成：旧协议/断联/取消/尾包5 passed/185.35s（V0.3 2131/2131 APDU、P99=2.720530ms）；V0.4a降级2 passed/235.15s（2527/2527、P99=3.813604ms），silent超时3.000418187s、同会话隔离、另一站accepted。旧V0.2 90s CLI run/parse/Arrow/默认QC均退出0，453/453、P99=5.696731ms。新CLI validate-scenario/run-scenario/parse/Arrow/schedule-QC均退出0，额外run_936bfe63db414081bfb028905b55b4be、1117/1117、P99=3.662255ms；默认唯一ID、新共同来源组、空调度无命令均验证。根/var/lib/pvcomm/runs/v04b_final包含全部日志/命令/耗时/证据，最终namespace实际为空；没有并行namespace实验。WSL科学/Arrow189 passed/28 deselected、11.79s，Windows完整182 passed/35 deselected及相关前端检查、三类真实UI回放通过（具体冻结归属见报告）。
 
 报告docs/reports/2026-11-26-v04b-normal-coverage.md已补齐21个run_id、原/共同来源映射、SHA、CLI复现、旧版兼容、失败保留、存储及未完成项；README和阶段计划同步。V0.4b仅三站正常开发门禁通过；六类P0、配对/正式标签、场景表单/队列/标签页面、多站与30站复验仍待V0.4c–f；未进入720h或训练、未做现场高频校准。当前远程仍为https://github.com/lxxkimwoaini/pvcomm-sim，lxxkimwoaini、PUBLIC、默认main；PR #1→#2→#3→#4→#5均OPEN，#3–#5 draft，不合并。最后已验证的源代码交付为251c881，push CI45754356008及PR CI45754360861 success；本次验收文档的提交/推送/CI以随后实际远程核验为准，不把前一提交CI当作后一提交结果。
+
+### V0.4b交付收尾核验
+
+验收文档提交00914b1c8bc82008f5a43892a4118048fd1a8347已实际push，git ls-remote与本地一致。pull_request CI45756164645五job均success；push CI45756156864在本次补记时四job success、前端安装浏览器依赖仍in_progress，不冒称全部通过，最终状态另以实际查询为准。草稿PR #5已更新标题和正文为V0.4a/b实际实现及验收范围，仍OPEN/isDraft=true，base=feat/v03-multisite、head=feat/v04-scenarios；PR #1→#2→#3→#4→#5堆叠关系核对正确，全部未合并。仓库lxxkimwoaini/pvcomm-sim仍PUBLIC、默认main。
+
+修正覆盖报告末尾多余空行，git diff --check退出0。只读文档核验实际退出0：21个run_id均在覆盖报告，指标文件SHA256=700d7d5ec36dcb0c14b72f498be2ff223a378f9d856a1ecf16e0d6196e11f45b匹配，22个本地Markdown链接有效；未重跑或修改真实运行。本次仅文档收尾，先前运行/核验/UI冻结归属不变。下一任务仍为V0.4c真实单故障机制，正式标签、配对及后续多站验收尚未完成。本次补记提交的push/CI最终结果在交付时独立核验。
