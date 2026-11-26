@@ -287,3 +287,9 @@ V0.3开发门禁通过，详见docs/reports/2026-11-25-v03-acceptance.md；READM
 v04a_s2实际2 failed/237.34s。三站clean/completed，真实缺测排除、1次否定确认及4次成功事务均满足，物理/解析/工具丢包/时间对齐通过；独立端点QC因PV01缺一个S回调失败。定位P1到达时间在server.stop结束后14.889ms，不能扩大QC尾部豁免。新增ADR0013：仅已授权V0.3计划维护先由主站真实STOPDT→OPEN_MUTED→disconnect→CLOSED，然后控制器才暂停RTU；物理持续，非计划故障不走该握手，0.1/0.2不变。161项普通测试、mypy88和Ruff通过，待新冻结实跑。第二项旧整数fixture失败仍由72e56a0修复，其独立v04a_s3/silent已实际1 passed/1 deselected/3.97s，确认超时3.000302849s、同会话隔离、其他站成功且clean，属于真实协议fixture而非正式A05标签验收。72e56a0 push CI45741724275五job成功。
 
 当前代码真实浏览器回放既有30站小时证据：2 passed/1 skipped、25.6s，核对27183显示点，结果保存在outputs/v04a-real-ui-s1；无mock。资源日志原件2332442B，无损gzip149953B，解压和源SHA256均37d131a09865f69fda29b33e25450790be9acffbb3bf3174627a397990624f69，源复查相同且保留；归档只在outputs/v04a-verified-resource-archive。
+
+v04a_s4冻结32f93f1前置真实2 passed/238.41s：三站clean/completed/cleanup=[]；PV01缺测排除、PV02实际否定确认、PV03及后续任务继续；实验完整性/数据质量通过、正常业务回归按预期false。2480/2480完整APDU、P99=3.722319ms/max5.012098ms、工具和12路qdisc丢失0；656物理样本通过。独立silent确认超时3.000395088s、同会话隔离、其他站成功。WSL科学/Arrow全量168 passed/6 deselected/32.48s。32f93f1 push CI45742721693五job实际success。
+
+同冻结旧版回归实际1 failed/3 passed/193.29s：V0.1回环、独立端点及取消清理通过，V0.3断联物理连续和恢复最新状态通过，但严格独立端点QC失败。PV02/PV03的P1原始PCAP缺最终3条控制帧；P0和终端raw均有。tcpdump分别captured866/received875、captured783/received792，kernel drop0。失败目录/var/lib/pvcomm/runs/v04a_s4/legacy完整保留，未放宽门槛。ADR0014新增端点结束后有界统计确认的buffer排空，最终统计使用末组；旧即时抓包路径不变。真实ICMP缓冲尾包预检1 passed/3.56s（三次往返），目录/var/lib/pvcomm/runs/v04a_capture_preflight_001；该fixture不是正式IEC104实验。新冻结旧配置及V0.4a重验尚待执行，不能宣布V0.4a整体通过。
+
+缓冲排空候选完整check退出0：162 passed/14 deselected、mypy90、Ruff/format/schema/TS、前端ESLint/Prettier/vue-tsc/Vitest3/build均通过；保留既有2条缩进warning与817.61kB包提示。该结果不替代新的真实兼容验收。

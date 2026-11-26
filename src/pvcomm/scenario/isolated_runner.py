@@ -161,6 +161,7 @@ def run_isolated(
                 command_prefix=network.prefix(namespace),
                 native_spool=isinstance(power, V03Config),
                 immediate_mode=not isinstance(power, V03Config),
+                drain_on_stop=isinstance(power, V03Config),
             )
             captures.append(capture)
             capture.start()
