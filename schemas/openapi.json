@@ -256,6 +256,203 @@
         "title": "EventsPage",
         "type": "object"
       },
+      "ExperimentList": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "experiments": {
+            "items": {
+              "$ref": "#/components/schemas/ExperimentView"
+            },
+            "title": "Experiments",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "experiments",
+          "total"
+        ],
+        "title": "ExperimentList",
+        "type": "object"
+      },
+      "ExperimentQuality": {
+        "additionalProperties": false,
+        "properties": {
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/RunQuality"
+            },
+            "title": "Runs",
+            "type": "array"
+          },
+          "scope": {
+            "const": "Oracle_experiment_management_never_M2_features",
+            "default": "Oracle_experiment_management_never_M2_features",
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runs"
+        ],
+        "title": "ExperimentQuality",
+        "type": "object"
+      },
+      "ExperimentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "direction": {
+            "default": "master_to_rtu",
+            "enum": [
+              "master_to_rtu",
+              "rtu_to_master"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "region_id": {
+            "default": "R1",
+            "enum": [
+              "R1",
+              "R2",
+              "R3"
+            ],
+            "title": "Region Id",
+            "type": "string"
+          },
+          "scope": {
+            "default": "station",
+            "enum": [
+              "station",
+              "region"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "seed": {
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Seed",
+            "type": "integer"
+          },
+          "site_count": {
+            "default": 3,
+            "enum": [
+              3,
+              10,
+              30
+            ],
+            "title": "Site Count",
+            "type": "integer"
+          },
+          "station_ids": {
+            "default": [
+              "PV01"
+            ],
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+              "type": "string"
+            },
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "Station Ids",
+            "type": "array"
+          },
+          "strength": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strength"
+          },
+          "template": {
+            "maxLength": 20,
+            "minLength": 3,
+            "title": "Template",
+            "type": "string"
+          },
+          "variant": {
+            "default": 0,
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Variant",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "template",
+          "seed"
+        ],
+        "title": "ExperimentRequest",
+        "type": "object"
+      },
+      "ExperimentView": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "experiment_id": {
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "queue": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue"
+          },
+          "request": {
+            "additionalProperties": true,
+            "title": "Request",
+            "type": "object"
+          },
+          "scope": {
+            "const": "Oracle_experiment_management_never_M2_features",
+            "default": "Oracle_experiment_management_never_M2_features",
+            "title": "Scope",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "status",
+          "request"
+        ],
+        "title": "ExperimentView",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -291,13 +488,41 @@
             "type": "string"
           },
           "web_run_submission_available": {
-            "const": false,
             "default": false,
             "title": "Web Run Submission Available",
             "type": "boolean"
           }
         },
         "title": "Health",
+        "type": "object"
+      },
+      "LabelPage": {
+        "additionalProperties": false,
+        "properties": {
+          "labels": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "scope": {
+            "const": "Oracle_experiment_management_never_M2_features",
+            "default": "Oracle_experiment_management_never_M2_features",
+            "title": "Scope",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "labels",
+          "total"
+        ],
+        "title": "LabelPage",
         "type": "object"
       },
       "MeasurementSeries": {
@@ -590,6 +815,59 @@
         "title": "RunList",
         "type": "object"
       },
+      "RunQuality": {
+        "additionalProperties": false,
+        "properties": {
+          "cleanup_errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Cleanup Errors",
+            "type": "array"
+          },
+          "code_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Version"
+          },
+          "reports": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Reports",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "run_key": {
+            "title": "Run Key",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_key",
+          "run_id",
+          "status",
+          "cleanup_errors",
+          "code_version",
+          "reports"
+        ],
+        "title": "RunQuality",
+        "type": "object"
+      },
       "RunSnapshot": {
         "additionalProperties": false,
         "properties": {
@@ -871,6 +1149,107 @@
         "title": "StationView",
         "type": "object"
       },
+      "TemplateCatalog": {
+        "additionalProperties": false,
+        "properties": {
+          "execution": {
+            "const": "separate_authorized_linux_worker",
+            "default": "separate_authorized_linux_worker",
+            "title": "Execution",
+            "type": "string"
+          },
+          "fault": {
+            "default": [
+              "A01",
+              "A02",
+              "A04",
+              "A05",
+              "A06",
+              "A08"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Fault",
+            "type": "array"
+          },
+          "normal": {
+            "default": [
+              "N01",
+              "N02",
+              "N03",
+              "N04",
+              "N05",
+              "N06",
+              "N07",
+              "N08",
+              "N09",
+              "N10"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Normal",
+            "type": "array"
+          },
+          "pair_submission_enabled": {
+            "title": "Pair Submission Enabled",
+            "type": "boolean"
+          },
+          "pairs": {
+            "default": [
+              "P03",
+              "P04",
+              "P06",
+              "P03_recovery"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Pairs",
+            "type": "array"
+          },
+          "scope": {
+            "const": "Oracle_experiment_management_never_M2_features",
+            "default": "Oracle_experiment_management_never_M2_features",
+            "title": "Scope",
+            "type": "string"
+          },
+          "site_counts": {
+            "default": [
+              3,
+              10,
+              30
+            ],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Site Counts",
+            "type": "array"
+          },
+          "strengths": {
+            "additionalProperties": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "title": "Strengths",
+            "type": "object"
+          },
+          "submission_enabled": {
+            "title": "Submission Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "strengths",
+          "submission_enabled",
+          "pair_submission_enabled"
+        ],
+        "title": "TemplateCatalog",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -964,6 +1343,280 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/diagnostics/experiments": {
+      "get": {
+        "operationId": "experiments_api_diagnostics_experiments_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Experiments",
+        "tags": [
+          "Oracle experiments"
+        ]
+      },
+      "post": {
+        "operationId": "submit_api_diagnostics_experiments_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExperimentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit",
+        "tags": [
+          "Oracle experiments"
+        ]
+      }
+    },
+    "/api/diagnostics/experiments/catalog": {
+      "get": {
+        "operationId": "catalog_api_diagnostics_experiments_catalog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateCatalog"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Catalog",
+        "tags": [
+          "Oracle experiments"
+        ]
+      }
+    },
+    "/api/diagnostics/experiments/{identity}": {
+      "get": {
+        "operationId": "experiment_api_diagnostics_experiments__identity__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "title": "Identity",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Experiment",
+        "tags": [
+          "Oracle experiments"
+        ]
+      }
+    },
+    "/api/diagnostics/experiments/{identity}/quality": {
+      "get": {
+        "operationId": "quality_api_diagnostics_experiments__identity__quality_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "title": "Identity",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentQuality"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Quality",
+        "tags": [
+          "Oracle experiments"
+        ]
+      }
+    },
+    "/api/diagnostics/experiments/{identity}/runs/{run_key}/labels": {
+      "get": {
+        "operationId": "labels_api_diagnostics_experiments__identity__runs__run_key__labels_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "title": "Identity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_key",
+            "required": true,
+            "schema": {
+              "title": "Run Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 30,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabelPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Labels",
+        "tags": [
+          "Oracle experiments"
+        ]
+      }
+    },
     "/api/diagnostics/runs/{run_key}/resources": {
       "get": {
         "operationId": "resources_api_diagnostics_runs__run_key__resources_get",

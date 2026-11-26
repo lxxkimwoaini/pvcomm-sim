@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test'
 
 test('validates real YAML using the local backend', async ({ page }) => {
   await page.goto('/')
+  await page.getByRole('button', { name: '配置校验' }).click()
   await expect(page.getByRole('status').first()).toHaveText(
     'V0.4-development · 服务可用',
   )

@@ -59,6 +59,23 @@ def save_json(path: Path, value: object) -> None:
         stage.unlink(missing_ok=True)
 
 
+def summary(state: dict[str, Any]) -> dict[str, Any]:
+    """Compact polling projection; never duplicate the growing artifact inventory."""
+    return {
+        **{key: value for key, value in state.items() if key != "tasks"},
+        "tasks": [
+            {
+                **{key: value for key, value in task.items() if key != "attempts"},
+                "attempts": [
+                    {key: value for key, value in attempt.items() if key != "artifacts"}
+                    for attempt in task["attempts"]
+                ],
+            }
+            for task in state["tasks"]
+        ],
+    }
+
+
 def artifact_inventory(root: Path) -> list[dict[str, Any]]:
     """Bounded hashing, never reads a complete capture/Parquet into memory."""
     return [
@@ -294,6 +311,7 @@ def run_batch(config: BatchConfig, output: Path, *, resume: bool = False) -> dic
             state["coverage"] = coverage(state)
             state["updated_at"] = datetime.now(UTC).isoformat()
             save_json(path, state)
+            save_json(output / "summary.json", summary(state))
 
         # A crashed real-time run remains evidence. Only a fresh independent attempt
         # can be scheduled, and it consumes the finite retry budget.

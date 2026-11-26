@@ -4,6 +4,92 @@
  */
 
 export interface paths {
+    "/api/diagnostics/experiments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Experiments */
+        get: operations["experiments_api_diagnostics_experiments_get"];
+        put?: never;
+        /** Submit */
+        post: operations["submit_api_diagnostics_experiments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/diagnostics/experiments/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Catalog */
+        get: operations["catalog_api_diagnostics_experiments_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/diagnostics/experiments/{identity}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Experiment */
+        get: operations["experiment_api_diagnostics_experiments__identity__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/diagnostics/experiments/{identity}/quality": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Quality */
+        get: operations["quality_api_diagnostics_experiments__identity__quality_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/diagnostics/experiments/{identity}/runs/{run_key}/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Labels */
+        get: operations["labels_api_diagnostics_experiments__identity__runs__run_key__labels_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/diagnostics/runs/{run_key}/resources": {
         parameters: {
             query?: never;
@@ -191,6 +277,94 @@ export interface components {
             /** Run Key */
             run_key: string;
         };
+        /** ExperimentList */
+        ExperimentList: {
+            /** Enabled */
+            enabled: boolean;
+            /** Experiments */
+            experiments: components["schemas"]["ExperimentView"][];
+            /** Total */
+            total: number;
+        };
+        /** ExperimentQuality */
+        ExperimentQuality: {
+            /** Runs */
+            runs: components["schemas"]["RunQuality"][];
+            /**
+             * Scope
+             * @default Oracle_experiment_management_never_M2_features
+             * @constant
+             */
+            scope: "Oracle_experiment_management_never_M2_features";
+        };
+        /** ExperimentRequest */
+        ExperimentRequest: {
+            /**
+             * Direction
+             * @default master_to_rtu
+             * @enum {string}
+             */
+            direction: "master_to_rtu" | "rtu_to_master";
+            /**
+             * Region Id
+             * @default R1
+             * @enum {string}
+             */
+            region_id: "R1" | "R2" | "R3";
+            /**
+             * Scope
+             * @default station
+             * @enum {string}
+             */
+            scope: "station" | "region";
+            /** Seed */
+            seed: number;
+            /**
+             * Site Count
+             * @default 3
+             * @enum {integer}
+             */
+            site_count: 3 | 10 | 30;
+            /**
+             * Station Ids
+             * @default [
+             *       "PV01"
+             *     ]
+             */
+            station_ids: string[];
+            /** Strength */
+            strength?: number | null;
+            /** Template */
+            template: string;
+            /**
+             * Variant
+             * @default 0
+             */
+            variant: number;
+        };
+        /** ExperimentView */
+        ExperimentView: {
+            /** Error */
+            error?: string | null;
+            /** Experiment Id */
+            experiment_id: string;
+            /** Queue */
+            queue?: {
+                [key: string]: unknown;
+            } | null;
+            /** Request */
+            request: {
+                [key: string]: unknown;
+            };
+            /**
+             * Scope
+             * @default Oracle_experiment_management_never_M2_features
+             * @constant
+             */
+            scope: "Oracle_experiment_management_never_M2_features";
+            /** Status */
+            status: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -219,9 +393,23 @@ export interface components {
             /**
              * Web Run Submission Available
              * @default false
+             */
+            web_run_submission_available: boolean;
+        };
+        /** LabelPage */
+        LabelPage: {
+            /** Labels */
+            labels: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Scope
+             * @default Oracle_experiment_management_never_M2_features
              * @constant
              */
-            web_run_submission_available: false;
+            scope: "Oracle_experiment_management_never_M2_features";
+            /** Total */
+            total: number;
         };
         /** MeasurementSeries */
         MeasurementSeries: {
@@ -313,6 +501,23 @@ export interface components {
         RunList: {
             /** Runs */
             runs?: components["schemas"]["RunSummary"][];
+        };
+        /** RunQuality */
+        RunQuality: {
+            /** Cleanup Errors */
+            cleanup_errors: string[];
+            /** Code Version */
+            code_version: string | null;
+            /** Reports */
+            reports: {
+                [key: string]: unknown;
+            }[];
+            /** Run Id */
+            run_id: string;
+            /** Run Key */
+            run_key: string;
+            /** Status */
+            status: string;
         };
         /** RunSnapshot */
         RunSnapshot: {
@@ -414,6 +619,76 @@ export interface components {
             /** Y M */
             y_m?: number | null;
         };
+        /** TemplateCatalog */
+        TemplateCatalog: {
+            /**
+             * Execution
+             * @default separate_authorized_linux_worker
+             * @constant
+             */
+            execution: "separate_authorized_linux_worker";
+            /**
+             * Fault
+             * @default [
+             *       "A01",
+             *       "A02",
+             *       "A04",
+             *       "A05",
+             *       "A06",
+             *       "A08"
+             *     ]
+             */
+            fault: string[];
+            /**
+             * Normal
+             * @default [
+             *       "N01",
+             *       "N02",
+             *       "N03",
+             *       "N04",
+             *       "N05",
+             *       "N06",
+             *       "N07",
+             *       "N08",
+             *       "N09",
+             *       "N10"
+             *     ]
+             */
+            normal: string[];
+            /** Pair Submission Enabled */
+            pair_submission_enabled: boolean;
+            /**
+             * Pairs
+             * @default [
+             *       "P03",
+             *       "P04",
+             *       "P06",
+             *       "P03_recovery"
+             *     ]
+             */
+            pairs: string[];
+            /**
+             * Scope
+             * @default Oracle_experiment_management_never_M2_features
+             * @constant
+             */
+            scope: "Oracle_experiment_management_never_M2_features";
+            /**
+             * Site Counts
+             * @default [
+             *       3,
+             *       10,
+             *       30
+             *     ]
+             */
+            site_counts: number[];
+            /** Strengths */
+            strengths: {
+                [key: string]: number[];
+            };
+            /** Submission Enabled */
+            submission_enabled: boolean;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -456,6 +731,188 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    experiments_api_diagnostics_experiments_get: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_api_diagnostics_experiments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExperimentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    catalog_api_diagnostics_experiments_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateCatalog"];
+                };
+            };
+        };
+    };
+    experiment_api_diagnostics_experiments__identity__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                identity: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quality_api_diagnostics_experiments__identity__quality_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                identity: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentQuality"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    labels_api_diagnostics_experiments__identity__runs__run_key__labels_get: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                identity: string;
+                run_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     resources_api_diagnostics_runs__run_key__resources_get: {
         parameters: {
             query?: never;

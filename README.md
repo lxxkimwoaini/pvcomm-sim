@@ -6,6 +6,22 @@
 
 ## 安装与复现
 
+V0.4新增受控科研实验队列：单独的Oracle页面可提交既有模板、查看队列和质量/标签；默认仍为M2观测，特权运行由独立Linux执行器执行。此切片的真实端到端验收待完成，完整配对图、证据定位和导出仍在开发，不代表V0.4整体验收。
+
+```sh
+# 授权实验Linux，本地API只排队，不创建网络资源。
+export PVCOMM_EXPERIMENT_ROOT=/var/lib/pvcomm/runs/web_requests_new
+export PVCOMM_SIMILARITY_POLICY="$PWD/configs/v0.4-similarity-policy.json"
+export PVCOMM_SIMILARITY_CALIBRATION="$PWD/configs/v0.4-similarity-calibration-dev.json"
+# 使用当前实验环境的python，绑定本机。
+python -m uvicorn pvcomm.web.app:create_app --factory --host 127.0.0.1 --port 8000
+# 在已冻结且干净的源码目录，另一个授权Linux终端消费最多一项；无请求不生成仿真数据。
+PVCOMM_ALLOW_LAB=1 PYTHONPATH=src python scripts/run_v04_requests.py \
+ --root /var/lib/pvcomm/runs/web_requests_new --maximum-jobs 1
+```
+
+未配置实验根目录时提交禁用；未配置成对冻结的相似性策略/校准文件时配对提交禁用。每项请求保存矩阵和哈希，执行复用既有run_batch。执行器`--resume`只用于保留预算内的中断续跑，完成任务不重跑。网页不接受任意路径、脚本或命令；请求和标签接口均在`/api/diagnostics/experiments`，不能作为M2数据源。
+
 工具：uv 0.11.13、Python 3.11.15、Node 24.14.0、pnpm 11.5.1。Windows PowerShell 和 Linux 均可执行以下命令：
 
 ```sh

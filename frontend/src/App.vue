@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { ElAlert, ElButton, ElInput, ElTag } from 'element-plus'
 import { getHealth, validateConfig, type ValidationResult } from './api/client'
 import RunWorkbench from './components/RunWorkbench.vue'
+import ExperimentWorkbench from './components/ExperimentWorkbench.vue'
 
 const serviceStatus = ref('尚未检查')
 const serviceStage = ref('阶段待确认')
@@ -11,7 +12,7 @@ const yamlText = ref('')
 const pending = ref(false)
 const result = ref<ValidationResult | null>(null)
 const validationError = ref('')
-const page = ref<'config' | 'runs'>('config')
+const page = ref<'config' | 'runs' | 'experiments'>('runs')
 
 async function refreshHealth() {
   serviceError.value = ''
@@ -65,8 +66,11 @@ onMounted(refreshHealth)
         <p class="nav-label">实验准备</p>
         <button class="nav-current" @click="page = 'config'">配置校验</button>
         <button class="nav-current" @click="page = 'runs'">运行与回放</button>
+        <button class="nav-current" @click="page = 'experiments'">
+          科研实验（Oracle）
+        </button>
         <p class="phase-note">
-          只读监测真实 IEC 104 实验。运行由 CLI 独立管理。
+          M2 监测真实主站观测。科研实验由独立执行器管理。
         </p>
         <div class="mode-note">
           主实验规划<br /><strong>M2 业务感知</strong>
@@ -156,7 +160,8 @@ onMounted(refreshHealth)
           PVComm · 业务约束下的分布式光伏通信异常检测 · 本地科研工作台
         </footer>
       </main>
-      <main v-else><RunWorkbench /></main>
+      <main v-else-if="page === 'runs'"><RunWorkbench /></main>
+      <main v-else><ExperimentWorkbench /></main>
     </div>
   </div>
 </template>

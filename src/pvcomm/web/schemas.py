@@ -11,7 +11,7 @@ class Health(Contract):
     status: Literal["ok"] = "ok"
     stage: Literal["V0.4-development"] = "V0.4-development"
     simulation_available: Literal[True] = True
-    web_run_submission_available: Literal[False] = False
+    web_run_submission_available: bool = False
 
 
 class ValidationRequest(Contract):
