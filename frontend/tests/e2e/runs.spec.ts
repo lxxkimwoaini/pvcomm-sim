@@ -122,7 +122,11 @@ test('reads real evidence and replays only available observations', async ({
   await expect(page.locator('.power-reading').first()).toContainText(
     (latest.stations[0].latest_power_kw as number).toFixed(2),
   )
-  if (runName.startsWith('v02_') || runName.startsWith('v03_')) {
+  const hasPowerTelemetry = latest.stations.some(
+    (station: { measurements?: { ioa: number }[] }) =>
+      station.measurements?.some((measurement) => measurement.ioa === 1008),
+  )
+  if (hasPowerTelemetry) {
     await expect(
       page.getByRole('heading', { name: '光伏电气过程' }),
     ).toBeVisible()
