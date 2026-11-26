@@ -72,3 +72,5 @@ V0.4b–f仍未验收：N01–N10完整覆盖、六类P0多强度多范围复验
 冻结32f93f1的旧版回归为1 failed/3 passed、193.29s；V0.1真实回环、独立端点及取消清理三项通过。V0.3断联物理继续和恢复最新状态断言通过，严格独立协议QC失败：PV02/PV03的P1原始PCAP各缺3条最终S/STOPDT帧，P0与各终端raw均存在。tcpdump captured/received分别866/875、783/792，kernel dropped均0。证据在`/var/lib/pvcomm/runs/v04a_s4/legacy`，不修写原始文件或放宽QC。
 
 按ADR0014修复有界缓冲排空；真实ICMP尾包预检1 passed/3.56s（三次），仅是捕获回归fixture。新冻结代码的V0.3/V0.4a和旧V0.2真实兼容验收待执行，**V0.4a整体门禁仍未通过**。当前WSL科学/Arrow全量实际168 passed/6 deselected、32.48s。
+
+冻结67ee2ef的v04a_s5旧回归1 failed/4 passed、67.67s：启动阶段读取半写入的master.ready为空，manifest failed，未冒称已完成120秒运行。四路抓包均drain_complete=1、captured=received、kernel dropped0。采用临时文件原子发布起点，新增半写入并发回归通过；Ruff/format/mypy91及普通163 passed/14 deselected。该实际新问题与原P1尾帧缺失分开记录，仍待完整新冻结实跑。

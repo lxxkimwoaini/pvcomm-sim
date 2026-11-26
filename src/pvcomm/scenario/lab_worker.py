@@ -14,6 +14,14 @@ from pvcomm.protocol.c104_runtime import C104Master, C104StationEndpoint
 from pvcomm.storage.events import RunRecorder
 
 
+def publish_business_start(root: Path, start: float) -> None:
+    """Publish the complete IPC value before the controller can observe readiness."""
+    stage = root / "master.ready.tmp"
+    with stage.open("x", encoding="ascii") as stream:
+        stream.write(str(start))
+    stage.rename(root / "master.ready")
+
+
 def main() -> None:
     if sys.platform != "linux":
         raise RuntimeError("laboratory workers require Linux")
@@ -149,7 +157,7 @@ def main() -> None:
                         "recovery_deadline_s": 15,
                     },
                 )
-            (root / "master.ready").write_text(str(start), encoding="ascii")
+            publish_business_start(root, start)
             recorder.record_event("master_business_started", {})
 
             def wait_until(elapsed: float) -> None:

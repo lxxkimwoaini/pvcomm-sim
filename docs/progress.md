@@ -293,3 +293,5 @@ v04a_s4冻结32f93f1前置真实2 passed/238.41s：三站clean/completed/cleanup
 同冻结旧版回归实际1 failed/3 passed/193.29s：V0.1回环、独立端点及取消清理通过，V0.3断联物理连续和恢复最新状态通过，但严格独立端点QC失败。PV02/PV03的P1原始PCAP缺最终3条控制帧；P0和终端raw均有。tcpdump分别captured866/received875、captured783/received792，kernel drop0。失败目录/var/lib/pvcomm/runs/v04a_s4/legacy完整保留，未放宽门槛。ADR0014新增端点结束后有界统计确认的buffer排空，最终统计使用末组；旧即时抓包路径不变。真实ICMP缓冲尾包预检1 passed/3.56s（三次往返），目录/var/lib/pvcomm/runs/v04a_capture_preflight_001；该fixture不是正式IEC104实验。新冻结旧配置及V0.4a重验尚待执行，不能宣布V0.4a整体通过。
 
 缓冲排空候选完整check退出0：162 passed/14 deselected、mypy90、Ruff/format/schema/TS、前端ESLint/Prettier/vue-tsc/Vitest3/build均通过；保留既有2条缩进warning与817.61kB包提示。该结果不替代新的真实兼容验收。
+
+67ee2ef冻结v04a_s5旧回归实际1 failed/4 passed、67.67s。V0.3启动时暴露原有master.ready存在性与write_text内容发布竞态，读取空串报ValueError，未进入完整业务实验；manifest如实failed、保留证据。四路捕获排空均complete、captured=received、kernel drop0；真实尾包fixture及旧协议三项通过。改为同目录临时文件关闭后原子rename发布业务起点，新增阻塞半写入的并发回归（1 passed），不能用重试sleep吞掉无效值。67ee2ef push CI45744263481五job实际success。新冻结完整真实兼容重验仍待执行。
