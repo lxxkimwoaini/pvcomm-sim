@@ -1,0 +1,22 @@
+"""Execute or resume a frozen finite matrix through the controlled lab runner."""
+
+import argparse
+import json
+from pathlib import Path
+
+from pvcomm.config.batch import BatchConfig
+from pvcomm.scenario.batch import run_batch
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--matrix", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--resume", action="store_true")
+    args = parser.parse_args()
+    config = BatchConfig.model_validate_json(args.matrix.read_bytes())
+    print(json.dumps(run_batch(config, args.output, resume=args.resume)))
+
+
+if __name__ == "__main__":
+    main()

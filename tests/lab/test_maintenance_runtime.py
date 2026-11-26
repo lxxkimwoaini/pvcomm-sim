@@ -16,6 +16,7 @@ from pvcomm.pipeline.labels import VERSION as LABEL_VERSION
 from pvcomm.pipeline.labels import label_run
 from pvcomm.qc.fault import qc_fault
 from pvcomm.qc.labels import qc_labels
+from pvcomm.qc.maintenance_acceptance import qc_grouped_recovery
 from pvcomm.scenario.isolated_runner import run_isolated
 from pvcomm.storage.parquet import export_parquet
 from pvcomm.storage.power_parquet import export_power_parquet
@@ -71,7 +72,8 @@ def test_grouped_maintenance_real_recovery(tmp_path: Path, case: str) -> None:
     export_parquet(root)
     export_power_parquet(root)
     mechanism = qc_fault(root)
-    assert mechanism["passed"], root / "qc"
+    if case != "mixed":
+        assert mechanism["passed"], root / "qc"
     maintenance = mechanism["authorized_maintenance"]
     assert set(maintenance["stations"]) == maintained
     for station, evidence in maintenance["stations"].items():
@@ -95,4 +97,7 @@ def test_grouped_maintenance_real_recovery(tmp_path: Path, case: str) -> None:
         target = label["station_id"] in config.target_stations()
         assert label["service_violation"] is target
         assert label["fault_applied"] is target
-        assert not label["recovery_censored"]
+        if target:
+            assert not label["recovery_censored"]
+    acceptance = qc_grouped_recovery(root)
+    assert acceptance["passed"]

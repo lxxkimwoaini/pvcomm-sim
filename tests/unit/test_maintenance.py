@@ -10,6 +10,7 @@ from pvcomm.config.faults import FaultScenarioConfig, RegionScope, StationScope
 from pvcomm.config.normal_scenes import normal_scenario
 from pvcomm.config.scenes import ScenarioConfig, canonical_hash
 from pvcomm.qc.maintenance import audit_maintenance
+from pvcomm.qc.maintenance_acceptance import recovery_outcomes
 
 
 def template() -> FaultScenarioConfig:
@@ -180,3 +181,28 @@ def test_station_group_has_no_region_and_preserves_task_exemption_boundary() -> 
     raw["maintenance_windows"][0]["region_id"] = "R1"
     with pytest.raises(ValueError, match="cannot specify a region"):
         ScenarioConfig.model_validate(raw)
+
+
+def test_grouped_acceptance_requires_target_recovery_but_not_a_fault_on_normal_station() -> None:
+    raw = template().model_dump(mode="json")
+    raw["fault"]["scope"] = dict(kind="station", station_ids=["PV01"])
+    config = FaultScenarioConfig.model_validate(raw)
+    maintenance = audit_maintenance(*evidence())
+    maintenance["passed"] = True
+    labels = [
+        dict(
+            station_id=s,
+            label_status="valid",
+            service_violation=s == "PV01",
+            fault_applied=s == "PV01",
+            recovery_censored=s != "PV01",
+        )
+        for s in ("PV01", "PV02", "PV03")
+    ]
+    assessments = {"PV03": [dict(outcome="accepted_complete")]}
+    assert recovery_outcomes(config, maintenance, labels, assessments)
+    labels[0]["recovery_censored"] = True
+    assert not recovery_outcomes(config, maintenance, labels, assessments)
+    labels[0]["recovery_censored"] = False
+    labels[1]["service_violation"] = None
+    assert not recovery_outcomes(config, maintenance, labels, assessments)
