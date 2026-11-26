@@ -55,6 +55,8 @@ def main() -> None:
         signal.signal(signal.SIGUSR1, lambda *_args: paused.set())
         signal.signal(signal.SIGUSR2, lambda *_args: paused.clear())
     endpoint: C104StationEndpoint | C104Master | None = None
+    maintenance: threading.Thread | None = None
+    maintenance_errors: list[Exception] = []
     try:
         if args.role.startswith("rtu"):
             index = int(args.role[3:]) - 1
@@ -153,6 +155,30 @@ def main() -> None:
             def wait_until(elapsed: float) -> None:
                 if stop.wait(max(0, start + elapsed - time.monotonic())):
                     raise InterruptedError("lab worker cancelled")
+                if maintenance_errors:
+                    raise RuntimeError(
+                        "planned maintenance handshake failed"
+                    ) from maintenance_errors[0]
+
+            if isinstance(power, V03Config) and interruption is not None and interruption.planned:
+                master_endpoint = endpoint
+                maintenance_event = interruption
+
+                def planned_maintenance() -> None:
+                    try:
+                        wait_until(maintenance_event.start_s)
+                        master_endpoint.suspend_for_maintenance(maintenance_event.station_id)
+                        (root / "master.maintenance-closed").touch(exist_ok=False)
+                        wait_until(maintenance_event.start_s + maintenance_event.duration_s)
+                        master_endpoint.resume_connection(maintenance_event.station_id)
+                    except Exception as exc:
+                        maintenance_errors.append(exc)
+                        stop.set()
+
+                maintenance = threading.Thread(
+                    target=planned_maintenance, name="planned-maintenance"
+                )
+                maintenance.start()
 
             if isinstance(power, V03Config) and power.dispatch_tasks:
                 from pvcomm.business.dispatch import execute_dispatches
@@ -177,9 +203,18 @@ def main() -> None:
             wait_until(config.duration_s)
             recorder.record_event("master_business_finished", {})
     finally:
-        if endpoint is not None:
-            endpoint.stop()
-        recorder.close()
+        stop.set()
+        try:
+            if maintenance is not None:
+                maintenance.join(timeout=8)
+                if maintenance.is_alive():
+                    raise RuntimeError("planned maintenance worker did not stop")
+        finally:
+            try:
+                if endpoint is not None:
+                    endpoint.stop()
+            finally:
+                recorder.close()
 
 
 if __name__ == "__main__":

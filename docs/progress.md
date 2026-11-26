@@ -283,3 +283,7 @@ V0.3开发门禁通过，详见docs/reports/2026-11-25-v03-acceptance.md；READM
 冻结候选2f152d9已普通push，CI待实际查询。首轮v04a_s1的顶层data符号链接被git报告为未跟踪，manifest正确记录dirty；该运行完整保留但不用于验收。下轮改为实体data目录内的忽略输入链接，不修改原始输入或运行中的源码。等待期间独立复核修复：非有限遥测写null且quality_valid=false，防止allow_nan=False日志失败；被后续命令截短的执行窗不生成反馈缺失标签。对应45项回归及mypy88/Ruff通过。旧反馈缺失fixture含5s后续命令，应拆为完整10s无取代事务；新测试保留取代情况下的incomplete_or_ambiguous，不放宽期限。真实NASA新接口验证valid=true，原hash不变；V0.3备份只读storage-audit退出0，结果在outputs/v04a-v03-storage-audit.json。
 
 首轮真实v04a_s1结束：2 failed/230.42s，三站运行completed但dirty不能验收；协议fixture发现c104浮点点值拒绝Python int(10)。应用接口现将有限非负目标规范为float，真实确认逻辑未改；回归断言原生float并保留真实故障测试。首轮原始PCAP/事件/失败日志保留，namespace已清理。实体data目录的干净4b23363源码已启动v04a_s2三站复验；不会把s1或尚未运行的类型修复算通过。2f152d9的push CI45741394907实际success、五job通过，不等同于后续提交CI。
+
+v04a_s2实际2 failed/237.34s。三站clean/completed，真实缺测排除、1次否定确认及4次成功事务均满足，物理/解析/工具丢包/时间对齐通过；独立端点QC因PV01缺一个S回调失败。定位P1到达时间在server.stop结束后14.889ms，不能扩大QC尾部豁免。新增ADR0013：仅已授权V0.3计划维护先由主站真实STOPDT→OPEN_MUTED→disconnect→CLOSED，然后控制器才暂停RTU；物理持续，非计划故障不走该握手，0.1/0.2不变。161项普通测试、mypy88和Ruff通过，待新冻结实跑。第二项旧整数fixture失败仍由72e56a0修复，其独立v04a_s3/silent已实际1 passed/1 deselected/3.97s，确认超时3.000302849s、同会话隔离、其他站成功且clean，属于真实协议fixture而非正式A05标签验收。72e56a0 push CI45741724275五job成功。
+
+当前代码真实浏览器回放既有30站小时证据：2 passed/1 skipped、25.6s，核对27183显示点，结果保存在outputs/v04a-real-ui-s1；无mock。资源日志原件2332442B，无损gzip149953B，解压和源SHA256均37d131a09865f69fda29b33e25450790be9acffbb3bf3174627a397990624f69，源复查相同且保留；归档只在outputs/v04a-verified-resource-archive。

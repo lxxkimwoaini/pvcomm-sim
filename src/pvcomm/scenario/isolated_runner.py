@@ -227,7 +227,12 @@ def run_isolated(
                     i for i, s in enumerate(config.stations) if s.station_id == event.station_id
                 )
                 worker = processes[index]
-                if elapsed >= event.start_s and not interrupted:
+                maintenance_ready = (
+                    not isinstance(power, V03Config)
+                    or not event.planned
+                    or (root / "master.maintenance-closed").exists()
+                )
+                if elapsed >= event.start_s and not interrupted and maintenance_ready:
                     worker.send_signal(signal.SIGUSR1)
                     controller.record_event(
                         "terminal_interruption_requested",

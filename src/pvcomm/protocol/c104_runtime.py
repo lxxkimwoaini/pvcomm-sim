@@ -620,6 +620,24 @@ class C104Master:
             raise RuntimeError("recovery interrogation failed")
         return bool(result)
 
+    def suspend_for_maintenance(self, station_id: str) -> None:
+        """Drain actual STOPDT before an authorized endpoint shutdown.
+
+        A raw server.stop can abandon an in-flight S frame behind its closed
+        reader. This handshake is only for planned maintenance, never a fault.
+        """
+        connection = self._connections[station_id]
+        if not connection.mute():
+            raise RuntimeError(f"maintenance STOPDT failed: {station_id}")
+        self._wait_callback_states([station_id], "OPEN_MUTED")
+        connection.disconnect()
+        self._wait_callback_states([station_id], "CLOSED")
+        self._record_event("master_maintenance_connection_closed", {"station_id": station_id})
+
+    def resume_connection(self, station_id: str) -> None:
+        self._connections[station_id].connect()
+        self._record_event("master_maintenance_connection_requested", {"station_id": station_id})
+
     def send_setpoint(
         self,
         station_config: V01StationConfig,
