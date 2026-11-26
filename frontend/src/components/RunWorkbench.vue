@@ -231,6 +231,11 @@ async function loadSnapshot(replay = false) {
     const result = await getSnapshot(key.value, cursor)
     if (version !== generation) return
     snapshot.value = result
+    if (!replay)
+      offsetSeconds.value = Number(
+        (BigInt(result.cursor_utc_ns) - BigInt(result.first_available_at)) /
+          1000000000n,
+      )
     eventPage.value = null
     await nextTick()
     draw()

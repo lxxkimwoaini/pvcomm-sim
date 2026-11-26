@@ -6,6 +6,7 @@ test('validates real YAML using the local backend', async ({ page }) => {
   await expect(page.getByRole('status').first()).toHaveText(
     'V0.4-development · 服务可用',
   )
+  await expect(page.getByLabel('平台开发阶段')).toHaveText('V0.4-development')
   await expect(page.getByRole('button', { name: '校验配置' })).toBeDisabled()
   const config = readFileSync(
     new URL('../../../configs/foundation.yaml', import.meta.url),

@@ -334,3 +334,7 @@ README旧“V0.4尚未开展”及开发指南过期QC版本已修正，新增�
 浏览器能力判定复核补充：API为未接入的测量也保留空series，故1008必须有非空实际接收点才启用物理曲线断言。修正后旧V0.1真实副本（50文件、530388B，逐文件哈希一致）Playwright 2 passed/1 skipped、4.5s，111点；UUID N03再验2 passed/1 skipped、5.3s，1380点并实际进入电气曲线分支。证据outputs/v04b-real-ui-v01-passed和v04b-real-ui-uuid-final；空态skip不计实测通过。e8ec399的push CI45752509472及PR CI45752519663实际success，不等同于本次补充提交的CI。
 
 V0.4b第二轮18/21项真实用例已完成（N01–N09各两个变体），尚待N10及额外日落和最终v2重验；不预报最终验收。新增下一切片设计docs/plans/2026-11-26-v04c-single-faults.md，明确六类P0的候选强度、资源作用位置、读回/撤销、故障与数据质量分离及逐项真实门禁，尚未实施六类故障。修正数据字典将旧QC版本明确标为历史，当前版本不变。1465267的push CI45752877763及PR CI45752883505实际success。当前正常覆盖报告仍在整理，不作为已完成交付。
+
+V0.4b真实批次已实际结束：21 passed/2907.66s、退出0；N01–N10各两个变体，另含N02日落。全部原始manifest clean/completed/cleanup=[]、v1 QC通过。开始使用独立f48d114源码对原件生成v2严格QC并顺序执行兼容回归；该重验尚在进行，不提前宣布V0.4b通过。
+
+真实截图复核修正两项生产UI一致性：页眉阶段由后端health.stage提供，跟随最新时滑块及秒数同步实际快照游标；不改API、观测数据或仿真逻辑。新增浏览器断言验证页眉与游标，真实UUID回放2 passed/1 skipped、5.3s、1380点；旧V0.1回放2 passed/1 skipped、4.5s、111点，证据outputs/v04b-ui-stage-cursor-uuid和-v01。web-test与web-build均退出0、Vitest3通过；仅保留既有2条缩进warning及新构建817.73kB提示。首轮新增Tag换行warning已修正，最终无新增warning。

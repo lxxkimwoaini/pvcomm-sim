@@ -5,6 +5,7 @@ import { getHealth, validateConfig, type ValidationResult } from './api/client'
 import RunWorkbench from './components/RunWorkbench.vue'
 
 const serviceStatus = ref('尚未检查')
+const serviceStage = ref('阶段待确认')
 const serviceError = ref('')
 const yamlText = ref('')
 const pending = ref(false)
@@ -17,6 +18,7 @@ async function refreshHealth() {
   serviceStatus.value = '检查中'
   try {
     const health = await getHealth()
+    serviceStage.value = health.stage
     serviceStatus.value = `${health.stage} · 服务可用`
   } catch (error) {
     serviceStatus.value = '服务不可用'
@@ -53,7 +55,9 @@ onMounted(refreshHealth)
         <span class="brand-mark" aria-hidden="true">PV</span>
         <span>PVComm <small>联合仿真实验平台</small></span>
       </a>
-      <ElTag type="info" effect="plain">V0.3 开发 · 多站联合仿真</ElTag>
+      <ElTag type="info" effect="plain" aria-label="平台开发阶段">
+        {{ serviceStage }}
+      </ElTag>
     </header>
 
     <div class="workspace">
