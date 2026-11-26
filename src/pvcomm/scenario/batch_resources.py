@@ -83,7 +83,10 @@ class BatchResources:
 
     def sample(self) -> None:
         self.sampler.sample(descendants(os.getpid()))
-        path = self.output / "manifest.json"
+        # New queues publish an atomic compact projection. Retain the legacy
+        # fallback for already frozen runs, without repeatedly decoding artifact hashes.
+        projection = self.output / "summary.json"
+        path = projection if projection.exists() else self.output / "manifest.json"
         state = json.loads(path.read_bytes()) if path.exists() else {}
         storage = active_storage(self.output, state)
         storage["free_bytes"] = shutil.disk_usage(self.measurement).free

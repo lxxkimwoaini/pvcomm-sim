@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from pvcomm.scenario.batch_resources import active_storage, descendants
+from pvcomm.scenario.batch_resources import BatchResources, active_storage, descendants
 
 
 def test_only_owned_descendants_are_sampled_even_when_threads_spawn(tmp_path: Path) -> None:
@@ -49,3 +49,29 @@ def test_storage_counts_only_active_attempt_and_preserves_sources(tmp_path: Path
     state["tasks"][0]["attempts"][1]["directory"] = "../escape"
     with pytest.raises(ValueError, match="unsafe"):
         active_storage(tmp_path, state)
+
+
+def test_sampler_reads_compact_projection_instead_of_large_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import json
+    from types import SimpleNamespace
+    from typing import cast
+
+    from pvcomm.scenario.resources import ResourceSampler
+
+    output, measurement = tmp_path / "queue", tmp_path / "measurement"
+    output.mkdir()
+    measurement.mkdir()
+    (output / "summary.json").write_text('{"tasks": []}')
+    (output / "manifest.json").write_text("not valid JSON; polling must not read this fixture")
+    # Linux process samples are replaced only in this explicit bookkeeping unit fixture.
+    sampler = object.__new__(BatchResources)
+    sampler.output, sampler.measurement = output, measurement
+    sampler.sampler = cast(ResourceSampler, SimpleNamespace(sample=lambda _pids: None))
+    sampler.samples, sampler.peak = 0, {}
+    monkeypatch.setattr("pvcomm.scenario.batch_resources.descendants", lambda _pid: [])
+    sampler.sample()
+    assert sampler.samples == 1
+    record = json.loads((measurement / "storage.jsonl").read_bytes())
+    assert record["active_bytes"] == 0 and record["free_bytes"] > 0
