@@ -31,19 +31,27 @@ class TerminalFaultRuntime:
         self._force = False
         self._mask: Callable[[frozenset[int]], list[int]] | None = None
         self._state: dict[str, Any] = {}
+        self._measurement_ioas: frozenset[int] = frozenset()
 
     def bind(self, mask: Callable[[frozenset[int]], list[int]]) -> None:
         self._mask = mask
+        self._measurement_ioas = frozenset(mask(frozenset())) - {3001}
 
     def _publish(self, phase: str, **details: Any) -> None:
         assert self._mask is not None
+        registered = self._mask(self.suppressed)
+        verified_ns = time.monotonic_ns()
+        hold_for_s = details.pop("hold_for_s", None)
+        if hold_for_s is not None:
+            self._end_ns = verified_ns + int(hold_for_s) * 10**9
+            details["end_mono_ns"] = self._end_ns
         self._state = dict(
             station_id=self.station_id,
             fault_event_id=self.fault.event_id,
             phase=phase,
-            ts_mono_ns=time.monotonic_ns(),
+            ts_mono_ns=verified_ns,
             suppressed_ioas=sorted(self.suppressed),
-            registered_ioas=self._mask(self.suppressed),
+            registered_ioas=registered,
             **details,
         )
         self.record("terminal_fault_" + phase, self._state)
@@ -77,17 +85,17 @@ class TerminalFaultRuntime:
             if self.fault.fault_type in ("A04", "A08"):
                 # A04 keeps command acknowledgements and the explicit accepted target.
                 # A08 includes the accepted-target point in the unavailable business state.
-                self.suppressed = frozenset((1001, 1002, 1003, 1005, 1008, 2001))
-                if self.fault.fault_type == "A08":
-                    self.suppressed |= {1006}
-            self._publish("applied", end_mono_ns=self._end_ns)
+                self.suppressed = self._measurement_ioas
+                if self.fault.fault_type == "A04":
+                    self.suppressed -= {1006}
+            self._publish("applied", hold_for_s=duration)
 
     def accepted(self) -> None:
         if self.active and self.fault.fault_type == "A06" and not self.triggered:
             self.triggered = True
             self.suppressed = frozenset((1001, 1006))
             self._end_ns = time.monotonic_ns() + int(self.fault.feedback_duration_s or 0) * 10**9
-            self._publish("feedback_hold", end_mono_ns=self._end_ns)
+            self._publish("feedback_hold", hold_for_s=self.fault.feedback_duration_s)
 
     def delay_response(self) -> None:
         if not self.active or self.fault.fault_type != "A05":
@@ -119,5 +127,6 @@ class TerminalFaultRuntime:
         if self.finished:
             return
         self.suppressed = frozenset()
-        self.active, self.finished = False, True
+        self.active = False
         self._publish("restored", reason=reason, triggered=self.triggered)
+        self.finished = True

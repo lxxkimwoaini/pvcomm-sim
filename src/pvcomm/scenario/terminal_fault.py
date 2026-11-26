@@ -18,6 +18,7 @@ class TerminalFaultController(LinkFaultController):
         self.root = root
         self.applied: set[str] = set()
         self.restored: set[str] = set()
+        self._finalizing = False
 
     def step(self) -> None:
         for station in self.config.target_stations():
@@ -41,12 +42,19 @@ class TerminalFaultController(LinkFaultController):
             self._active_ns = time.monotonic_ns()
             self._record("fault_active", target_stations=sorted(targets))
         if self.restored == targets and not self._finished:
-            self._record("fault_finished", reason="scheduled_end", was_applied=bool(self.applied))
+            self._record(
+                "fault_finished",
+                reason="run_finalization" if self._finalizing else "scheduled_end",
+                was_applied=bool(self.applied),
+                recovery_censored=self._finalizing,
+            )
             self._finished = True
 
     def restore(self, *, reason: str) -> None:
         if self._finished:
             return
+        self._finalizing = True
+        self.step()
         path = self.root / "truth/fault/control.json"
         stage = path.with_suffix(".tmp")
         stage.write_text(

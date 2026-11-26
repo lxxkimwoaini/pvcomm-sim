@@ -109,4 +109,4 @@ A02 v2另记录manifest.network.delay_segments（配置端点、内部namespace/
 
 0.4-fault.3新增TerminalFault（A04/A05/A06/A08），保留旧A01/A02配置。强度字段分别为missing_cycles=2/5/12、response_delay_s=2/5/15、feedback_duration_s=10/30/60、recovery_cycles=1/3/5，拒绝混用及非整数。A04各站持续自身周期数，外层duration_s为最大值；A06从接受触发保持，A08沿用15秒恢复观察周期且首片只接受与计划维护相同的单站。
 
-truth/fault/<station>.state.json保存有界最新状态；terminal_fault_applied/feedback_hold/restored记录原始事件、单调时间、受抑制IOA和实际注册点；truth/fault/control.json仅允许本次事件restore。主站不加载这些文件。v04-terminal-mechanism-v1为独立机制核验，label_quality仍not_evaluated，正式标签另在V0.4d实现。
+truth/fault/<station>.state.json保存有界最新状态；terminal_fault_applied/feedback_hold/restored记录原始事件、单调时间、受抑制IOA和实际注册点；truth/fault/control.json仅允许本次事件restore。主站不加载这些文件。v04-terminal-mechanism-v2为独立机制核验，label_quality仍not_evaluated，正式标签另在V0.4d实现。

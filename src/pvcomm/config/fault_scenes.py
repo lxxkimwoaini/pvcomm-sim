@@ -147,6 +147,15 @@ def terminal_scenario(
         **{fields[code]: strength},
     )
     tasks: list[dict[str, Any]] = []
+    if code == "A04":
+        tasks.append(
+            dict(
+                kind="interrogation",
+                schedule_id="during_hold",
+                at_s=start + 1,
+                station_ids=list(targets),
+            )
+        )
     if code in ("A05", "A06"):
         tasks.append(
             dict(

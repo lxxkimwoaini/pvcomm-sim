@@ -19,7 +19,7 @@ from pvcomm.qc.pcap import read_apdus
 from pvcomm.qc.schedule import audit_schedule, normal_transport_quality
 from pvcomm.storage.parquet import read_jsonl
 
-VERSION = "v04-terminal-mechanism-v1"
+VERSION = "v04-terminal-mechanism-v2"
 
 
 def measurement_ioas(row: dict[str, Any]) -> set[int]:
@@ -113,7 +113,10 @@ def audit_terminal_effects(
         ]
         ok &= bool(before and recovered)
         if fault.fault_type in ("A04", "A08"):
-            ok &= {1001, 1002, 1003}.issubset(mask)
+            expected_mask = set(end["registered_ioas"]) - {3001}
+            if fault.fault_type == "A04":
+                expected_mask -= {1006}
+            ok &= mask == expected_mask and {1001, 1002, 1003}.issubset(mask)
         if fault.fault_type == "A06":
             ok &= mask == {1001, 1006}
             other = [
@@ -132,7 +135,10 @@ def audit_terminal_effects(
             acks = [
                 r
                 for r in wire
-                if begin_utc <= r["available_at"] < end_utc and r["type_id"] == 50 and r["cot"] == 7
+                if begin_utc <= r["available_at"] < end_utc
+                and r["type_id"] == 50
+                and r["cot"] == 7
+                and not bytes.fromhex(r["data_hex"])[8] & 0xC0
             ]
             ok &= bool(other and accepted and acks)
             row.update(
@@ -155,6 +161,7 @@ def audit_terminal_effects(
                 and r["available_at"] >= starts[0]["ts_event_utc_ns"]
                 and r["type_id"] == 50
                 and r["cot"] == 7
+                and not bytes.fromhex(r["data_hex"])[8] & 0xC0
             ]
             ok &= bool(
                 measured is not None
@@ -181,10 +188,19 @@ def audit_terminal_effects(
                 and r["type_id"] == 100
                 and r["cot"] in (7, 10)
             ]
-            ok &= bool(resumed and {7, 10}.issubset({r["cot"] for r in gi}))
+            opened = [
+                r
+                for r in master
+                if r.get("station_id") == station.station_id
+                and r["event_type"] == "master_connection_state"
+                and r["state"] == "OPEN"
+                and begin_utc <= r["available_at"] < end_utc
+            ]
+            ok &= bool(resumed and opened and {7, 10}.issubset({r["cot"] for r in gi}))
             row.update(
                 resumed_event_refs=[r["event_id"] for r in resumed],
                 live_session_gi_frame_refs=[r["packet_index"] for r in gi],
+                open_event_refs=[r["event_id"] for r in opened],
             )
         row.update(
             passed=bool(ok),
@@ -269,8 +285,13 @@ def evaluate_terminal(root: Path) -> dict[str, Any]:
             and effect.get("begin_utc_ns", 0) <= r["ts_event_utc_ns"] < effect.get("end_utc_ns", 0)
         )
         gaps = [(b - a) / 1e9 for a, b in zip(times, times[1:], strict=False)]
+        mapping = manifest["clock_origin"]
+        begin_mono = effect.get("begin_utc_ns", 0) - mapping["ts_utc_ns"] + mapping["ts_mono_ns"]
+        end_mono = effect.get("end_utc_ns", 0) - mapping["ts_utc_ns"] + mapping["ts_mono_ns"]
+        coverage = bool(times and times[0] - begin_mono <= 1.5e9 and end_mono - times[-1] <= 1.5e9)
         continuity[station] = {
-            "passed": bool(gaps) and max(gaps) <= 1.5,
+            "passed": bool(gaps) and max(gaps) <= 1.5 and coverage,
+            "boundary_coverage": coverage,
             "maximum_gap_s": max(gaps, default=None),
             "samples": len(times),
         }

@@ -94,6 +94,7 @@ class C104StationEndpoint:
         self._logical_elapsed = logical_elapsed
         self.fault = fault
         self._reporting_mask: frozenset[int] = frozenset()
+        self._recovery_feedback: set[int] = set()
         self._active = False
         self._next_report_s = float(getattr(config, "telemetry_phase_s", 0))
         self._last_sent_power: float | None = None
@@ -200,6 +201,7 @@ class C104StationEndpoint:
             for ioa in selected - self._reporting_mask:
                 if not self.station.remove_point(io_address=ioa):
                     raise RuntimeError(f"c104 could not suspend reporting point {ioa}")
+                self._reporting_mask |= {ioa}
             restored = self._reporting_mask - selected
             for ioa in restored:
                 previous = points[ioa]
@@ -218,9 +220,13 @@ class C104StationEndpoint:
                         2001: "status_point",
                     }[ioa]
                     setattr(self, attr, point)
+                self._reporting_mask -= {ioa}
             self._reporting_mask = frozenset(selected)
             if restored:
                 self._install_callbacks()
+                # Publish the current accepted target after recovery; otherwise a
+                # short A06 hold could leave IOA1006 absent until an unrelated GI.
+                self._recovery_feedback.update(restored & {1001, 1006})
             registered = sorted(p.io_address for p in self.station.points)
             if any(ioa in registered for ioa in selected) or any(
                 ioa not in registered for ioa in points.keys() - selected
@@ -244,6 +250,10 @@ class C104StationEndpoint:
             self.state.advance(now)
             self.power_point.value = self.state.actual_kw
             self._refresh_telemetry()
+            if self._active:
+                for ioa in sorted(self._recovery_feedback - self._reporting_mask):
+                    self.measurement_points()[ioa].transmit(cause=self._c104.Cot.SPONTANEOUS)
+                self._recovery_feedback.clear()
             if self._logical_elapsed is not None and self._active:
                 elapsed = self._logical_elapsed(now)
                 periodic = elapsed >= self._next_report_s and elapsed > 0

@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -84,3 +85,64 @@ def test_real_terminal_fault(
             r["outcome"] == "accepted_complete"
             for r in report["experiment_quality"]["command_assessments"]["PV03"]
         )
+
+
+@pytest.mark.lab
+def test_terminal_cancel_restores_before_shutdown(tmp_path: Path) -> None:
+    if sys.platform != "linux" or os.environ.get("PVCOMM_ALLOW_LAB") != "1":
+        pytest.skip("requires authorized isolated Linux")
+    template = terminal_scenario("A06", StationScope(kind="station", station_ids=("PV01",)), 60)
+    source = tmp_path / "input.yaml"
+    source.write_text(template.model_dump_json(indent=2), encoding="utf-8")
+    identity = f"run_{uuid.uuid4().hex}"
+    root = tmp_path / identity
+    before = subprocess.check_output(["ip", "netns", "list"], text=True)
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "pvcomm.cli",
+            "run-fault",
+            "--config",
+            str(source),
+            "--output-root",
+            str(tmp_path),
+            "--run-id",
+            identity,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        deadline = time.monotonic() + 65
+        path = root / "truth/fault/PV01.state.json"
+        while not (path.exists() and json.loads(path.read_bytes())["phase"] == "feedback_hold"):
+            assert process.poll() is None and time.monotonic() < deadline
+            time.sleep(0.05)
+        process.terminate()
+        stdout, stderr = process.communicate(timeout=30)
+        assert process.returncode == 130, (stdout, stderr)
+        manifest = json.loads((root / "manifest.json").read_bytes())
+        assert manifest["status"] == "cancelled" and manifest["cleanup_errors"] == []
+        state = json.loads(path.read_bytes())
+        assert state["phase"] == "restored" and not state["suppressed_ioas"]
+        events = [
+            json.loads(line)
+            for line in (root / "truth/fault/events.jsonl").read_text().splitlines()
+        ]
+        assert events[-1]["recovery_censored"] is True
+        restored = next(r for r in events if r["event_type"] == "restore_verified")
+        master = [
+            json.loads(line)
+            for line in (root / "observed/master_events_master.jsonl").read_text().splitlines()
+        ]
+        assert (
+            next(r for r in master if r["event_type"] == "master_stopped")["ts_mono_ns"]
+            >= restored["ts_mono_ns"]
+        )
+        assert all(r["statistics"]["packets_dropped_by_kernel"] == 0 for r in manifest["captures"])
+        assert subprocess.check_output(["ip", "netns", "list"], text=True) == before
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            process.communicate(timeout=30)
