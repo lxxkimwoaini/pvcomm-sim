@@ -55,7 +55,7 @@ pvcomm-v03继承既有点表，新增M_ME_NC_1 IOA1009=站点入线loading_perce
 
 兼容性标识pandapower_three_site_v02及历史QC项three_station_business_loop保留名称，0.3实际站数和馈线成员由配置确定。Health.stage=V0.3-development是API软件能力元数据，不是实验标签或数据发布版本；一小时冻结29aa7e0仍保存其运行时历史Health字符串，不篡改旧证据。正式验收结论见对应报告。
 
-当前独立核验输出为qc/v03-power-v4（V0.3）、qc/v02-power-v6（V0.2）；内部协议版本v01-evidence-v4。旧版本目录与失败证据不改写。TCP后序完整APDU在前序缺口填补后才可交付，source_frame_refs包含该依赖帧，available_at不早于其时间；packet_index仍参与与TShark的严格对账，详ADR0009。
+V0.3开发期间的历史核验输出包括qc/v03-power-v4（V0.3）、qc/v02-power-v6（V0.2），内部协议版本v01-evidence-v4；当前版本见下文V0.4a兼容性说明。旧版本目录与失败证据不改写。TCP后序完整APDU在前序缺口填补后才可交付，source_frame_refs包含该依赖帧，available_at不早于其时间；packet_index仍参与与TShark的严格对账，详ADR0009。
 
 
 ## V0.4a 开发兼容性
