@@ -16,7 +16,80 @@ from pvcomm.pipeline.labels import file_sha256
 from pvcomm.qc.labels import VERSION as LABEL_QC_VERSION
 from pvcomm.storage.parquet import read_jsonl
 
-VERSION = "v04-pair-qc-v1"
+VERSION = "v04-pair-qc-v2"
+
+
+def business_contrast(config: PairConfig, members: dict[str, list[EventLabel]]) -> dict[str, Any]:
+    """Require the intended contrast on every target, with quiet control stations."""
+    stations = {s.station_id for s in config.normal.simulation.protocol.stations}
+    targets = set(config.changed.target_stations())
+    indexed = {name: {r.station_id: r for r in rows} for name, rows in members.items()}
+    identities = set(members) == {"normal", "changed"} and all(
+        len(rows) == len(stations) and {r.station_id for r in rows} == stations
+        for rows in members.values()
+    )
+    results = {}
+    for station in sorted(stations):
+        normal = indexed.get("normal", {}).get(station)
+        changed = indexed.get("changed", {}).get(station)
+        known = all(
+            r is not None and r.label_status == "valid" and type(r.service_violation) is bool
+            for r in (normal, changed)
+        )
+        target = station in targets
+        expected = {
+            "P03": "reception_freshness_expired",
+            "P03_recovery": "reception_freshness_expired",
+            "P04": "feedback_missing",
+            "P06": "confirmation_timeout",
+        }[config.pair_type]
+        expected_finding = bool(
+            changed
+            and any(
+                f.outcome == expected and f.service_violation is True and f.label_status == "valid"
+                for f in changed.findings
+            )
+        )
+        normal_outcome = {"P04": "accepted_complete", "P06": "rejected"}.get(config.pair_type)
+        normal_business = bool(
+            normal
+            and (
+                normal_outcome is None
+                or any(
+                    f.outcome == normal_outcome
+                    and f.label_status == "valid"
+                    and f.service_violation is False
+                    for f in normal.findings
+                )
+            )
+        )
+        passed = bool(
+            known
+            and normal is not None
+            and changed is not None
+            and normal.service_violation is False
+            and (
+                changed.service_violation is True if target else changed.service_violation is False
+            )
+            and (not target or (expected_finding and normal_business))
+        )
+        results[station] = dict(
+            targeted=target,
+            normal_status=normal.label_status if normal else None,
+            changed_status=changed.label_status if changed else None,
+            normal_violation=normal.service_violation if normal else None,
+            changed_violation=changed.service_violation if changed else None,
+            expected_changed_finding=expected_finding if target else None,
+            expected_normal_business=normal_business if target else None,
+            passed=passed,
+        )
+    return dict(
+        identities=identities,
+        stations=results,
+        targets_passed=all(r["passed"] for r in results.values() if r["targeted"]),
+        controls_passed=all(r["passed"] for r in results.values() if not r["targeted"]),
+        passed=identities and bool(targets) and all(r["passed"] for r in results.values()),
+    )
 
 
 def traffic_statistics(root: Path, start_s: float, end_s: float) -> dict[str, float | int]:
@@ -55,7 +128,7 @@ def qc_pair(directory: Path) -> dict[str, Any]:
     config = PairConfig.model_validate_json((directory / "pair.json").read_bytes())
     ledger = json.loads((directory / "pair-manifest.json").read_bytes())
     shared, starts, members_ok, labels_ok = True, True, True, True
-    labels = []
+    labels: dict[str, list[EventLabel]] = {}
     measurements = []
     sources = {"pair.json": file_sha256(directory / "pair.json")}
     rows = ledger["members"]
@@ -88,21 +161,21 @@ def qc_pair(directory: Path) -> dict[str, Any]:
             and not manifest["cleanup_errors"]
         )
         reports = [
-            p for p in (root / "qc").glob("*/report.json") if p.parent.name != LABEL_QC_VERSION
+            p
+            for p in (root / "qc").glob("*/report.json")
+            if not p.parent.name.startswith("v04-label-qc-")
         ]
         members_ok &= bool(reports) and all(json.loads(p.read_bytes())["passed"] for p in reports)
         label_qc = root / "qc" / LABEL_QC_VERSION / "report.json"
-        labels_ok &= json.loads(label_qc.read_bytes())["passed"]
         label_file = root / "labels" / LABEL_VERSION / "event_labels.jsonl"
-        labels.append(
-            (
-                record["member"],
-                [
-                    EventLabel.model_validate_json(s)
-                    for s in label_file.read_text(encoding="utf-8").splitlines()
-                ],
-            )
+        label_report = json.loads(label_qc.read_bytes())
+        labels_ok &= label_report["passed"] and label_report.get("label_sha256") == file_sha256(
+            label_file
         )
+        sources[f"{record['run_id']}/qc/{LABEL_QC_VERSION}/report.json"] = file_sha256(label_qc)
+        with label_file.open(encoding="utf-8") as stream:
+            labels[record["member"]] = [EventLabel.model_validate_json(s) for s in stream]
+        labels_ok &= all(r.run_id == record["run_id"] for r in labels[record["member"]])
         sources[f"{record['run_id']}/manifest.json"] = file_sha256(root / "manifest.json")
         sources[f"{record['run_id']}/labels/{LABEL_VERSION}/event_labels.jsonl"] = file_sha256(
             label_file
@@ -127,12 +200,8 @@ def qc_pair(directory: Path) -> dict[str, Any]:
         else {}
     )
     # Descriptive distances only: no post-hoc threshold or model-based pair selection.
-    normal_violation = any(
-        r.service_violation for name, records in labels if name == "normal" for r in records
-    )
-    changed_violation = any(
-        r.service_violation for name, records in labels if name == "changed" for r in records
-    )
+    contrast = business_contrast(config, labels)
+    data_quality = bool(identities and shared and starts and members_ok and labels_ok)
     result = dict(
         qc_version=VERSION,
         pair_id=config.pair_id,
@@ -142,12 +211,14 @@ def qc_pair(directory: Path) -> dict[str, Any]:
         member_quality=bool(members_ok),
         label_quality=bool(labels_ok),
         identities=identities,
-        contrast_observed=not normal_violation and changed_violation,
+        data_quality_passed=data_quality,
+        business_contrast=contrast,
+        contrast_observed=contrast["passed"],
         traffic_statistics=stats,
         traffic_relative_distances=distance,
         similarity_selection="not_performed_descriptive_distances_only",
         source_hashes=sources,
-        passed=bool(identities and shared and starts and members_ok and labels_ok),
+        passed=data_quality and contrast["passed"],
     )
     destination.mkdir(parents=True, exist_ok=False)
     (destination / "report.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")

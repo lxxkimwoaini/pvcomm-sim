@@ -17,7 +17,7 @@ from pvcomm.domain.labels import EventLabel, EvidenceRef, ServiceFinding
 from pvcomm.pipeline.iec104_parser import PARSER_VERSION
 from pvcomm.storage.parquet import read_jsonl
 
-VERSION = "v04-label-v2"
+VERSION = "v04-label-v3"
 
 
 def file_sha256(path: Path) -> str:
@@ -296,7 +296,11 @@ def command_findings(inputs: LabelInputs, station_id: str) -> list[ServiceFindin
             (r for r in inputs.objects if r["apdu_id"] == assessment.get("wire_apdu")), None
         )
         following = min(
-            (r["sent_utc_ns"] for r in commands.values() if r["sent_utc_ns"] > start),
+            (
+                r["sent_utc_ns"]
+                for r in commands.values()
+                if r["sent_utc_ns"] > start and r["ioa"] == command["ioa"]
+            ),
             default=2**63 - 1,
         )
         # Business observation records establish that the deadline was observed.
@@ -307,6 +311,10 @@ def command_findings(inputs: LabelInputs, station_id: str) -> list[ServiceFindin
         coverage = max(inputs.master, key=lambda r: r["available_at"])
         refs.append(inputs.ref(coverage))
         recovery = None
+        recovery_kind: (
+            Literal["late_positive_confirmation", "late_negative_confirmation", "feedback"] | None
+        ) = None
+        execution_recovery = None
         if violation:
             if outcome == "confirmation_timeout":
                 later = sorted(
@@ -320,6 +328,7 @@ def command_findings(inputs: LabelInputs, station_id: str) -> list[ServiceFindin
                         and wire is not None
                         and r.get("flow_id") == wire.get("flow_id")
                         and r.get("src_ip") == wire.get("dst_ip")
+                        and r.get("negative_confirm") in (True, False)
                         and r["available_at"] < following
                         and r.get("ioa") == command["ioa"]
                         and abs((r.get("value_num") or 0) - command["target_kw"]) <= 0.1
@@ -327,11 +336,17 @@ def command_findings(inputs: LabelInputs, station_id: str) -> list[ServiceFindin
                     ),
                     key=lambda r: r["available_at"],
                 )
-                if later:
+                if len(later) == 1:
                     recovery = later[0]["available_at"]
+                    recovery_kind = (
+                        "late_negative_confirmation"
+                        if later[0]["negative_confirm"]
+                        else "late_positive_confirmation"
+                    )
                     refs.append(inputs.ref(later[0]))
             else:
                 feedback = {}
+                acceptance = inputs.records.get(assessment.get("accept_event", ""))
                 for ioa in (1006, 1001):
                     candidates = sorted(
                         (
@@ -342,7 +357,9 @@ def command_findings(inputs: LabelInputs, station_id: str) -> list[ServiceFindin
                             and r.get("ioa") == ioa
                             and r.get("quality_valid") is True
                             and r.get("value") is not None
-                            and deadline <= r["available_at"] < following
+                            and acceptance is not None
+                            and acceptance[1]["ts_mono_ns"] <= r["ts_mono_ns"]
+                            and r["available_at"] < following
                             and (ioa != 1006 or abs(r["value"] - command["target_kw"]) <= 0.1)
                         ),
                         key=lambda r: r["available_at"],
@@ -351,9 +368,53 @@ def command_findings(inputs: LabelInputs, station_id: str) -> list[ServiceFindin
                         feedback[ioa] = candidates[0]
                 if set(feedback) == {1001, 1006}:
                     recovery = max(r["available_at"] for r in feedback.values())
+                    recovery_kind = "feedback"
                     refs.extend(inputs.ref(r) for r in feedback.values())
+                    # Delivered measurements restore feedback service, not necessarily execution.
+                    power = feedback[1001]
+                    states = [
+                        r
+                        for r in inputs.states
+                        if r["station_id"] == station_id
+                        and r.get("source") == "pvlib_pvwatts_inverter_v02"
+                        and command["sent_mono_ns"]
+                        <= r.get("model_mono_ns", 0)
+                        <= power["ts_mono_ns"]
+                    ]
+                    state = max(states, key=lambda r: r["model_mono_ns"]) if states else None
+                    if (
+                        state
+                        and state.get("p_actual_kw") is not None
+                        and (
+                            abs(state.get("p_set_accepted_kw", -1) - command["target_kw"]) <= 0.1
+                            and abs(
+                                state["p_actual_kw"]
+                                - min(command["target_kw"], state["p_avail_kw"])
+                            )
+                            <= 0.1
+                            and abs(power["value"] - state["p_actual_kw"]) <= 0.1
+                        )
+                    ):
+                        execution_recovery = recovery
+                        refs.append(inputs.ref(state))
         else:
-            recovery = max((ref.available_at or start for ref in refs), default=start)
+            completion = (
+                assessment.get("negative_response_event")
+                if outcome == "rejected"
+                else assessment.get("power_feedback_event")
+            )
+            if known and completion:
+                recovery = max(
+                    inputs.records[identity][1]["available_at"]
+                    for identity in (
+                        completion,
+                        assessment.get("setpoint_feedback_event") or completion,
+                        assessment.get("response_event") or completion,
+                    )
+                )
+        superseded = following if violation and recovery is None and following < 2**63 - 1 else None
+        # No future completion or later same-value task can close the prior transaction.
+        refs = list({(r.path, r.record_id, r.role): r for r in refs}.values())
         findings.append(
             ServiceFinding(
                 finding_id=f"c_{len(findings):06d}",
@@ -365,10 +426,13 @@ def command_findings(inputs: LabelInputs, station_id: str) -> list[ServiceFindin
                 service_violation=violation if known else None,
                 label_status=status,
                 start_utc_ns=deadline if violation else start,
-                end_utc_ns=max(deadline + 1, recovery) if violation and recovery else None,
+                end_utc_ns=recovery if violation and recovery else superseded,
                 observable_at_utc_ns=deadline if violation else None,
                 recovery_utc_ns=recovery,
                 recovery_censored=recovery is None,
+                recovery_kind=recovery_kind,
+                execution_recovery_utc_ns=execution_recovery,
+                superseded_at_utc_ns=superseded,
                 evidence=tuple(refs),
             )
         )
@@ -648,7 +712,7 @@ def label_run(root: Path) -> dict[str, Any]:
                 pa.field("label_status", pa.string(), nullable=False),
                 pa.field("payload_json", pa.string(), nullable=False),
             ],
-            metadata={b"scope": b"Oracle", b"pvcomm_schema": b"0.4-label.2", b"utc_unit": b"ns"},
+            metadata={b"scope": b"Oracle", b"pvcomm_schema": b"0.4-label.3", b"utc_unit": b"ns"},
         )
         projection = [
             dict(

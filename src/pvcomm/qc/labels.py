@@ -15,7 +15,122 @@ from pvcomm.domain.labels import EventLabel, ServiceFinding
 from pvcomm.pipeline.labels import VERSION as LABEL_VERSION
 from pvcomm.pipeline.labels import LabelInputs, file_sha256, load_label_inputs
 
-VERSION = "v04-label-qc-v3"
+VERSION = "v04-label-qc-v4"
+
+
+def audit_command_interval(
+    inputs: LabelInputs,
+    finding: ServiceFinding,
+    command: dict[str, Any],
+    wire: dict[str, Any],
+    boundary: int,
+) -> bool:
+    """Independently verify recovery attribution; feedback is not physical execution."""
+    start = command["sent_utc_ns"]
+    deadline = (
+        start
+        + command[
+            "deadline_ms" if finding.outcome == "confirmation_timeout" else "execution_deadline_ms"
+        ]
+        * 1_000_000
+    )
+    recovery, execution, kind = None, None, None
+    supporting = []
+    if finding.outcome == "confirmation_timeout":
+        candidates = [
+            row
+            for row in inputs.objects
+            if row.get("type_id") == 50
+            and row.get("cot") == 7
+            and row.get("ca") == wire.get("ca")
+            and row.get("ioa") == command["ioa"]
+            and row.get("src_ip") == wire.get("dst_ip")
+            and row.get("flow_id") == wire.get("flow_id")
+            and not row.get("test_flag")
+            and type(row.get("negative_confirm")) is bool
+            and row.get("value_num") is not None
+            and abs(row["value_num"] - command["target_kw"]) <= 0.1
+            and deadline <= row["available_at"] < boundary
+        ]
+        if len(candidates) == 1:
+            row = candidates[0]
+            recovery = row["available_at"]
+            kind = (
+                "late_negative_confirmation"
+                if row["negative_confirm"]
+                else "late_positive_confirmation"
+            )
+            supporting.append(row)
+    elif finding.outcome == "feedback_missing":
+        acceptances = [
+            r
+            for r in inputs.terminal
+            if r["event_type"] == "terminal_command_accepted"
+            and r.get("station_id") == finding.station_id
+            and r.get("ioa") == command["ioa"]
+            and r.get("target_kw") is not None
+            and abs(r["target_kw"] - command["target_kw"]) <= 0.1
+            and command["sent_mono_ns"]
+            <= r["ts_mono_ns"]
+            < min(
+                command["sent_mono_ns"] + command["deadline_ms"] * 1_000_000,
+                command["sent_mono_ns"] + boundary - start,
+            )
+        ]
+        samples: dict[int, dict[str, Any]] = {}
+        for row in sorted(inputs.master, key=lambda r: r["available_at"]):
+            if (
+                row["event_type"] == "master_observed_point"
+                and row.get("station_id") == finding.station_id
+                and row.get("ioa") in (1001, 1006)
+                and row.get("quality_valid") is True
+                and row.get("value") is not None
+                and len(acceptances) == 1
+                and row["ts_mono_ns"] >= acceptances[0]["ts_mono_ns"]
+                and row["available_at"] < boundary
+                and (row["ioa"] != 1006 or abs(row["value"] - command["target_kw"]) <= 0.1)
+            ):
+                samples.setdefault(row["ioa"], row)
+        if len(samples) == 2:
+            recovery = max(row["available_at"] for row in samples.values())
+            kind = "feedback"
+            supporting.extend(samples.values())
+            power = samples[1001]
+            states = [
+                r
+                for r in inputs.states
+                if r["station_id"] == finding.station_id
+                and r.get("source") == "pvlib_pvwatts_inverter_v02"
+                and command["sent_mono_ns"] <= r.get("model_mono_ns", 0) <= power["ts_mono_ns"]
+            ]
+            if states:
+                state = max(states, key=lambda r: r["model_mono_ns"])
+                if (
+                    state.get("p_actual_kw") is not None
+                    and abs(state.get("p_set_accepted_kw", -1) - command["target_kw"]) <= 0.1
+                    and abs(state["p_actual_kw"] - min(command["target_kw"], state["p_avail_kw"]))
+                    <= 0.1
+                    and abs(power["value"] - state["p_actual_kw"]) <= 0.1
+                ):
+                    execution = recovery
+                    supporting.append(state)
+    else:
+        return finding.recovery_kind is None and finding.execution_recovery_utc_ns is None
+    superseded = boundary if recovery is None and boundary < 2**63 - 1 else None
+    reference_ids = {r.record_id for r in finding.evidence if r.role == "retrospective"}
+    return bool(
+        finding.recovery_utc_ns == recovery
+        and finding.recovery_kind == kind
+        and finding.execution_recovery_utc_ns == execution
+        and finding.superseded_at_utc_ns == superseded
+        and finding.end_utc_ns == (recovery if recovery is not None else superseded)
+        and finding.recovery_censored == (recovery is None)
+        and all(
+            (str(r["event_id"]) if "event_id" in r else f"{r['apdu_id']}:{r['object_index']}")
+            in reference_ids
+            for r in supporting
+        )
+    )
 
 
 def audit_diagnostic_layers(inputs: LabelInputs, label: EventLabel) -> bool:
@@ -199,6 +314,8 @@ def audit_command_finding(inputs: LabelInputs, finding: ServiceFinding) -> bool:
     ]
     if len(wire) != 1:
         return finding.label_status == "uncertain" and finding.service_violation is None
+    if not audit_command_interval(inputs, finding, command, wire[0], boundary):
+        return False
     acknowledgments = [
         r
         for r in matching
@@ -441,6 +558,19 @@ def audit_label_records(inputs: LabelInputs, labels: list[EventLabel]) -> dict[s
         freshness &= all(
             f.service_violation is True and f.observable_at_utc_ns == f.start_utc_ns for f in stale
         )
+        for finding in stale:
+            received_at_end = any(
+                r["event_type"] == "master_observed_point"
+                and r.get("station_id") == label.station_id
+                and r.get("ioa") == finding.ioa
+                and r.get("quality_valid") is True
+                and r.get("value") is not None
+                and r["available_at"] == finding.end_utc_ns
+                for r in inputs.master
+            )
+            freshness &= finding.recovery_utc_ns == (
+                finding.end_utc_ns if received_at_end else None
+            ) and finding.recovery_censored == (not received_at_end)
         target = fault is not None and label.station_id in fault.target_stations()
         expected_applied = (
             bool(inputs.report.get("fault_verification", {}).get("passed")) if target else False
@@ -498,6 +628,8 @@ def qc_labels(root: Path) -> dict[str, Any]:
         qc_version=VERSION,
         run_id=inputs.manifest["run_id"],
         label_version=LABEL_VERSION,
+        label_sha256=file_sha256(folder / "event_labels.jsonl"),
+        label_manifest_sha256=file_sha256(folder / "manifest.json"),
         evidence_integrity=hashes_ok,
         arrow_roundtrip=arrow_ok,
         **audit,

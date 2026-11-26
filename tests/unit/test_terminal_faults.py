@@ -47,6 +47,21 @@ def test_terminal_presets_and_strict_strength(code: str, strength: int) -> None:
         FaultScenarioConfig.model_validate(raw)
 
 
+def test_delayed_negative_confirmation_rejected_before_resource_creation() -> None:
+    config = terminal_scenario("A05", SCOPE, 15)
+    raw = config.model_dump(mode="json")
+    raw["background"]["simulation"]["device_operations"] = [
+        dict(station_id="PV01", at_s=10, enabled=False)
+    ]
+    with pytest.raises(ValueError, match="delayed negative confirmation is unsupported"):
+        FaultScenarioConfig.model_validate(raw)
+    # P06 is valid: the same disabled device is re-enabled before deferred processing.
+    raw["background"]["simulation"]["device_operations"].append(
+        dict(station_id="PV01", at_s=39, enabled=True)
+    )
+    assert FaultScenarioConfig.model_validate(raw)
+
+
 @pytest.mark.parametrize("code,strength", (("A04", 5), ("A06", 30)))
 def test_reporting_semantics_and_restoration(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: str, strength: int

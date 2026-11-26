@@ -129,3 +129,10 @@ evidence包含run相对路径、SHA256、原event_id或apdu_id:object_index、ti
 当前label入口写labels/v04-label-v2，独立核验写qc/v04-label-qc-v3。v2原核验报告继续保留。历史v1输出继续通过其冻结代码复核，两个版本不互相覆盖。A06故障区间从实际feedback_hold起算。communication_impact及其start/end为Oracle机制证据覆盖的通信影响诊断区间，不能代替业务违约起点。A05使用真实延后处理事件的等待区间，A01/A02使用既有双端核验区间。transport_impact在缺乏传输层证明时保留null。
 
 recovery_complete_utc_ns为撤销后新GI成功结束且包含1001/1002/1003/1006/1008/2001实际测量对象的完成时间。缺少完整证据时为null并保留recovery_censored=true。正常成员未施加故障时该恢复字段不适用，也为空。业务findings仍独立记录各约束的恢复与截尾。所有增量仅供Oracle标签核验。
+
+
+## 配对QC v2及标签v3修正
+
+配对报告新增`data_quality_passed`、`business_contrast.stations`、`targets_passed`和`controls_passed`；`passed`同时要求数据质量及逐站预期对照。正常/改变身份、目标及控制站集合须完整，非valid或null不作正常负例。
+
+标签契约`0.4-label.3`另写`labels/v04-label-v3`，独立QC为`v04-label-qc-v4`。命令finding新增`recovery_kind`（late_positive_confirmation/late_negative_confirmation/feedback/null）、`execution_recovery_utc_ns`（Oracle物理执行旁证，缺证据为空）、`superseded_at_utc_ns`（后续同站同IOA任务覆盖边界）。迟到确认只恢复确认交付，1001/1006只恢复反馈交付，均不得直接推断功率执行成功。未恢复事件保持截尾；被后续任务覆盖时end等于覆盖时刻且recovery为空。版本2文件和历史QC不可覆盖；默认M2接口不新增任何标签字段。

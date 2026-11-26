@@ -406,6 +406,7 @@ def test_full_recovery_requires_new_complete_gi_not_first_old_measurement(tmp_pa
         inputs.master.append(event)
         inputs.records[event["event_id"]] = ("observed/master_events_master.jsonl", event)
     assert full_recovery(inputs, "PV01", 40 * 10**9) == (None, [])
+
     for index, (type_id, cot, ioa) in enumerate(
         [
             (100, 6, 0),
@@ -434,3 +435,195 @@ def test_full_recovery_requires_new_complete_gi_not_first_old_measurement(tmp_pa
     # GI termination alone or partial measurement transfer cannot prove full recovery.
     inputs.objects[:] = [r for r in inputs.objects if r.get("ioa") != 1008]
     assert full_recovery(inputs, "PV01", 40 * 10**9) == (None, [])
+
+
+@pytest.mark.parametrize("negative", (True, False))
+def test_late_confirmation_is_not_power_execution(tmp_path: Path, negative: bool) -> None:
+    inputs = fixture_inputs(tmp_path, "timeout")
+    ack = {
+        **inputs.objects[0],
+        "apdu_id": "late",
+        "cot": 7,
+        "available_at": 25 * 10**9,
+        "src_ip": "10.204.1.2",
+        "negative_confirm": negative,
+    }
+    inputs.objects.append(ack)
+    inputs.records["late:0"] = (f"parsed/{PARSER_VERSION}/iec104_objects.jsonl", ack)
+    rows = build_labels(inputs)
+    finding = rows[0].findings[0]
+    assert finding.end_utc_ns == finding.recovery_utc_ns == 25 * 10**9
+    assert finding.recovery_kind == (
+        "late_negative_confirmation" if negative else "late_positive_confirmation"
+    )
+    assert finding.execution_recovery_utc_ns is None
+    assert audit_label_records(inputs, rows)["passed"]
+    raw = rows[0].model_dump(mode="json")
+    raw["findings"][0]["recovery_kind"] = (
+        "late_positive_confirmation" if negative else "late_negative_confirmation"
+    )
+    rows[0] = EventLabel.model_validate(raw)
+    assert not audit_label_records(inputs, rows)["passed"]
+
+
+def test_feedback_restoration_does_not_prove_execution(tmp_path: Path) -> None:
+    inputs = fixture_inputs(tmp_path, "missing_feedback")
+    point = dict(
+        inputs.master[1],
+        event_id="recovered_setpoint",
+        ioa=1006,
+        station_id="PV01",
+        value=20.0,
+        available_at=35 * 10**9,
+        ts_mono_ns=35 * 10**9,
+    )
+    inputs.master.append(point)
+    inputs.records[point["event_id"]] = ("observed/master_events_master.jsonl", point)
+    rows = build_labels(inputs)
+    finding = rows[0].findings[0]
+    assert finding.recovery_kind == "feedback" and finding.recovery_utc_ns == 35 * 10**9
+    assert finding.execution_recovery_utc_ns is None
+    assert audit_label_records(inputs, rows)["passed"]
+    raw = rows[0].model_dump(mode="json")
+    raw["findings"][0]["execution_recovery_utc_ns"] = 35 * 10**9
+    rows[0] = EventLabel.model_validate(raw)
+    assert not audit_label_records(inputs, rows)["passed"]
+
+
+def test_same_value_successor_cannot_restore_previous_transaction(tmp_path: Path) -> None:
+    inputs = fixture_inputs(tmp_path, "timeout")
+    original = next(r for r in inputs.master if r["event_type"] == "master_command_sent")
+    successor = {
+        **original,
+        "event_id": "second",
+        "task_id": "transaction_2",
+        "available_at": 40 * 10**9,
+        "ts_mono_ns": 40 * 10**9,
+        "sent_mono_ns": 40 * 10**9,
+        "sent_utc_ns": 40 * 10**9,
+    }
+    inputs.master.append(successor)
+    inputs.records["second"] = ("observed/master_events_master.jsonl", successor)
+    for cot in (6, 7):
+        obj = {
+            **inputs.objects[0],
+            "apdu_id": f"second_{cot}",
+            "cot": cot,
+            "available_at": 40 * 10**9 + cot,
+            "negative_confirm": False,
+            "src_ip": "10.204.1.2" if cot == 7 else "10.204.0.1",
+        }
+        inputs.objects.append(obj)
+        inputs.records[f"second_{cot}:0"] = (f"parsed/{PARSER_VERSION}/iec104_objects.jsonl", obj)
+    config = normal_scenario("N04").simulation.protocol
+    inputs.report["experiment_quality"]["command_assessments"]["PV01"] = audit_commands(
+        inputs.master, inputs.terminal, inputs.objects, "PV01", 1, config.stations[0].address
+    )
+    rows = build_labels(inputs)
+    finding = rows[0].findings[0]
+    assert finding.end_utc_ns == finding.superseded_at_utc_ns == 40 * 10**9
+    assert finding.recovery_censored and finding.recovery_utc_ns is None
+    assert audit_label_records(inputs, rows)["passed"]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "none",
+        "normal_violation",
+        "no_violation",
+        "wrong_target",
+        "control_violation",
+        "invalid",
+        "uncertain",
+        "null",
+    ),
+)
+def test_pair_qc_requires_station_specific_business_contrast(tmp_path: Path, mutation: str) -> None:
+    from pvcomm.pipeline.labels import VERSION as LABEL_VERSION
+    from pvcomm.qc.labels import VERSION as LABEL_QC_VERSION
+    from pvcomm.qc.pairs import qc_pair
+
+    config = development_pair("P03", "pair_unit_only")
+    rows = {}
+    for member in ("normal", "changed"):
+        inputs = fixture_inputs(tmp_path / f"fixture_{member}", gap=member == "changed")
+        rows[member] = [r.model_dump(mode="json") for r in build_labels(inputs)]
+    if mutation == "normal_violation":
+        rows["normal"][0] = dict(rows["changed"][0])
+    elif mutation == "no_violation":
+        rows["changed"][0] = dict(rows["normal"][0])
+    elif mutation in ("wrong_target", "control_violation"):
+        bad = json.loads(json.dumps(rows["changed"][0]))
+        bad["station_id"] = "PV02"
+        for finding in bad["findings"]:
+            finding["station_id"] = "PV02"
+        rows["changed"][1] = bad
+        if mutation == "wrong_target":
+            rows["changed"][0] = dict(rows["normal"][0])
+    elif mutation in ("invalid", "uncertain", "null"):
+        raw = rows["normal"][0]
+        raw["label_status"] = "invalid" if mutation == "invalid" else "uncertain"
+        raw["service_violation"] = raw["observable_anomaly"] = None
+        raw["findings"][0]["service_violation"] = None
+        raw["findings"][0]["label_status"] = "uncertain"
+    directory = tmp_path / "pair"
+    directory.mkdir()
+    (directory / "pair.json").write_text(config.model_dump_json())
+    ledger = []
+    for member in ("normal", "changed"):
+        run_id = f"run_{member}"
+        root = directory / run_id
+        for subdir in (
+            "truth/scenario",
+            "observed",
+            f"parsed/{PARSER_VERSION}",
+            f"labels/{LABEL_VERSION}",
+            "qc/unit-quality",
+            f"qc/{LABEL_QC_VERSION}",
+        ):
+            (root / subdir).mkdir(parents=True, exist_ok=True)
+        scene = (config.normal if member == "normal" else config.changed.background).model_dump(
+            mode="json"
+        )
+        scene["simulation"]["protocol"]["run_id"] = run_id
+        (root / "truth/scenario/effective.json").write_text(json.dumps(scene))
+        (root / "manifest.json").write_text(
+            json.dumps(
+                dict(
+                    status="completed",
+                    code_dirty=False,
+                    cleanup_errors=[],
+                    scene_clock=dict(start_mono_ns=0),
+                    clock_origin=dict(ts_utc_ns=0, ts_mono_ns=0),
+                    network=dict(addresses=[]),
+                )
+            )
+        )
+        (root / "observed/master_events_fixture.jsonl").write_text(
+            json.dumps(dict(event_type="master_business_started", sim_elapsed_ms=0)) + "\n"
+        )
+        (root / f"parsed/{PARSER_VERSION}/packets.jsonl").write_text("")
+        for report_name in ("unit-quality", LABEL_QC_VERSION):
+            (root / f"qc/{report_name}/report.json").write_text('{"passed":true}')
+        for row in rows[member]:
+            row["run_id"] = run_id
+        (root / f"labels/{LABEL_VERSION}/event_labels.jsonl").write_text(
+            "".join(json.dumps(r) + "\n" for r in rows[member])
+        )
+        (root / f"qc/{LABEL_QC_VERSION}/report.json").write_text(
+            json.dumps(
+                dict(
+                    passed=True,
+                    label_sha256=file_sha256(root / f"labels/{LABEL_VERSION}/event_labels.jsonl"),
+                )
+            )
+        )
+        ledger.append(dict(member=member, run_id=run_id, run_dir=run_id))
+    (directory / "pair-manifest.json").write_text(
+        json.dumps(dict(members=ledger, shared_sha256=config.shared_sha256()))
+    )
+    report = qc_pair(directory)
+    assert report["data_quality_passed"]  # These synthetic counterexamples have intact files.
+    assert report["passed"] is (mutation == "none")
+    assert report["contrast_observed"] is (mutation == "none")

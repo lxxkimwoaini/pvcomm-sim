@@ -86,6 +86,19 @@
           "title": "Evidence",
           "type": "array"
         },
+        "execution_recovery_utc_ns": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Recovery Utc Ns"
+        },
         "finding_id": {
           "title": "Finding Id",
           "type": "string"
@@ -139,6 +152,23 @@
           "title": "Recovery Censored",
           "type": "boolean"
         },
+        "recovery_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "late_positive_confirmation",
+                "late_negative_confirmation",
+                "feedback"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recovery Kind"
+        },
         "recovery_utc_ns": {
           "anyOf": [
             {
@@ -170,6 +200,19 @@
         "station_id": {
           "title": "Station Id",
           "type": "string"
+        },
+        "superseded_at_utc_ns": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Superseded At Utc Ns"
         },
         "task_id": {
           "anyOf": [
@@ -318,8 +361,8 @@
       "type": "string"
     },
     "label_version": {
-      "const": "0.4-label.2",
-      "default": "0.4-label.2",
+      "const": "0.4-label.3",
+      "default": "0.4-label.3",
       "title": "Label Version",
       "type": "string"
     },

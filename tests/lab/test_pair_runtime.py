@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from pvcomm.config.pairs import development_pair
+from pvcomm.qc.pairs import VERSION as PAIR_QC_VERSION
 from pvcomm.scenario.pairs import run_pair
 
 
@@ -24,7 +25,7 @@ def test_real_pair(tmp_path: Path, code: str) -> None:
     root = run_pair(config, tmp_path)
     ledger = json.loads((root / "pair-manifest.json").read_bytes())
     assert ledger["status"] == "completed", root
-    report = json.loads((root / "qc/v04-pair-qc-v1/report.json").read_bytes())
+    report = json.loads((root / "qc" / PAIR_QC_VERSION / "report.json").read_bytes())
     assert report["passed"] and report["contrast_observed"], root
     assert subprocess.check_output(["ip", "netns", "list"], text=True) == before
     assert subprocess.check_output(["ip", "-j", "route"], text=True) == routes

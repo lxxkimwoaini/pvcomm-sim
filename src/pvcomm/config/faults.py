@@ -137,6 +137,8 @@ class FaultScenarioConfig(V01Contract):
                     )
             if fault.fault_type == "A06" and fault.duration_s != fault.feedback_duration_s:
                 raise ValueError("A06 hold duration must match its strength")
+            if fault.fault_type == "A05":
+                self.check_delayed_confirmation_support()
             if fault.fault_type == "A08":
                 maintenance = protocol.interruption
                 if (
@@ -179,6 +181,71 @@ class FaultScenarioConfig(V01Contract):
         ):
             raise ValueError("fault requires warmup and a complete recovery observation window")
         return self
+
+    def check_delayed_confirmation_support(self) -> None:
+        """c104 2.2.1 deferred ACT_CON has no public negative-confirmation setter."""
+        from pvcomm.config.scenes import AllocationTask, SetpointTask
+
+        fault = self.fault
+        if not isinstance(fault, TerminalFault) or fault.fault_type != "A05":
+            return
+        for task in self.background.expanded_schedule():
+            if not isinstance(task, (SetpointTask, AllocationTask)):
+                continue
+            span = (
+                (len(task.station_ids) - 1) // task.batch_size * (3 + task.batch_interval_s)
+                if isinstance(task, AllocationTask)
+                else 0
+            )
+            if task.at_s + span < fault.start_s or task.at_s >= fault.start_s + fault.duration_s:
+                continue
+            left, right = (
+                task.at_s + int(fault.response_delay_s or 0),
+                task.at_s + span + int(fault.response_delay_s or 0),
+            )
+            for station in set(task.station_ids) & set(self.target_stations()):
+                # Test every state boundary in the possible deferred execution interval.
+                operations = sorted(
+                    (
+                        op
+                        for op in self.background.simulation.device_operations
+                        if op.station_id == station
+                    ),
+                    key=lambda op: op.at_s,
+                )
+                device = next(
+                    d for d in self.background.simulation.devices if d.station_id == station
+                )
+                state: dict[str, object] = {
+                    "enabled": device.enabled,
+                    "connected": device.connected,
+                    "faulted": device.faulted,
+                }
+                for op in operations:
+                    if op.at_s > right:
+                        break
+                    if op.at_s > left and (
+                        not state["enabled"] or not state["connected"] or state["faulted"]
+                    ):
+                        raise ValueError(
+                            "A05 delayed negative confirmation is unsupported "
+                            "by c104 2.2.1 public API"
+                        )
+                    for name in state:
+                        value = getattr(op, name, None)
+                        if value is not None:
+                            state[name] = value
+                    if op.at_s >= left and (
+                        not state["enabled"] or not state["connected"] or state["faulted"]
+                    ):
+                        raise ValueError(
+                            "A05 delayed negative confirmation is unsupported "
+                            "by c104 2.2.1 public API"
+                        )
+                if not state["enabled"] or not state["connected"] or state["faulted"]:
+                    raise ValueError(
+                        "A05 delayed negative confirmation is unsupported by c104 2.2.1 public API"
+                    )
 
 
 def load_fault_scenario(path: Path) -> FaultScenarioConfig:

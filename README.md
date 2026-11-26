@@ -193,3 +193,8 @@ PVCOMM_ALLOW_LAB=1 .venv-wsl/bin/python -m pvcomm.cli run-pair --config outputs/
 ```
 
 配对拒绝共享条件变化和重复输出，分别执行原运行器、解析、Arrow、正常/故障QC、标签及标签QC。固定报告流量统计距离，不声称已达到统计相似匹配或正式覆盖次数。缺独立信息的M3仍未实现；720小时生成、特征、划分、基线训练均未开展。
+
+
+## V0.4 配对及标签复核接续
+
+当前接续计划见 [V0.4完成计划](docs/plans/2026-11-26-v04-completion.md)。配对QC v2把逐目标站业务对照及非目标站正常结果纳入总门禁，独立报告数据质量。标签生成当前另写`labels/v04-label-v3`，QC另写`qc/v04-label-qc-v4`；前文v2/v3为历史验收结果。新增迟到正/否确认、反馈交付与电气执行恢复、同点后续事务覆盖字段，见ADR0021及数据字典。已有原件可用`uv run --group data python scripts/recheck_v04_pairs.py --pair-dir <原配对目录> --output <新账本文件>`版本化复核，拒绝覆盖。统计匹配、规模及重复门禁仍未完成，V0.5尚未启动。

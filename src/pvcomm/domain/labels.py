@@ -46,6 +46,11 @@ class ServiceFinding(LabelContract):
     observable_at_utc_ns: Nanoseconds | None
     recovery_utc_ns: Nanoseconds | None
     recovery_censored: bool
+    recovery_kind: (
+        Literal["late_positive_confirmation", "late_negative_confirmation", "feedback"] | None
+    ) = None
+    execution_recovery_utc_ns: Nanoseconds | None = None
+    superseded_at_utc_ns: Nanoseconds | None = None
     evidence: tuple[EvidenceRef, ...]
 
     @model_validator(mode="after")
@@ -62,13 +67,27 @@ class ServiceFinding(LabelContract):
                     raise ValueError("future evidence cannot support online determination")
         if self.recovery_censored != (self.recovery_utc_ns is None):
             raise ValueError("recovery and censoring must agree")
+        if self.recovery_utc_ns is not None and self.recovery_utc_ns < self.start_utc_ns:
+            raise ValueError("recovery cannot precede the finding")
+        if (
+            self.service_violation
+            and self.recovery_utc_ns is not None
+            and (self.end_utc_ns != self.recovery_utc_ns)
+        ):
+            raise ValueError("recovered violation must end at its actual recovery")
+        if self.superseded_at_utc_ns is not None and (
+            self.end_utc_ns != self.superseded_at_utc_ns or not self.recovery_censored
+        ):
+            raise ValueError("superseded findings must close without claiming recovery")
+        if self.recovery_kind is not None and self.recovery_utc_ns is None:
+            raise ValueError("recovery classification requires evidence of recovery")
         if self.label_status == "valid" and self.service_violation is None:
             raise ValueError("unknown result must retain uncertainty")
         return self
 
 
 class EventLabel(LabelContract):
-    label_version: Literal["0.4-label.2"] = "0.4-label.2"
+    label_version: Literal["0.4-label.3"] = "0.4-label.3"
     run_id: str
     anomaly_id: str
     station_id: str
