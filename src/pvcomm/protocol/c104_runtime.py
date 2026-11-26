@@ -308,8 +308,23 @@ class C104StationEndpoint:
 
         def on_command(point: Any, previous_info: Any, message: Any) -> Any:
             target = float(point.value)
-            if self.fault is not None:
-                self.fault.delay_response()
+
+            def complete_delayed() -> None:
+                result = apply_command(point, previous_info, target, message.cot.name)
+                if result != c104.ResponseState.SUCCESS:
+                    # The pinned public API provides lazy positive confirmations,
+                    # but no negative flag for a deferred control point response.
+                    # Fail the experiment rather than fabricate a positive ACK.
+                    raise RuntimeError("c104 cannot emit a deferred negative confirmation")
+                point.value = target
+                if not point.transmit(cause=c104.Cot.ACTIVATION_CON):
+                    raise RuntimeError("deferred c104 confirmation transmission failed")
+
+            if self.fault is not None and self.fault.defer_response(complete_delayed):
+                return c104.ResponseState.NONE
+            return apply_command(point, previous_info, target, message.cot.name)
+
+        def apply_command(point: Any, previous_info: Any, target: float, cot: str) -> Any:
             with self._lock:
                 accepted = self.state.accept(target, time.monotonic())
                 if accepted:
@@ -326,7 +341,7 @@ class C104StationEndpoint:
                     "ioa": point.io_address,
                     "target_kw": target,
                     "previous_value": getattr(previous_info, "value", None),
-                    "cot": message.cot.name,
+                    "cot": cot,
                     "accepted_setpoint_kw": self.state.accepted_setpoint_kw,
                 },
             )

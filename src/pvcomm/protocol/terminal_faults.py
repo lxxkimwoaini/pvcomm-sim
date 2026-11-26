@@ -32,6 +32,8 @@ class TerminalFaultRuntime:
         self._mask: Callable[[frozenset[int]], list[int]] | None = None
         self._state: dict[str, Any] = {}
         self._measurement_ioas: frozenset[int] = frozenset()
+        self._pending_lock = threading.Lock()
+        self._pending: tuple[int, int, Callable[[], None]] | None = None
 
     def bind(self, mask: Callable[[frozenset[int]], list[int]]) -> None:
         self._mask = mask
@@ -62,6 +64,7 @@ class TerminalFaultRuntime:
 
     def step(self) -> None:
         if self.finished:
+            self._finish_pending(time.monotonic_ns(), cancel=self.stop.is_set() or self._force)
             return
         control = self.root / "truth/fault/control.json"
         if control.exists():
@@ -72,6 +75,10 @@ class TerminalFaultRuntime:
                     raise ValueError("invalid bounded terminal restore control")
                 self._force, self._control_stamp = True, stamp
         now = time.monotonic_ns()
+        if self._force or self.stop.is_set():
+            self._finish_pending(now, cancel=True)
+        else:
+            self._finish_pending(now, cancel=False)
         if self.active and (self._force or now >= self._end_ns):
             self.restore("finalization" if self._force else "scheduled_end")
         elif not self.active and not self._force and self.clock.elapsed(now) >= self.fault.start_s:
@@ -97,35 +104,52 @@ class TerminalFaultRuntime:
             self._end_ns = time.monotonic_ns() + int(self.fault.feedback_duration_s or 0) * 10**9
             self._publish("feedback_hold", hold_for_s=self.fault.feedback_duration_s)
 
-    def delay_response(self) -> None:
+    def defer_response(self, complete: Callable[[], None]) -> bool:
+        """Leave lib60870's reader running while the business processor waits."""
         if not self.active or self.fault.fault_type != "A05":
-            return
+            return False
+        if self.stop.is_set():
+            raise InterruptedError("terminal delayed response cancelled")
         begin = time.monotonic_ns()
-        self.record(
-            "terminal_response_delay_started",
-            {
-                "station_id": self.station_id,
-                "fault_event_id": self.fault.event_id,
-                "delay_s": self.fault.response_delay_s,
-                "begin_mono_ns": begin,
-            },
-        )
-        cancelled = self.stop.wait(float(self.fault.response_delay_s or 0))
+        with self._pending_lock:
+            if self._pending is not None:
+                raise RuntimeError("a delayed station command is already pending")
+            self.record(
+                "terminal_response_delay_started",
+                {
+                    "station_id": self.station_id,
+                    "fault_event_id": self.fault.event_id,
+                    "delay_s": self.fault.response_delay_s,
+                    "begin_mono_ns": begin,
+                },
+            )
+            self._pending = begin, begin + int(self.fault.response_delay_s or 0) * 10**9, complete
+        return True
+
+    def _finish_pending(self, now: int, *, cancel: bool) -> None:
+        with self._pending_lock:
+            pending = self._pending
+            if pending is None or (not cancel and now < pending[1]):
+                return
+            self._pending = None
+        begin, _, complete = pending
         self.record(
             "terminal_response_delay_finished",
             {
                 "station_id": self.station_id,
                 "fault_event_id": self.fault.event_id,
                 "begin_mono_ns": begin,
-                "cancelled": cancelled,
+                "cancelled": cancel,
             },
         )
-        if cancelled:
-            raise InterruptedError("terminal delayed response cancelled")
+        if not cancel:
+            complete()
 
     def restore(self, reason: str) -> None:
         if self.finished:
             return
+        if reason != "scheduled_end":
+            self._finish_pending(time.monotonic_ns(), cancel=True)
         self.suppressed = frozenset()
         self.active = False
         self._publish("restored", reason=reason, triggered=self.triggered)

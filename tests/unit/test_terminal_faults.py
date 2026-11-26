@@ -104,7 +104,29 @@ def test_cancel_interrupts_delayed_callback(tmp_path: Path) -> None:
     runtime = TerminalFaultRuntime(tmp_path, "PV01", config.fault, 2, lambda *_: None, stop)
     runtime.active = True
     with pytest.raises(InterruptedError):
-        runtime.delay_response()
+        runtime.defer_response(lambda: pytest.fail("cancelled command must not execute"))
+
+
+def test_delayed_business_processing_does_not_block_protocol_reader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = terminal_scenario("A05", SCOPE, 15)
+    assert isinstance(config.fault, TerminalFault)
+    events: list[tuple[str, dict[str, object]]] = []
+    runtime = TerminalFaultRuntime(
+        tmp_path, "PV01", config.fault, 2, lambda k, v: events.append((k, v)), threading.Event()
+    )
+    runtime.active = True
+    monkeypatch.setattr("pvcomm.protocol.terminal_faults.time.monotonic_ns", lambda: 10**9)
+    completed: list[bool] = []
+    assert runtime.defer_response(lambda: completed.append(True))
+    runtime._finish_pending(16 * 10**9 - 1, cancel=False)
+    assert not completed
+    with pytest.raises(RuntimeError, match="already pending"):
+        runtime.defer_response(lambda: None)
+    runtime._finish_pending(16 * 10**9, cancel=False)
+    assert completed == [True]
+    assert events[-1][1]["cancelled"] is False
 
 
 def test_monitoring_decoder_rejects_truncated_payload() -> None:

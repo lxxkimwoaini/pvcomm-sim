@@ -146,3 +146,60 @@ def test_terminal_cancel_restores_before_shutdown(tmp_path: Path) -> None:
         if process.poll() is None:
             process.terminate()
             process.communicate(timeout=30)
+
+
+@pytest.mark.lab
+def test_a05_pending_cancellation_preserves_protocol_and_model(tmp_path: Path) -> None:
+    if sys.platform != "linux" or os.environ.get("PVCOMM_ALLOW_LAB") != "1":
+        pytest.skip("requires authorized isolated Linux")
+    template = terminal_scenario("A05", StationScope(kind="station", station_ids=("PV01",)), 15)
+    source = tmp_path / "input.yaml"
+    source.write_text(template.model_dump_json(indent=2), encoding="utf-8")
+    identity = f"run_{uuid.uuid4().hex}"
+    root = tmp_path / identity
+    before = subprocess.check_output(["ip", "netns", "list"], text=True)
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "pvcomm.cli",
+            "run-fault",
+            "--config",
+            str(source),
+            "--output-root",
+            str(tmp_path),
+            "--run-id",
+            identity,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        deadline = time.monotonic() + 65
+        paths: list[Path] = []
+        while True:
+            paths = list((root / "truth").glob("terminal_events*.jsonl"))
+            rows = [json.loads(s) for p in paths for s in p.read_text().splitlines()]
+            if any(r["event_type"] == "terminal_response_delay_started" for r in rows):
+                break
+            assert process.poll() is None and time.monotonic() < deadline
+            time.sleep(0.05)
+        process.terminate()
+        stdout, stderr = process.communicate(timeout=30)
+        assert process.returncode == 130, (stdout, stderr)
+        rows = [json.loads(s) for p in paths for s in p.read_text().splitlines()]
+        assert not any(
+            r["event_type"] == "terminal_command_accepted" and r["station_id"] == "PV01"
+            for r in rows
+        )
+        assert any(
+            r["event_type"] == "terminal_response_delay_finished" and r["cancelled"] for r in rows
+        )
+        manifest = json.loads((root / "manifest.json").read_bytes())
+        assert manifest["status"] == "cancelled" and not manifest["cleanup_errors"]
+        assert all(c["statistics"]["packets_dropped_by_kernel"] == 0 for c in manifest["captures"])
+        assert subprocess.check_output(["ip", "netns", "list"], text=True) == before
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            process.communicate(timeout=30)
