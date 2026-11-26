@@ -305,3 +305,7 @@ v04a_s4冻结32f93f1前置真实2 passed/238.41s：三站clean/completed/cleanup
 同冻结旧V0.2晴天90s CLI run→parse --parquet→默认严格QC均退出0；462/462完整APDU、工具丢失0、P99=11.492783ms/max12.092638ms、9次事务完整。WSL科学/Arrow全量170 passed/7 deselected/12.56s；Windows最新普通163 passed/14 deselected及Ruff/format/mypy91通过。完整前端/schema检查和真实小时M2回放结果见此前记录，本轮抓包/IPC修复未改前端。097a616 push CI45744568239五job实际success。最终namespace为空，旧失败PCAP与运行目录均保留。
 
 README旧“V0.4尚未开展”及开发指南过期QC版本已修正，新增完整V0.4a报告docs/reports/2026-11-26-v04a-acceptance.md，并细化V0.4b正常场景计划。当前仅前置修复/兼容门禁通过：故障施加和标签质量仍not_evaluated，N01–N10、六类P0、配对/正式标签/UI任务队列及最终四报告未完成。下一任务按V0.4b计划实现配置驱动业务时序，先验证无调控正常背景，再逐类三站真实覆盖，不直接展开正式720h或训练。仓库仍https://github.com/lxxkimwoaini/pvcomm-sim、lxxkimwoaini、PUBLIC、默认main；PR #1–#4堆叠OPEN不合并。最新交付提交/推送及CI以实际远程核验为准。
+
+### V0.4a远程交付核验
+
+验收文档提交ac4ed18c852ad581637c6f569fe8a348f2cc2f0f已push，git ls-remote与本地一致；push CI45745825098及pull_request CI45745834313实际success，五job均成功。草稿PR #5：https://github.com/lxxkimwoaini/pvcomm-sim/pull/5 ，OPEN/isDraft=true，base=feat/v03-multisite，head=feat/v04-scenarios。PR #1→#2→#3→#4→#5正确堆叠，均未合并。源代码冻结和真实验收仍归属097a616，不将文档提交冒称实跑。交付检查25个本地Markdown链接无断链、无data/outputs/PCAP/Parquet/密钥路径进入提交，CLI实际0.4.0.dev0，工作区只有本次文档补记；最终分支CI以远程实际结果和交付回复为准。新增仅文档补记不会修改冻结实验或旧证据。
