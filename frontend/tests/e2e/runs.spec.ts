@@ -123,8 +123,11 @@ test('reads real evidence and replays only available observations', async ({
     (latest.stations[0].latest_power_kw as number).toFixed(2),
   )
   const hasPowerTelemetry = latest.stations.some(
-    (station: { measurements?: { ioa: number }[] }) =>
-      station.measurements?.some((measurement) => measurement.ioa === 1008),
+    (station: { measurements?: { ioa: number; points: unknown[] }[] }) =>
+      station.measurements?.some(
+        (measurement) =>
+          measurement.ioa === 1008 && measurement.points.length > 0,
+      ),
   )
   if (hasPowerTelemetry) {
     await expect(

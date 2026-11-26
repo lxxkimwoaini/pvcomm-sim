@@ -330,3 +330,5 @@ README旧“V0.4尚未开展”及开发指南过期QC版本已修正，新增�
 正常调度QC复核补齐严格P0/P1字节对应门禁：实验质量profile允许故障的跨端差异作为通信影响，但正常profile不得继承这一放行条件。新v04-normal-schedule-v2保留v1文件并记录运行代码和核验代码SHA/dirty；新增负测试证明“有效异常实验”不能自动通过正常通信核验。19项相关测试和mypy98通过；原始实验仍冻结4ab3fc5，完成后用新冻结QC重验，不篡改旧报告或PCAP。
 
 真实UUID场景回放检查修正：浏览器测试按实际收到的1008遥测判定电力曲线能力，不再按run_id的v02_/v03_前缀跳过。使用N03-1已完成原件的逐文件SHA256一致副本（80文件、7,699,260B，原件保留），Playwright实际2 passed/1 skipped、5.5s，核对1380个显示点并执行辐照度/并网点电压、因果游标、移动布局和离线恢复；仅空态用例按真实数据模式跳过。证据outputs/v04b-real-ui-passed，复制清单outputs/v04b-ui-evidence/copy-hashes.json。单文件ESLint/Prettier/vue-tsc退出0。此前最终f48d114完整check实际182 passed/35 deselected、mypy98、前端Vitest3/build通过，保留既有警告。正常场景批次仍在运行，不能据此宣布V0.4b通过。
+
+浏览器能力判定复核补充：API为未接入的测量也保留空series，故1008必须有非空实际接收点才启用物理曲线断言。修正后旧V0.1真实副本（50文件、530388B，逐文件哈希一致）Playwright 2 passed/1 skipped、4.5s，111点；UUID N03再验2 passed/1 skipped、5.3s，1380点并实际进入电气曲线分支。证据outputs/v04b-real-ui-v01-passed和v04b-real-ui-uuid-final；空态skip不计实测通过。e8ec399的push CI45752509472及PR CI45752519663实际success，不等同于本次补充提交的CI。
