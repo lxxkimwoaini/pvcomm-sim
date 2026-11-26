@@ -2,7 +2,7 @@
 
 分布式光伏电力—通信联合仿真平台。研究依据为 [V1.3 方案](docs/分布式光伏电力—通信联合仿真数据集构建方案_V1.3.md) 和 [AGENTS.md](AGENTS.md)。
 
-当前版本为 0.4.0.dev0，V0.4a 前置修复、V0.4b 配置化正常场景及 V0.4c 的 A01 三站开发切片已通过，**V0.4 尚未验收**。V0.3 多站点开发门禁已通过：完成3→10→20→30站逐级实跑，以及30站、3通信区域、3600秒电力—通信联合仿真和关闭Web/实时监测/历史回放资源验收。保留已验收的V0.0基础、V0.1真实协议和V0.2三站物理复现能力；当前提供配置驱动多站点、真实c104、pvlib/pandapower、独立P0/P1、Arrow、独立QC及M2只读工作台。未发布正式科研数据集或异常检测结果。实测、适用边界和复现方式见 [V0.3验收报告](docs/reports/2026-11-25-v03-acceptance.md) 及 [进度](docs/progress.md)。
+当前版本为 0.4.0.dev0，V0.4a 前置修复、V0.4b 配置化正常场景及 V0.4c 的 A01/A02 三站开发切片已通过，**V0.4 尚未验收**。V0.3 多站点开发门禁已通过：完成3→10→20→30站逐级实跑，以及30站、3通信区域、3600秒电力—通信联合仿真和关闭Web/实时监测/历史回放资源验收。保留已验收的V0.0基础、V0.1真实协议和V0.2三站物理复现能力；当前提供配置驱动多站点、真实c104、pvlib/pandapower、独立P0/P1、Arrow、独立QC及M2只读工作台。未发布正式科研数据集或异常检测结果。实测、适用边界和复现方式见 [V0.3验收报告](docs/reports/2026-11-25-v03-acceptance.md) 及 [进度](docs/progress.md)。
 
 ## 安装与复现
 
@@ -147,7 +147,7 @@ PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli qc --profile schedule --run-di
 
 ## V0.4c A01（三站机制开发验收通过）
 
-新增独立故障外层及A01自有桥端口中断，站点/子集/区域/全局范围共用运行器；不停止电力模型。操作前后实际读回、失败及finally撤销保存在Oracle，M2不读取故障计划。其余五类P0尚未实现。
+新增独立故障外层及A01自有桥端口中断，站点/子集/区域/全局范围共用运行器；不停止电力模型。操作前后实际读回、失败及finally撤销保存在Oracle，M2不读取故障计划。A02结果见下文；A04/A05/A06/A08尚未实现。
 
 A01运行另需Linux `strace`，只跟踪本次隔离端点的固定socket调用，证据存Oracle；用于区分c104写入前回调与实际接口发送。严格正常QC和解析/丢包/对齐门槛保留，规则见[ADR0017](docs/decisions/0017-v04-prewrite-testfr-evidence.md)。
 
@@ -162,4 +162,17 @@ PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli qc --profile fault --run-dir <
 
 `fault` profile核验实验质量和A01施加事实，单列真实影响与恢复，不生成正式业务异常标签。五项真实运行覆盖5/20/60秒及单站/子集/区域/全局，P0共8190/8190完整APDU、20路工具drop0、日志P99最大21.352394ms；取消1项、旧版兼容5项、正常N01/N09对照2项均通过。v4独立QC及恢复后真实总召唤复核通过，运行和核验SHA分别记录；原失败和正常门禁保留。
 
-完整清单、实际证据、限制和复现见[A01报告](docs/reports/2026-11-26-v04c-a01-acceptance.md)及[ADR0016](docs/decisions/0016-v04-owned-link-interruption.md)。其余五类P0、正式标签、配对和新工作台仍待实施，不代表完整V0.4c/V0.4验收。下一片先按[A02单向时延设计](docs/plans/2026-11-26-v04c-a02-delay.md)验证内核队列与受控撤销。
+完整清单、实际证据、限制和复现见[A01报告](docs/reports/2026-11-26-v04c-a01-acceptance.md)及[ADR0016](docs/decisions/0016-v04-owned-link-interruption.md)。A01不再重复设计；后续只做必要兼容回归。
+
+## V0.4c A02（三站机制开发验收通过）
+
+A02支持真实单向附加200/1000/3000ms及站点、子集、区域、全局作用范围，选中链路的原基线队列置于P0/P1之间的自有透明内部段。tc change保留qdisc/队列，施加、撤销和排空独立读回；独立QC从真实双端APDU测量时延并核验恢复GI。原采集点、正常网络、真实协议/物理模型及M2/Oracle隔离保留。具体实现及首轮失败修复见[ADR0018](docs/decisions/0018-a02-owned-netem-delay.md)。
+
+```sh
+uv run python scripts/make_fault_scenario.py --fault-type A02 --scope station --stations PV01 --delay-ms 200 --direction master_to_rtu --output outputs/new-a02.yaml
+uv run pvcomm validate-fault-scenario --config outputs/new-a02.yaml
+# 授权隔离Linux中运行，parse/QC命令与上节相同：
+PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli run-fault --config outputs/new-a02.yaml --output-root /var/lib/pvcomm/runs/NEW_A02_ROOT
+```
+
+六项真实用例通过，P0完整APDU10996/10996、24路工具drop0、日志P99最大27.229112ms；双向内核探针、取消及旧版真实协议兼容均通过。10个恢复GI完整；四次高档确认超时如实保留，低/中档正常完成时不强标异常。完整清单、来源、冻结SHA和复现见[A02验收报告](docs/reports/2026-11-26-v04c-a02-acceptance.md)。当前仍未生成正式分层标签；下一片直接实施A04，随后A05/A06/A08及V0.4d配对/标签，不代表完整V0.4已完成。

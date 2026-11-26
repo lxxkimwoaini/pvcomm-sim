@@ -81,7 +81,7 @@ qc/v04-normal-schedule-v2仅为Oracle正常场景验收；command_assessments保
 
 ## V0.4c A01开发契约
 
-`schemas/v04-fault.schema.json`版本`0.4-fault.1`组合既有正常背景与单个A01事件。fault字段为event_id、fault_type=A01、逻辑start_s、duration_s=5/20/60及互斥scope；station允许站点子集，region指定单个配置区域，global使用全部区域。未知引用、重复站点、混合范围和不足预热/恢复窗均拒绝。当前只实现A01，其余P0不接受为可执行配置。
+`schemas/v04-fault.schema.json`版本`0.4-fault.1`组合既有正常背景与单个A01事件。fault字段为event_id、fault_type=A01、逻辑start_s、duration_s=5/20/60及互斥scope；station允许站点子集，region指定单个配置区域，global使用全部区域。未知引用、重复站点、混合范围和不足预热/恢复窗均拒绝。此旧版本仅接受A01；新增A02的`0.4-fault.2`契约见下文，A04/A05/A06/A08尚不可执行。
 
 `truth/fault/source.yaml/effective.json/events.jsonl`均为Oracle。manifest.fault_contract保存版本、源/有效配置SHA256、结束时事件文件SHA256及Oracle范围。背景仍独立保存truth/scenario，主站执行背景到期业务，不读取故障计划。既有六表Arrow和电力契约不变。
 
