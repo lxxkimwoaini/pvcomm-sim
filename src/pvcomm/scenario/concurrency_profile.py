@@ -175,7 +175,7 @@ def profile_concurrency(output: Path) -> dict[str, Any]:
             no_formal_720h_generation=True,
         ),
     )
-    settings = []
+    settings: list[dict[str, Any]] = []
     for workers in (1, 2):
         directory = output / f"concurrency_{workers}"
         directory.mkdir()
