@@ -73,6 +73,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/diagnostics/experiments/{identity}/runs/{run_key}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inventory */
+        get: operations["inventory_api_diagnostics_experiments__identity__runs__run_key__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/diagnostics/experiments/{identity}/runs/{run_key}/export/{file_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download */
+        get: operations["download_api_diagnostics_experiments__identity__runs__run_key__export__file_key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/diagnostics/experiments/{identity}/runs/{run_key}/labels": {
         parameters: {
             query?: never;
@@ -82,6 +116,23 @@ export interface paths {
         };
         /** Labels */
         get: operations["labels_api_diagnostics_experiments__identity__runs__run_key__labels_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/diagnostics/experiments/{identity}/runs/{run_key}/labels/{ordinal}/evidence/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Evidence */
+        get: operations["evidence_api_diagnostics_experiments__identity__runs__run_key__labels__ordinal__evidence__key__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -277,6 +328,29 @@ export interface components {
             /** Run Key */
             run_key: string;
         };
+        /** EvidenceView */
+        EvidenceView: {
+            /** Capture */
+            capture?: {
+                [key: string]: unknown;
+            } | null;
+            /** Record */
+            record: {
+                [key: string]: unknown;
+            } | null;
+            /** Reference */
+            reference: {
+                [key: string]: unknown;
+            };
+            /**
+             * Scope
+             * @default Oracle_experiment_management_never_M2_features
+             * @constant
+             */
+            scope: "Oracle_experiment_management_never_M2_features";
+            /** Source Hash Verified */
+            source_hash_verified: boolean;
+        };
         /** ExperimentList */
         ExperimentList: {
             /** Enabled */
@@ -365,6 +439,33 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** ExportInventory */
+        ExportInventory: {
+            /** Code Version */
+            code_version: string | null;
+            /** Files */
+            files: {
+                [key: string]: unknown;
+            }[];
+            /** Offset */
+            offset: number;
+            /**
+             * Original Evidence Retained
+             * @default true
+             * @constant
+             */
+            original_evidence_retained: true;
+            /** Run Id */
+            run_id: string;
+            /**
+             * Scope
+             * @default Oracle_experiment_management_never_M2_features
+             * @constant
+             */
+            scope: "Oracle_experiment_management_never_M2_features";
+            /** Total */
+            total: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -398,6 +499,13 @@ export interface components {
         };
         /** LabelPage */
         LabelPage: {
+            /**
+             * Evidence Links
+             * @default []
+             */
+            evidence_links: {
+                [key: string]: unknown;
+            }[];
             /** Labels */
             labels: {
                 [key: string]: unknown;
@@ -878,6 +986,74 @@ export interface operations {
             };
         };
     };
+    inventory_api_diagnostics_experiments__identity__runs__run_key__export_get: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                identity: string;
+                run_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportInventory"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_api_diagnostics_experiments__identity__runs__run_key__export__file_key__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                identity: string;
+                run_key: string;
+                file_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     labels_api_diagnostics_experiments__identity__runs__run_key__labels_get: {
         parameters: {
             query?: {
@@ -900,6 +1076,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LabelPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    evidence_api_diagnostics_experiments__identity__runs__run_key__labels__ordinal__evidence__key__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                identity: string;
+                run_key: string;
+                ordinal: number;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceView"];
                 };
             };
             /** @description Validation Error */

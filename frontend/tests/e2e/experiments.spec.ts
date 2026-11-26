@@ -68,6 +68,64 @@ test('reads retained real experiment QC and labels through the Oracle API', asyn
   await expect(page.getByTestId('diagnostic-labels')).toHaveText(
     JSON.stringify(labels.labels, null, 2),
   )
+  await expect(page.getByTestId('label-timeline')).toBeVisible()
+  const link = labels.evidence_links.find(
+    (item: { reference: { path: string; record_id: string | null } }) =>
+      item.reference.path.startsWith('parsed/') &&
+      item.reference.record_id !== null,
+  )
+  expect(link).toBeTruthy()
+  const referenceResponse = await request.get(
+    `http://127.0.0.1:8000/api/diagnostics/experiments/${identity}/runs/${run.run_key}/labels/${link.label_ordinal}/evidence/${link.evidence_key}`,
+  )
+  expect(referenceResponse.ok()).toBeTruthy()
+  const reference = await referenceResponse.json()
+  expect(reference.source_hash_verified).toBe(true)
+  expect(reference.capture.frame_numbers.length).toBeGreaterThan(0)
+  const pcapResponse = await request.get(
+    `http://127.0.0.1:8000/api/diagnostics/experiments/${identity}/runs/${run.run_key}/export/${reference.capture.file_key}`,
+  )
+  expect(pcapResponse.ok()).toBeTruthy()
+  expect(pcapResponse.headers()['x-content-sha256']).toBe(
+    reference.capture.sha256,
+  )
+  expect(['d4c3b2a1', 'a1b2c3d4', '4d3cb2a1', 'a1b23c4d']).toContain(
+    (await pcapResponse.body()).subarray(0, 4).toString('hex'),
+  )
+  await page
+    .getByRole('button', {
+      name: `${link.reference.path} · ${link.reference.record_id ?? '文件证据'}`,
+      exact: true,
+    })
+    .first()
+    .click()
+  await expect(page.getByTestId('evidence-record')).toContainText(
+    '来源 SHA 核验：通过',
+  )
+  await page.getByRole('button', { name: '生成只读导出清单' }).first().click()
+  const inventoryResponse = await request.get(
+    `http://127.0.0.1:8000/api/diagnostics/experiments/${identity}/runs/${run.run_key}/export`,
+  )
+  expect(inventoryResponse.ok()).toBeTruthy()
+  const inventory = await inventoryResponse.json()
+  expect(inventory.original_evidence_retained).toBe(true)
+  const manifest = inventory.files.find(
+    (f: { path: string }) => f.path === 'manifest.json',
+  )
+  expect(manifest).toBeTruthy()
+  await expect(page.getByTestId('export-inventory')).toContainText(
+    manifest.sha256,
+  )
+  const download = await request.get(
+    `http://127.0.0.1:8000/api/diagnostics/experiments/${identity}/runs/${run.run_key}/export/${manifest.file_key}`,
+  )
+  expect(download.ok()).toBeTruthy()
+  expect(download.headers()['x-content-sha256']).toBe(manifest.sha256)
+  expect((await download.json()).run_id).toBe(run.run_id)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+    .toBeLessThanOrEqual(390)
   await page.screenshot({
     path: testInfo.outputPath('real-experiment-quality.png'),
     fullPage: true,

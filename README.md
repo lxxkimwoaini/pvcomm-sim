@@ -228,7 +228,7 @@ PVCOMM_ALLOW_LAB=1 PYTHONPATH=src .venv-wsl/bin/python scripts/run_v04_batch.py 
   --matrix configs/v0.4-pair-repeat-matrix.json --output /var/lib/pvcomm/runs/NEW_BATCH --resume
 ```
 
-场景.2支持显式站点组/区域维护，故障目标可为维护成员子集；旧场景.1序列化和哈希保持兼容。A08三站区域/站点组及混合恢复三项真实复验通过，见[分组维护报告](docs/reports/2026-11-26-v04-grouped-maintenance.md)。串行队列两项真实运行及完成后续跑通过，见[队列验证报告](docs/reports/2026-11-26-v04-batch-pipeline.md)。固定12组独立配对复验执行中，尚无完整结论。
+场景.2支持显式站点组/区域维护，故障目标可为维护成员子集；旧场景.1序列化和哈希保持兼容。A08三站区域/站点组及混合恢复三项真实复验通过，见[分组维护报告](docs/reports/2026-11-26-v04-grouped-maintenance.md)。串行队列两项真实运行及完成后续跑通过，见[队列验证报告](docs/reports/2026-11-26-v04-batch-pipeline.md)。固定12组独立配对复验已结束：9组有效且业务对照成立、统计匹配0；失败和未匹配原件全部保留，详见[复验报告](docs/reports/2026-11-26-v04-pair-repeats.md)。
 
 六类异常构造器支持配置驱动的10/30站，默认三站72组模板规范哈希与8519edb一致。覆盖矩阵预声明各40次（3站4次、10站12次、30站24次），先后分成scale-10、scale-30与coverage三个队列，先通过规模门禁再启动后一级。矩阵不是已完成的实验次数，见ADR0025：
 
@@ -240,8 +240,10 @@ PVCOMM_ALLOW_LAB=1 PYTHONPATH=src .venv-wsl/bin/python scripts/run_v04_batch.py 
   --matrix outputs/NEW_SCALE_MATRIX.json --output /var/lib/pvcomm/runs/NEW_SCALE_BATCH
 ```
 
-批量Web管理、30站异常与正式重复覆盖、全流程临时峰值及并发吞吐仍待实现或验收。
+受控Web提交与诊断查询已建立，30站异常与正式重复覆盖、全流程临时峰值及并发吞吐仍待验收。
 
 六表Arrow现按4096行转换及逐行回读比较；标签使用临时磁盘索引按站点访问原始证据，标签schema与判据保持v3。可在保留运行上比较列表与索引路径，原标签/QC不覆盖：`uv run --frozen --group data python scripts/profile_v04_evidence.py --run-dir <运行目录> --mode indexed --output <新报告目录>`；`--mode list`提供同一代码下的兼容比较。该测量的Python分配峰值不等于进程RSS或全流程峰值。
 
 Linux队列支持`--measurements <独立新目录>`采样控制器及其子进程CPU/RSS/IO、活动任务的PDML/解析及标签索引临时字节；1秒采样的峰值为观测下界。完整小运行归档验证入口为`uv run --frozen python scripts/profile_v04_archive.py --run-dir <已完成运行> --output <独立新归档目录>`，逐文件解压校验并保留所有来源。上述入口不授权删除来源或生成720小时数据。
+
+科研工作台提供受限场景提交、队列/覆盖、实际QC、标签分层时间轴、SHA核验的原记录/PCAP帧定位及终态运行逐文件导出。M2默认入口与Oracle明确分离。服务端设置`PVCOMM_EXPERIMENT_ROOT`至受控请求根；Linux消费者通过`scripts/run_v04_requests.py`执行，Web不直接运行网络命令。完整配对曲线/流量交互仍待完成；此切片不代表V0.4整体通过。见[API契约](docs/api.md)与[证据工作台验证](docs/reports/2026-11-26-v04-workbench-evidence.md)。

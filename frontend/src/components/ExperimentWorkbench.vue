@@ -12,6 +12,9 @@ import {
 import {
   getExperimentCatalog,
   getExperimentLabels,
+  getExperimentEvidence,
+  getExperimentInventory,
+  experimentFileUrl,
   getExperimentQuality,
   getExperiments,
   submitExperiment,
@@ -20,13 +23,20 @@ import {
   type ExperimentRequest,
   type ExperimentView,
   type LabelPage,
+  type EvidenceView,
+  type ExportInventory,
   type TemplateCatalog,
 } from '../api/client'
+import LabelTimeline from './LabelTimeline.vue'
 
 const catalog = ref<TemplateCatalog | null>(null)
 const listing = ref<ExperimentList | null>(null)
 const quality = ref<ExperimentQuality | null>(null)
 const labels = ref<LabelPage | null>(null)
+const evidence = ref<EvidenceView | null>(null)
+const inventory = ref<ExportInventory | null>(null)
+const exportRun = ref('')
+const evidenceOffset = ref(0)
 const selected = ref('')
 const selectedRun = ref('')
 const offset = ref(0)
@@ -50,6 +60,38 @@ const levels = computed(() => catalog.value?.strengths[template.value] ?? [])
 const current = computed(() =>
   listing.value?.experiments.find((e) => e.experiment_id === selected.value),
 )
+const captureHref = computed(() =>
+  evidence.value?.capture
+    ? experimentFileUrl(
+        selected.value,
+        selectedRun.value,
+        String(evidence.value.capture.file_key),
+      )
+    : null,
+)
+const exportFiles = computed(
+  () =>
+    inventory.value?.files.map((file) => ({
+      key: String(file.file_key),
+      label: String(file.path),
+      sha: String(file.sha256),
+      size: file.size_bytes,
+      href: experimentFileUrl(
+        selected.value,
+        exportRun.value,
+        String(file.file_key),
+      ),
+    })) ?? [],
+)
+const exportEnd = computed(
+  () =>
+    !inventory.value || inventory.value.offset + 50 >= inventory.value.total,
+)
+const exportPage = (step: number) =>
+  inspectExport(
+    exportRun.value,
+    Math.max(0, (inventory.value?.offset ?? 0) + step),
+  )
 const pretty = (value: unknown) => JSON.stringify(value, null, 2)
 const requestLabel = (experiment: ExperimentView) =>
   `${experiment.request.template} · ${experiment.request.site_count} 站`
@@ -117,6 +159,8 @@ async function inspect(experiment: ExperimentView) {
   selectedRun.value = ''
   quality.value = null
   labels.value = null
+  evidence.value = null
+  inventory.value = null
   error.value = ''
   try {
     const value = await getExperimentQuality(experiment.experiment_id)
@@ -132,6 +176,8 @@ async function inspectLabels(runKey: string, nextOffset = 0) {
   selectedRun.value = runKey
   labelOffset.value = nextOffset
   labels.value = null
+  evidence.value = null
+  evidenceOffset.value = 0
   try {
     const value = await getExperimentLabels(identity, runKey, nextOffset)
     if (
@@ -145,6 +191,42 @@ async function inspectLabels(runKey: string, nextOffset = 0) {
   } catch (cause) {
     error.value = String(cause)
   }
+}
+
+async function inspectEvidence(link: Record<string, unknown>) {
+  evidence.value = null
+  const identity = selected.value
+  const run = selectedRun.value
+  try {
+    const value = await getExperimentEvidence(
+      identity,
+      run,
+      Number(link.label_ordinal),
+      String(link.evidence_key),
+    )
+    if (alive && selected.value === identity && selectedRun.value === run)
+      evidence.value = value
+  } catch (cause) {
+    error.value = String(cause)
+  }
+}
+
+async function inspectExport(runKey: string, offset = 0) {
+  inventory.value = null
+  exportRun.value = runKey
+  const identity = selected.value
+  try {
+    const value = await getExperimentInventory(identity, runKey, offset)
+    if (alive && selected.value === identity && exportRun.value === runKey)
+      inventory.value = value
+  } catch (cause) {
+    error.value = String(cause)
+  }
+}
+
+const evidenceCaption = (link: Record<string, unknown>) => {
+  const reference = link.reference as Record<string, unknown>
+  return `${String(reference.path)} · ${String(reference.record_id ?? '文件证据')}`
 }
 
 async function page(next: number) {
@@ -369,12 +451,16 @@ onUnmounted(() => {
         <ElButton @click="inspectLabels(run.run_key)">
           <span>查询标签时间与原始证据引用</span>
         </ElButton>
+        <ElButton @click="inspectExport(run.run_key)">
+          <span>生成只读导出清单</span>
+        </ElButton>
       </article>
       <template v-if="labels">
         <h3>分层标签、业务期限、恢复时间及证据</h3>
         <p>
           纳秒以字符串保留；null 与未恢复截尾不作为正常负例。此处为事后诊断。
         </p>
+        <LabelTimeline :labels="labels.labels" />
         <pre class="diagnostic-json" data-testid="diagnostic-labels">{{
           pretty(labels.labels)
         }}</pre>
@@ -390,12 +476,71 @@ onUnmounted(() => {
         >
           <span>下一页标签</span>
         </ElButton>
+        <h3>证据原记录定位</h3>
+        <p>按标签引用的完整 SHA 校验来源；此查询为 Oracle 事后诊断。</p>
+        <div
+          v-for="link in labels.evidence_links?.slice(
+            evidenceOffset,
+            evidenceOffset + 20,
+          )"
+          :key="`${link.label_ordinal}-${link.evidence_key}`"
+          class="evidence-link"
+        >
+          <ElButton link type="primary" @click="inspectEvidence(link)">
+            <span>{{ evidenceCaption(link) }}</span>
+          </ElButton>
+        </div>
+        <ElButton
+          :disabled="evidenceOffset === 0"
+          @click="evidenceOffset = Math.max(0, evidenceOffset - 20)"
+        >
+          上一页证据
+        </ElButton>
+        <ElButton
+          :disabled="
+            evidenceOffset + 20 >= (labels.evidence_links?.length ?? 0)
+          "
+          @click="evidenceOffset += 20"
+        >
+          下一页证据
+        </ElButton>
+        <div v-if="evidence" data-testid="evidence-record">
+          <p>
+            来源 SHA 核验：{{
+              evidence.source_hash_verified ? '通过' : '未通过'
+            }}
+          </p>
+          <pre class="diagnostic-json">{{ pretty(evidence) }}</pre>
+          <a v-if="captureHref" :href="captureHref" download>下载 P0 PCAP</a>
+        </div>
       </template>
+      <div v-if="inventory" data-testid="export-inventory">
+        <h3>运行原件导出 · {{ inventory.run_id }}</h3>
+        <p>
+          代码 {{ inventory.code_version }} · 原件保留 · 逐文件下载，SHA
+          可核对；失败原件不作为有效样本。
+        </p>
+        <div class="diagnostic-json">
+          <div v-for="file in exportFiles" :key="file.key" class="export-file">
+            <a :href="file.href" download>{{ file.label }}</a>
+            <small>{{ file.size }} B · SHA256 {{ file.sha }}</small>
+          </div>
+        </div>
+        <ElButton :disabled="inventory.offset === 0" @click="exportPage(-50)">
+          <span>上一页导出文件</span>
+        </ElButton>
+        <ElButton :disabled="exportEnd" @click="exportPage(50)">
+          <span>下一页导出文件</span>
+        </ElButton>
+      </div>
     </section>
   </div>
 </template>
 
 <style scoped>
+.experiment-workbench {
+  overflow-wrap: anywhere;
+}
 .experiment-form {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -426,5 +571,15 @@ onUnmounted(() => {
   font-size: 12px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.evidence-link :deep(.el-button) {
+  white-space: normal;
+  height: auto;
+  text-align: left;
+}
+.export-file {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
 }
 </style>

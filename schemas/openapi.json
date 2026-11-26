@@ -256,6 +256,57 @@
         "title": "EventsPage",
         "type": "object"
       },
+      "EvidenceView": {
+        "additionalProperties": false,
+        "properties": {
+          "capture": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capture"
+          },
+          "record": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record"
+          },
+          "reference": {
+            "additionalProperties": true,
+            "title": "Reference",
+            "type": "object"
+          },
+          "scope": {
+            "const": "Oracle_experiment_management_never_M2_features",
+            "default": "Oracle_experiment_management_never_M2_features",
+            "title": "Scope",
+            "type": "string"
+          },
+          "source_hash_verified": {
+            "title": "Source Hash Verified",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "reference",
+          "source_hash_verified",
+          "record"
+        ],
+        "title": "EvidenceView",
+        "type": "object"
+      },
       "ExperimentList": {
         "additionalProperties": false,
         "properties": {
@@ -453,6 +504,63 @@
         "title": "ExperimentView",
         "type": "object"
       },
+      "ExportInventory": {
+        "additionalProperties": false,
+        "properties": {
+          "code_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Version"
+          },
+          "files": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "original_evidence_retained": {
+            "const": true,
+            "default": true,
+            "title": "Original Evidence Retained",
+            "type": "boolean"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "scope": {
+            "const": "Oracle_experiment_management_never_M2_features",
+            "default": "Oracle_experiment_management_never_M2_features",
+            "title": "Scope",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "run_id",
+          "code_version",
+          "files",
+          "offset",
+          "total"
+        ],
+        "title": "ExportInventory",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -499,6 +607,15 @@
       "LabelPage": {
         "additionalProperties": false,
         "properties": {
+          "evidence_links": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Evidence Links",
+            "type": "array"
+          },
           "labels": {
             "items": {
               "additionalProperties": true,
@@ -1543,6 +1660,138 @@
         ]
       }
     },
+    "/api/diagnostics/experiments/{identity}/runs/{run_key}/export": {
+      "get": {
+        "operationId": "inventory_api_diagnostics_experiments__identity__runs__run_key__export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "title": "Identity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_key",
+            "required": true,
+            "schema": {
+              "title": "Run Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportInventory"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inventory",
+        "tags": [
+          "Oracle experiments"
+        ]
+      }
+    },
+    "/api/diagnostics/experiments/{identity}/runs/{run_key}/export/{file_key}": {
+      "get": {
+        "operationId": "download_api_diagnostics_experiments__identity__runs__run_key__export__file_key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "title": "Identity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_key",
+            "required": true,
+            "schema": {
+              "title": "Run Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_key",
+            "required": true,
+            "schema": {
+              "title": "File Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download",
+        "tags": [
+          "Oracle experiments"
+        ]
+      }
+    },
     "/api/diagnostics/experiments/{identity}/runs/{run_key}/labels": {
       "get": {
         "operationId": "labels_api_diagnostics_experiments__identity__runs__run_key__labels_get",
@@ -1612,6 +1861,75 @@
           }
         },
         "summary": "Labels",
+        "tags": [
+          "Oracle experiments"
+        ]
+      }
+    },
+    "/api/diagnostics/experiments/{identity}/runs/{run_key}/labels/{ordinal}/evidence/{key}": {
+      "get": {
+        "operationId": "evidence_api_diagnostics_experiments__identity__runs__run_key__labels__ordinal__evidence__key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "title": "Identity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_key",
+            "required": true,
+            "schema": {
+              "title": "Run Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ordinal",
+            "required": true,
+            "schema": {
+              "title": "Ordinal",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evidence",
         "tags": [
           "Oracle experiments"
         ]

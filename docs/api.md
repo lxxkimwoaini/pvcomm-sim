@@ -25,11 +25,14 @@ CLI `pvcomm --version` 和 `validate-config --config <path>` 已实现。成功�
 | GET 空后缀 | offset/limit分页（最多50）；紧凑状态及覆盖，不读取完整产物哈希清单 |
 | GET /{identity} | 单请求与当前summary.json；尚未执行时queue=null |
 | GET /{identity}/quality | 实际已存在运行的QC摘要；缺失运行不补造报告 |
-| GET /{identity}/runs/{opaque_run_key}/labels | 分页分层标签、时间和原件证据引用；纳秒为字符串；只用于事后诊断 |
+| GET /{identity}/runs/{opaque_run_key}/labels | 分页分层标签及不透明evidence_links；纳秒为字符串；只用于事后诊断 |
+| GET /{identity}/runs/{key}/labels/{ordinal}/evidence/{evidence_key} | 服务端解析已有标签引用、核验完整来源SHA并定位JSONL原记录；协议对象保留原P0 PCAP帧号和Wireshark过滤式；客户端不能选择路径 |
+| GET /{identity}/runs/{key}/export | 已终止运行的原件清单，offset/limit分页（默认50、最多100），返回文件大小和SHA；显式操作，不作轮询 |
+| GET /{identity}/runs/{key}/export/{file_key} | 不透明文件键流式下载，X-Content-SHA256返回当前文件哈希；PCAP另核验原manifest捕获SHA；不创建压缩副本 |
 
 网页不启动任何命令或网络操作。`scripts/run_v04_requests.py --root <预设目录> --maximum-jobs N`在授权Linux读取原子请求、核对矩阵哈希、按提交时间消费；全局SQLite锁阻止双执行器，复用run_batch的冻结代码、有限尝试及续跑。`--resume`不重复完成任务；实时协议尝试无法从中间续传。当前最大并发1；并发生产吞吐未通过。
 
-新批次维护不含artifacts的summary.json供轮询，详细manifest和全部原件保留。模板、范围及强度由后端现有生成器和Pydantic校验；配对目前仅三站既有共享条件模板。质量、合法拒绝、资源不足、故障施加及业务违约分别保留。完整曲线配对、协议事件定位与证据导出待后续切片，不能据此宣称V0.4整体验收。
+新批次维护不含artifacts的summary.json供轮询，详细manifest和全部原件保留。模板、范围及强度由后端现有生成器和Pydantic校验；配对目前仅三站既有共享条件模板。质量、合法拒绝、资源不足、故障施加及业务违约分别保留。标签分页与证据定位使用最多四份可清理SQLite行偏移索引，按源文件签名拒绝变化；完整文件SHA在建索引时计算，后续按序号或原记录身份定点读取。内存缓存每索引2MiB、单行上限4MiB；不声称全平台常量内存。Windows使用显式文件系统命名空间读取深层WSL UNC原件。正常合法结果显示为业务结果点，不能因end=null画成未恢复异常；违约及未知状态分别保留。完整配对曲线/流量交互仍待后续切片，不能据此宣称V0.4整体验收。
 
 ## V0.1 M2 只读接口
 

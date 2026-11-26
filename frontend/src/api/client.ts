@@ -12,6 +12,32 @@ export type ExperimentView = components['schemas']['ExperimentView']
 export type TemplateCatalog = components['schemas']['TemplateCatalog']
 export type ExperimentQuality = components['schemas']['ExperimentQuality']
 export type LabelPage = components['schemas']['LabelPage']
+export type EvidenceView = components['schemas']['EvidenceView']
+export type ExportInventory = components['schemas']['ExportInventory']
+const experimentRunPath = (identity: string, runKey: string) =>
+  `/api/diagnostics/experiments/${encodeURIComponent(identity)}/runs/${encodeURIComponent(runKey)}`
+export const getExperimentEvidence = (
+  identity: string,
+  runKey: string,
+  ordinal: number,
+  key: string,
+) =>
+  request<EvidenceView>(
+    `${experimentRunPath(identity, runKey)}/labels/${ordinal}/evidence/${encodeURIComponent(key)}`,
+  )
+export const getExperimentInventory = (
+  identity: string,
+  runKey: string,
+  offset = 0,
+) =>
+  request<ExportInventory>(
+    `${experimentRunPath(identity, runKey)}/export?offset=${offset}&limit=50`,
+  )
+export const experimentFileUrl = (
+  identity: string,
+  runKey: string,
+  key: string,
+) => `${experimentRunPath(identity, runKey)}/export/${encodeURIComponent(key)}`
 export const getExperimentCatalog = () =>
   request<TemplateCatalog>('/api/diagnostics/experiments/catalog')
 export const getExperiments = (offset = 0) =>
