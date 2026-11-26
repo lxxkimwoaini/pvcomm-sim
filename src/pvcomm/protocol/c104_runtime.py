@@ -100,6 +100,7 @@ class C104StationEndpoint:
         self._last_sent_power: float | None = None
         self._last_sent_running: bool | None = None
         now = time.monotonic()
+        self._next_startup_report_mono = now + float(getattr(config, "telemetry_phase_s", 0))
         self.state: StationModel = state or StationState(
             config=config,
             accepted_setpoint_kw=config.initial_setpoint_kw,
@@ -256,7 +257,16 @@ class C104StationEndpoint:
                 self._recovery_feedback.clear()
             if self._logical_elapsed is not None and self._active:
                 elapsed = self._logical_elapsed(now)
-                periodic = elapsed >= self._next_report_s and elapsed > 0
+                # Sequential GI/clock initialization can outlast the earliest
+                # station's freshness budget. Keep real telemetry alive while
+                # scene time/weather are held at zero; do not grant a label
+                # exemption or advance the scene's deterministic report phase.
+                startup = elapsed <= 0
+                periodic = (
+                    now >= self._next_startup_report_mono
+                    if startup
+                    else elapsed >= self._next_report_s
+                )
                 event = self._last_sent_power is not None and abs(
                     self.state.actual_kw - self._last_sent_power
                 ) >= self.config.capacity_kw * float(
@@ -291,7 +301,9 @@ class C104StationEndpoint:
                         "terminal_telemetry_report",
                         {
                             "station_id": self.config.station_id,
-                            "reason": "periodic"
+                            "reason": "startup_periodic"
+                            if periodic and startup
+                            else "periodic"
                             if periodic
                             else "state_change"
                             if state_changed
@@ -300,8 +312,12 @@ class C104StationEndpoint:
                         },
                     )
                 if periodic:
-                    while self._next_report_s <= elapsed:
-                        self._next_report_s += self.config.telemetry_period_s
+                    if startup:
+                        while self._next_startup_report_mono <= now:
+                            self._next_startup_report_mono += self.config.telemetry_period_s
+                    else:
+                        while self._next_report_s <= elapsed:
+                            self._next_report_s += self.config.telemetry_period_s
 
     def _install_callbacks(self) -> None:
         c104 = self._c104
