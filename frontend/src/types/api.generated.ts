@@ -141,6 +141,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/diagnostics/pairs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listing */
+        get: operations["listing_api_diagnostics_pairs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/diagnostics/pairs/{key}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Replay */
+        get: operations["replay_api_diagnostics_pairs__key__replay_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/diagnostics/runs/{run_key}/resources": {
         parameters: {
             query?: never;
@@ -535,6 +569,100 @@ export interface components {
             source: "master_iec104_telemetry";
             /** Unit */
             unit: string;
+        };
+        /** PairList */
+        PairList: {
+            /** Pairs */
+            pairs: components["schemas"]["PairSummary"][];
+            /**
+             * Scope
+             * @default Oracle_experiment_management_never_M2_features
+             * @constant
+             */
+            scope: "Oracle_experiment_management_never_M2_features";
+            /** Total */
+            total: number;
+        };
+        /** PairMemberCurve */
+        PairMemberCurve: {
+            /** Cursor Utc Ns Exclusive */
+            cursor_utc_ns_exclusive: string;
+            /** Last Observation Age S */
+            last_observation_age_s: number | null;
+            /** Latest Value */
+            latest_value: number | null;
+            /** Member */
+            member: string;
+            /** Points */
+            points: components["schemas"]["Point"][];
+            /** Run Id */
+            run_id: string;
+            /**
+             * Source
+             * @default master_iec104_telemetry
+             * @constant
+             */
+            source: "master_iec104_telemetry";
+            /** Source Sha256 */
+            source_sha256: string;
+            /** Status */
+            status: string;
+        };
+        /** PairReplay */
+        PairReplay: {
+            /** Cursor S */
+            cursor_s: number;
+            /** Ioa */
+            ioa: number;
+            /**
+             * Limitations
+             * @default Oracle配对诊断；曲线仅主站已收遥测，600条源记录/240点展示预算；缺失、无效及超过1.5个周期的显示缺口不补值；固定窗口流量报告仅在游标走完整个分析窗口后显示；质量与匹配结论为全运行事后诊断；不作为M2模型输入
+             */
+            limitations: string;
+            /** Members */
+            members: components["schemas"]["PairMemberCurve"][];
+            /** Metric */
+            metric: string;
+            pair: components["schemas"]["PairSummary"];
+            /**
+             * Scope
+             * @default Oracle_experiment_management_never_M2_features
+             * @constant
+             */
+            scope: "Oracle_experiment_management_never_M2_features";
+            /** Station Id */
+            station_id: string;
+            /** Traffic Report */
+            traffic_report: {
+                [key: string]: unknown;
+            } | null;
+            /** Traffic Unavailable Reason */
+            traffic_unavailable_reason: string | null;
+            /** Unit */
+            unit: string;
+        };
+        /** PairSummary */
+        PairSummary: {
+            /** Business Contrast */
+            business_contrast: boolean | null;
+            /** Data Quality Passed */
+            data_quality_passed: boolean | null;
+            /** Duration S */
+            duration_s: number;
+            /** Hard Pair Selected */
+            hard_pair_selected: boolean | null;
+            /** Pair Id */
+            pair_id: string;
+            /** Pair Key */
+            pair_key: string;
+            /** Pair Type */
+            pair_type: string;
+            /** Station Ids */
+            station_ids: string[];
+            /** Statistical Match */
+            statistical_match: boolean | null;
+            /** Status */
+            status: string;
         };
         /** Point */
         Point: {
@@ -1110,6 +1238,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvidenceView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listing_api_diagnostics_pairs_get: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replay_api_diagnostics_pairs__key__replay_get: {
+        parameters: {
+            query?: {
+                station_id?: string;
+                ioa?: number;
+                at_s?: number | null;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairReplay"];
                 };
             };
             /** @description Validation Error */

@@ -16,6 +16,7 @@ from pvcomm.config import ConfigError, config_sha256, validate_yaml
 from pvcomm.config.batch import MatchingInputs
 from pvcomm.logging import create_logger
 from pvcomm.web.experiments import ExperimentRepository, experiment_router
+from pvcomm.web.pair_replay import PairReplayRepository, pair_replay_router
 from pvcomm.web.runs import EventsPage, ResourceView, RunList, RunRepository, RunSnapshot
 from pvcomm.web.schemas import Health, ValidationRequest, ValidationResult
 
@@ -44,6 +45,12 @@ def create_app(run_root: Path | None = None, experiment_root: Path | None = None
         matching,
     )
     app.include_router(experiment_router(experiments))
+    archive = os.environ.get("PVCOMM_PAIR_REPLAY_ROOT")
+    app.include_router(
+        pair_replay_router(
+            PairReplayRepository(experiments.root, Path(archive) if archive else None)
+        )
+    )
 
     @app.middleware("http")
     async def request_timing(

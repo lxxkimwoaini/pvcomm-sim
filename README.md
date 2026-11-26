@@ -6,7 +6,7 @@
 
 ## 安装与复现
 
-V0.4新增受控科研实验队列：单独的Oracle页面可提交既有模板、查看队列和质量/标签；默认仍为M2观测，特权运行由独立Linux执行器执行。首切片已通过真实API→c104及启用态浏览器验证，见[报告](docs/reports/2026-11-26-v04-workbench-request.md)。证据定位、标签时间轴及逐文件导出已通过真实原件浏览器验证，见[证据报告](docs/reports/2026-11-26-v04-workbench-evidence.md)。完整配对图及流量统计交互仍待完成，不代表V0.4整体验收。
+V0.4新增受控科研实验队列：单独的Oracle页面可提交既有模板、查看队列和质量/标签；默认仍为M2观测，特权运行由独立Linux执行器执行。首切片已通过真实API→c104及启用态浏览器验证，见[报告](docs/reports/2026-11-26-v04-workbench-request.md)。证据定位、标签时间轴及逐文件导出已通过真实原件浏览器验证，见[证据报告](docs/reports/2026-11-26-v04-workbench-evidence.md)。配对遥测曲线、因果游标及固定流量统计交互已通过真实原件浏览器验证，见[配对回放报告](docs/reports/2026-11-26-v04-pair-replay.md)，不代表V0.4整体验收。
 
 ```sh
 # 授权实验Linux，本地API只排队，不创建网络资源。
@@ -246,4 +246,4 @@ PVCOMM_ALLOW_LAB=1 PYTHONPATH=src .venv-wsl/bin/python scripts/run_v04_batch.py 
 
 Linux队列支持`--measurements <独立新目录>`采样控制器及其子进程CPU/RSS/IO、活动任务的PDML/解析及标签索引临时字节；1秒采样的峰值为观测下界。完整小运行归档验证入口为`uv run --frozen python scripts/profile_v04_archive.py --run-dir <已完成运行> --output <独立新归档目录>`，逐文件解压校验并保留所有来源。上述入口不授权删除来源或生成720小时数据。
 
-科研工作台提供受限场景提交、队列/覆盖、实际QC、标签分层时间轴、SHA核验的原记录/PCAP帧定位及终态运行逐文件导出。M2默认入口与Oracle明确分离。服务端设置`PVCOMM_EXPERIMENT_ROOT`至受控请求根；Linux消费者通过`scripts/run_v04_requests.py`执行，Web不直接运行网络命令。完整配对曲线/流量交互仍待完成；此切片不代表V0.4整体通过。见[API契约](docs/api.md)与[证据工作台验证](docs/reports/2026-11-26-v04-workbench-evidence.md)。
+科研工作台提供受限场景提交、队列/覆盖、实际QC、标签分层时间轴、SHA核验的原记录/PCAP帧定位及终态运行逐文件导出。M2默认入口与Oracle明确分离。服务端设置`PVCOMM_EXPERIMENT_ROOT`至受控请求根；Linux消费者通过`scripts/run_v04_requests.py`执行，Web不直接运行网络命令。配对回放可额外设置`PVCOMM_PAIR_REPLAY_ROOT`为只读历史批次根（含`trial_*/attempt_*/pair_*`），在Oracle页面选择配对、站点、遥测指标及场景秒游标；缺失观测不补真值。固定统计窗口结束前隐藏事后统计；未匹配与失败原件保留。此切片不代表V0.4整体通过。见[API契约](docs/api.md)与[配对回放验证](docs/reports/2026-11-26-v04-pair-replay.md)。

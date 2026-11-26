@@ -28,6 +28,7 @@ import {
   type TemplateCatalog,
 } from '../api/client'
 import LabelTimeline from './LabelTimeline.vue'
+import PairReplayPanel from './PairReplayPanel.vue'
 
 const catalog = ref<TemplateCatalog | null>(null)
 const listing = ref<ExperimentList | null>(null)
@@ -534,6 +535,7 @@ onUnmounted(() => {
         </ElButton>
       </div>
     </section>
+    <PairReplayPanel />
   </div>
 </template>
 

@@ -14,6 +14,19 @@ export type ExperimentQuality = components['schemas']['ExperimentQuality']
 export type LabelPage = components['schemas']['LabelPage']
 export type EvidenceView = components['schemas']['EvidenceView']
 export type ExportInventory = components['schemas']['ExportInventory']
+export type PairList = components['schemas']['PairList']
+export type PairReplay = components['schemas']['PairReplay']
+export const getPairs = (offset = 0) =>
+  request<PairList>(`/api/diagnostics/pairs?offset=${offset}&limit=20`)
+export const getPairReplay = (
+  key: string,
+  station: string,
+  ioa: number,
+  atS?: number,
+) =>
+  request<PairReplay>(
+    `/api/diagnostics/pairs/${encodeURIComponent(key)}/replay?station_id=${encodeURIComponent(station)}&ioa=${ioa}${atS === undefined ? '' : `&at_s=${atS}`}`,
+  )
 const experimentRunPath = (identity: string, runKey: string) =>
   `/api/diagnostics/experiments/${encodeURIComponent(identity)}/runs/${encodeURIComponent(runKey)}`
 export const getExperimentEvidence = (

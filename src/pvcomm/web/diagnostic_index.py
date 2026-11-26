@@ -35,8 +35,9 @@ class RowOffsets:
         self.connection.execute("PRAGMA cache_size=-2048")
         self.connection.execute(
             "CREATE TABLE offsets (ordinal INTEGER PRIMARY KEY, identity TEXT UNIQUE, "
-            "position INTEGER, length INTEGER)"
+            "position INTEGER, length INTEGER, station TEXT, kind TEXT, ioa INTEGER, stamp INTEGER)"
         )
+        self.connection.execute("CREATE INDEX series_idx ON offsets(station, kind, ioa, stamp)")
         digest = hashlib.sha256()
         try:
             with path.open("rb") as stream, self.connection:
@@ -56,8 +57,17 @@ class RowOffsets:
                         if "object_index" in row:
                             identity += f":{row['object_index']}"
                     self.connection.execute(
-                        "INSERT INTO offsets VALUES (?, ?, ?, ?)",
-                        (self.total, identity, position, len(line)),
+                        "INSERT INTO offsets VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            self.total,
+                            identity,
+                            position,
+                            len(line),
+                            row.get("station_id"),
+                            row.get("event_type"),
+                            row.get("ioa"),
+                            row.get("available_at"),
+                        ),
                     )
                     self.total += 1
                     digest.update(line)
@@ -102,6 +112,16 @@ class RowOffsets:
         if not rows:
             raise FileNotFoundError("unknown evidence record")
         return self.read(rows)[0]
+
+    def series(self, station: str, ioa: int, cutoff: int) -> list[dict[str, Any]]:
+        """Latest 600 observed points strictly before the causal replay cursor."""
+        rows = self.connection.execute(
+            "SELECT position,length FROM offsets WHERE station=? "
+            "AND kind='master_observed_point' AND ioa=? AND stamp<? "
+            "ORDER BY stamp DESC,ordinal DESC LIMIT 600",
+            (station, ioa, cutoff),
+        ).fetchall()
+        return self.read(list(reversed(rows)))
 
     def close(self) -> None:
         self.connection.close()
