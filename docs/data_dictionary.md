@@ -92,3 +92,5 @@ qc/v04-normal-schedule-v2仅为Oracle正常场景验收；command_assessments保
 后续`v04-a01-mechanism-v3`新增Oracle `socket_audit`契约`0.4-socket-audit.1`，记录固定strace版本、角色到worker_pid/tracer_pid映射、completed及文件path/sha256清单。原始系统调用仅存`truth/socket_audit/<role>.<tid>`；禁止作为M0/M1/M2/M3输入。独立核验逐文件哈希/清单、worker主文件、完整退出、解析能力及每端TCP发送覆盖。`socket_evidence`只解析实际文本，不生成网络帧。窄范围TESTFR写入尝试核算规则见ADR0017；strict_normal_comparison保留旧检查，normal_regression不改，其他质量门槛不变。缺少新内核证据的旧失败不能经v3强行放行。`recovery_event/recovery_utc_ns/recovery_after_restoration_s`仅表示撤销后首次有效主站有功观测，可能仍为排队旧报文，不等同于最新状态或完整恢复标签。
 
 socket_audit文件项另保留`trace_exit_code`；completed仅表示跟踪有完整退出记录，不能代替worker成功。显式取消时现有主站可能以InterruptedError退出1，该退出码如实保存；completed正常运行的QC仍要求每条退出记录及元数据均为0，取消/部分运行不进入parse或正式质量通过计数。
+
+`v04-a01-mechanism-v4`保持v3核验规则，从实际加载模块的仓库记录`evaluation_code_version/evaluation_code_dirty`，而非调用者工作目录；dirty核验不能通过。`run_code_version`继续取原始manifest，两者可以不同。旧v1/v2/v3报告不可覆盖。A01开发验收另保留`a01-background-schedule.json`，复用正常调度的逐事务证据核验恢复后总召唤及未受影响站业务；它是Oracle诊断报告，不是正式恢复或业务异常标签。

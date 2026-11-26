@@ -391,3 +391,11 @@ S3诊断退出1、194.041s，依旧只失败于原主站多余TESTFR回调；实
 881dfa871bd946fe631caefc2d8158d7d28a1c49已push并冻结/var/lib/pvcomm/sources/v04c_a01_s4。科学/Arrow225 passed/34 deselected、13.68s。取消预检失败1项/41.16s，原件/var/lib/pvcomm/runs/v04c_a01_s4/cancel/test_a01_sigterm_restores_befo0/run_8a0f170280614687ac270848a593c4b8；五种A01及兼容均未执行。桥端口已恢复、namespace为空，但现有主站按InterruptedError取消退出1，跟踪已完整结束；采集器错误地把“跟踪完成”要求为所有worker退出0，导致cleanup_errors记录socket audit incomplete。修正为完整退出与退出码分别保存（trace_exit_code），取消不伪装0；正常完成QC继续要求0。新增回归，相关37 passed/0.37s、Ruff/mypy108通过，待新冻结取消重验。
 
 取消修正后的普通回归实际219 passed/41 deselected、4.51s，Ruff/format/mypy108及diff检查退出0。此小改未变前端或schema入口，未重复声称真实协议通过；新冻结仍先取消预检，失败即停。
+
+### A01 S5继续验收及核验代码追溯修复
+
+当前运行冻结b240eac960699204468a479018da196650464c34，源码/var/lib/pvcomm/sources/v04c_a01_s5，证据/var/lib/pvcomm/runs/v04c_a01_s5。科学/Arrow226 passed/34 deselected、13.54s；取消预检1 passed/41.95s，CLI130、cancelled、cleanup=[]、先恢复再停止主站、工具drop0及namespace/路由恢复均实际通过。五项A01中single-low和single-medium已通过，其余仍在执行，不能提前计完整切片通过。该提交push CI45762889410及PR CI45762895826实际success。
+
+发现fault QC从调用目录查询Git可能记录错误核验版本，修正v4为实际加载模块所在仓库，并拒绝dirty核验；原始run SHA不改，v3原报告保留。新增仓库外调用回归，相关38 passed/0.53s、Ruff/格式通过。A01 lab另增加既有audit_schedule对恢复后完整GI及未受影响站点业务的核验，不把首条恢复遥测视为最新状态。此改不修改正在运行的S5冻结树，最终须另行冻结核验并保存独立版本归属。
+
+追溯修复Windows完整check实际退出0：220 passed/41 deselected、4.69s，Ruff/format、mypy109文件、schema/生成类型、前端lint/typecheck/Vitest3/build通过；日志outputs/v04c-s6-check.log。既有两条HTML缩进warning和817.73kB包提示保留；本次未修改前端。真实运行及兼容结果仍以S5批次结束后的记录为准。

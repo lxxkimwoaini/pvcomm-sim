@@ -20,10 +20,11 @@ from pvcomm.config.faults import (
     StationScope,
     instantiate_fault,
 )
-from pvcomm.pipeline.iec104_parser import parse_run
+from pvcomm.pipeline.iec104_parser import PARSER_VERSION, parse_run
 from pvcomm.qc.fault import VERSION, qc_fault
+from pvcomm.qc.schedule import audit_schedule
 from pvcomm.scenario.isolated_runner import run_isolated
-from pvcomm.storage.parquet import export_parquet
+from pvcomm.storage.parquet import export_parquet, read_jsonl
 from pvcomm.storage.power_parquet import export_power_parquet
 from pvcomm.web.app import create_app
 
@@ -122,6 +123,23 @@ def test_real_a01(tmp_path: Path, scope: FaultScope, duration: int, variant: int
     if "PV03" not in config.target_stations():
         assessments = report["experiment_quality"]["command_assessments"]["PV03"]
         assert len(assessments) == 1 and assessments[0]["outcome"] == "accepted_complete"
+    # A first post-restoration measurement can still be queued old data. Check
+    # the independently scheduled GI transaction, not that first value alone.
+    background_business = audit_schedule(
+        scenario,
+        read_jsonl(list((root / "observed").glob("master_events*.jsonl"))),
+        read_jsonl(list((root / "truth").glob("terminal_events*.jsonl"))),
+        read_jsonl([root / "parsed" / PARSER_VERSION / "iec104_objects.jsonl"]),
+        report["experiment_quality"]["command_assessments"],
+        [
+            r
+            for r in read_jsonl(list((root / "truth").glob("electrical_state*.jsonl")))
+            if r.get("source") == "pvlib_pvwatts_inverter_v02"
+        ],
+    )
+    with (root / "qc/a01-background-schedule.json").open("x", encoding="utf-8") as stream:
+        json.dump(background_business, stream, indent=2)
+    assert background_business["passed"], background_business
     assert not report["experiment_quality"]["normal_regression"]["passed"]
     client = TestClient(create_app(tmp_path))
     listing = client.get("/api/runs").json()["runs"]

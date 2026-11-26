@@ -17,7 +17,7 @@ from pvcomm.qc.pcap import read_apdus
 from pvcomm.qc.socket_audit import account_socket_quality, audit_unobserved_tests
 from pvcomm.storage.parquet import read_jsonl
 
-VERSION = "v04-a01-mechanism-v3"
+VERSION = "v04-a01-mechanism-v4"
 
 
 def audit_operations(
@@ -302,16 +302,19 @@ def evaluate_fault(root: Path) -> dict[str, Any]:
             read_jsonl(list((root / "truth").glob("electrical_state*.jsonl"))),
             {Path(c["path"]).stem: read_apdus(root / c["path"]) for c in manifest["captures"]},
         )
+    repository = Path(__file__).resolve().parents[3]
+    evaluator = subprocess.check_output(
+        ["git", "-C", str(repository), "rev-parse", "HEAD"], text=True
+    ).strip()
+    evaluator_dirty = bool(
+        subprocess.check_output(["git", "-C", str(repository), "status", "--porcelain"], text=True)
+    )
     return {
         "qc_version": VERSION,
         "run_id": manifest["run_id"],
         "run_code_version": manifest["code_version"],
-        "evaluation_code_version": subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], text=True
-        ).strip(),
-        "evaluation_code_dirty": bool(
-            subprocess.check_output(["git", "status", "--porcelain"], text=True)
-        ),
+        "evaluation_code_version": evaluator,
+        "evaluation_code_dirty": evaluator_dirty,
         "experiment_quality": experiment,
         "fault_verification": {
             "passed": configuration_ok and operations["passed"],
@@ -321,7 +324,10 @@ def evaluate_fault(root: Path) -> dict[str, Any]:
         "communication_effects": effects,
         "socket_evidence": socket_evidence,
         "label_quality": {"status": "not_evaluated"},
-        "passed": experiment["passed"] and configuration_ok and operations["passed"],
+        "passed": experiment["passed"]
+        and configuration_ok
+        and operations["passed"]
+        and not evaluator_dirty,
         "scope": "A01_mechanism_and_data_quality_not_formal_label_acceptance",
     }
 
