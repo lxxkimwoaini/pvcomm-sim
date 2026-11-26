@@ -19,6 +19,7 @@ from typing import Any, TextIO
 
 from pvcomm.capture.tcpdump import TcpdumpCapture
 from pvcomm.clock import ClockOrigin, SceneClock
+from pvcomm.config.faults import FaultScenarioConfig, instantiate_fault, load_fault_scenario
 from pvcomm.config.lab import V01Config, v01_config_sha256
 from pvcomm.config.multisite import V03Config
 from pvcomm.config.power import V02Config
@@ -36,6 +37,7 @@ def run_isolated(
     *,
     power: V02Config | V03Config | None = None,
     scenario: ScenarioConfig | None = None,
+    fault: FaultScenarioConfig | None = None,
 ) -> Path:
     if sys.platform != "linux":
         raise RuntimeError("isolated IEC 104 laboratory run requires Linux")
@@ -43,10 +45,19 @@ def run_isolated(
         if shutil.which(name) is None:
             raise RuntimeError(f"lab tool is unavailable: {name}")
     dependencies = {name: version(name) for name in ("c104", "pydantic", "PyYAML")}
+    if fault is not None:
+        if shutil.which("bridge") is None:
+            raise RuntimeError("lab tool is unavailable: bridge")
+        if fault.background != scenario or not isinstance(power, V03Config):
+            raise ValueError("fault and compiled scenario disagree")
+        if instantiate_fault(load_fault_scenario(source), config.run_id) != fault:
+            raise ValueError("fault source and effective document disagree")
     if scenario is not None:
         if scenario.simulation != power or scenario.simulation.protocol != config:
             raise ValueError("scenario and compiled simulation disagree")
-        template = load_scenario(source)
+        template = (
+            load_scenario(source) if fault is None else load_fault_scenario(source).background
+        )
         if instantiate_scenario(template, config.run_id) != scenario:
             raise ValueError("scenario source and effective document disagree")
     root = (output_root / config.run_id).resolve()
@@ -56,7 +67,9 @@ def run_isolated(
     else:
         diagnostic = root / "truth/scenario"
         diagnostic.mkdir(parents=True)
-        (diagnostic / "source.yaml").write_bytes(source.read_bytes())
+        (diagnostic / "source.yaml").write_bytes(
+            source.read_bytes() if fault is None else template.model_dump_json(indent=2).encode()
+        )
         (diagnostic / "effective.json").write_text(
             scenario.model_dump_json(indent=2), encoding="utf-8"
         )
@@ -64,6 +77,13 @@ def run_isolated(
         (diagnostic / "expanded-plan.json").write_text(json.dumps(plan, indent=2), encoding="utf-8")
         (root / "scenario.yaml").write_text(
             scenario.simulation.model_dump_json(indent=2), encoding="utf-8"
+        )
+    if fault is not None:
+        diagnostic = root / "truth/fault"
+        diagnostic.mkdir(parents=True)
+        (diagnostic / "source.yaml").write_bytes(source.read_bytes())
+        (diagnostic / "effective.json").write_text(
+            fault.model_dump_json(indent=2), encoding="utf-8"
         )
     (root / "effective_config.json").write_text(config.model_dump_json(indent=2), encoding="utf-8")
     network = RegionalNetwork(power) if isinstance(power, V03Config) else IsolatedNetwork()
@@ -98,10 +118,19 @@ def run_isolated(
     if scenario is not None:
         manifest["scenario_contract"] = {
             "version": scenario.schema_version,
-            "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+            "source_sha256": hashlib.sha256(
+                (root / "truth/scenario/source.yaml").read_bytes()
+            ).hexdigest(),
             "effective_sha256": canonical_hash(scenario.model_dump(mode="json")),
             "plan_sha256": canonical_hash(plan),
             "scope": "Oracle",
+        }
+    if fault is not None:
+        manifest["fault_contract"] = {
+            "version": fault.schema_version,
+            "scope": "Oracle",
+            "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+            "effective_sha256": canonical_hash(fault.model_dump(mode="json")),
         }
 
     def save_manifest() -> None:
@@ -133,6 +162,7 @@ def run_isolated(
         scene_clock=SceneClock(root / "scene.json") if isinstance(power, V03Config) else None,
     )
     feeder = None
+    fault_controller = None
     resources = ResourceSampler(root, origin) if isinstance(power, V03Config) else None
 
     def launch(role: str, namespace: str) -> subprocess.Popen[bytes]:
@@ -172,6 +202,10 @@ def run_isolated(
                 power.model_dump_json().encode()
             ).hexdigest()
         network.create()
+        if fault is not None and isinstance(network, RegionalNetwork):
+            from pvcomm.scenario.link_fault import LinkFaultController
+
+            fault_controller = LinkFaultController(root, fault, network, origin)
         if isinstance(network, RegionalNetwork):
             manifest["network"]["netem_initial"] = network.shaping_evidence()
             save_manifest()
@@ -219,6 +253,8 @@ def run_isolated(
         interrupted = False
         resumed = False
         while master.poll() is None:
+            if fault_controller is not None:
+                fault_controller.step()
             if resources is not None:
                 resources.sample(
                     [p.pid for p in processes]
@@ -287,6 +323,14 @@ def run_isolated(
         manifest["error"] = f"{type(exc).__name__}: {exc}"
         raise
     finally:
+        if fault_controller is not None:
+            try:
+                fault_controller.close()
+                manifest["fault_contract"]["events_sha256"] = hashlib.sha256(
+                    (root / "truth/fault/events.jsonl").read_bytes()
+                ).hexdigest()
+            except Exception as exc:
+                failures.append(f"fault restoration: {exc}")
         for process in reversed(processes):
             try:
                 if process.poll() is None:

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from pvcomm.config import FoundationConfig
+from pvcomm.config.faults import FaultScenarioConfig
 from pvcomm.config.lab import V01Config
 from pvcomm.config.multisite import V03Config
 from pvcomm.config.power import V02Config
@@ -28,6 +29,7 @@ def main() -> int:
         "v02-power.schema.json": V02Config.model_json_schema(),
         "v03-multisite.schema.json": V03Config.model_json_schema(),
         "v04-scenario.schema.json": ScenarioConfig.model_json_schema(),
+        "v04-fault.schema.json": FaultScenarioConfig.model_json_schema(),
         "v04-weather-source.schema.json": HistoricalInput.model_json_schema(),
         "v04-retention.schema.json": RetentionPolicy.model_json_schema(),
         "openapi.json": create_app().openapi(),

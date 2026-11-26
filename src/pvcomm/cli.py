@@ -39,7 +39,9 @@ def main(argv: list[str] | None = None) -> int:
     parse.add_argument("--parquet", action="store_true", help="also export versioned Arrow tables")
     qc = commands.add_parser("qc", help="independent protocol and physical verification")
     qc.add_argument("--run-dir", type=Path, required=True)
-    qc.add_argument("--profile", choices=("normal", "experiment", "schedule"), default="normal")
+    qc.add_argument(
+        "--profile", choices=("normal", "experiment", "schedule", "fault"), default="normal"
+    )
     storage = commands.add_parser("storage-audit", help="read-only inventory and capacity budget")
     storage.add_argument("--run-dir", type=Path, required=True)
     storage.add_argument("--policy", type=Path, required=True)
@@ -60,6 +62,16 @@ def main(argv: list[str] | None = None) -> int:
     run_scene.add_argument("--config", type=Path, required=True)
     run_scene.add_argument("--output-root", type=Path, required=True)
     run_scene.add_argument("--run-id", help="optional unique identity; existing output is refused")
+    validate_fault = commands.add_parser(
+        "validate-fault-scenario", help="validate an Oracle-only single-fault configuration"
+    )
+    validate_fault.add_argument("--config", type=Path, required=True)
+    run_fault = commands.add_parser(
+        "run-fault", help="run a single fault only in the owned isolated Linux lab"
+    )
+    run_fault.add_argument("--config", type=Path, required=True)
+    run_fault.add_argument("--output-root", type=Path, required=True)
+    run_fault.add_argument("--run-id", help="optional unique identity; existing output is refused")
     for name in ("label", "split", "features", "benchmark"):
         reserved = commands.add_parser(name, help="not implemented in this development version")
         reserved.add_argument("arguments", nargs=argparse.REMAINDER)
@@ -171,7 +183,28 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return 0
-    if args.command in ("run", "run-scenario"):
+    if args.command == "validate-fault-scenario":
+        if unknown:
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}")
+        from pvcomm.config.faults import load_fault_scenario
+
+        try:
+            fault_template = load_fault_scenario(args.config)
+        except (OSError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        print(
+            json.dumps(
+                {
+                    "valid": True,
+                    "schema_version": fault_template.schema_version,
+                    "target_stations": fault_template.target_stations(),
+                    "scope": "Oracle_configuration_not_M2",
+                }
+            )
+        )
+        return 0
+    if args.command in ("run", "run-scenario", "run-fault"):
         if unknown:
             parser.error(f"unrecognized arguments: {' '.join(unknown)}")
         previous_sigterm = signal.getsignal(signal.SIGTERM)
@@ -182,7 +215,15 @@ def main(argv: list[str] | None = None) -> int:
         signal.signal(signal.SIGTERM, request_cancellation)
         try:
             scenario = None
-            isolated = args.command == "run-scenario" or args.isolated
+            fault = None
+            isolated = args.command in ("run-scenario", "run-fault") or args.isolated
+            if args.command == "run-fault":
+                from pvcomm.config.faults import instantiate_fault, load_fault_scenario
+
+                fault = instantiate_fault(
+                    load_fault_scenario(args.config), args.run_id or f"run_{uuid.uuid4().hex}"
+                )
+                scenario = fault.background
             if args.command == "run-scenario":
                 from pvcomm.config.scenes import instantiate_scenario, load_scenario
 
@@ -198,7 +239,12 @@ def main(argv: list[str] | None = None) -> int:
                 from pvcomm.scenario.isolated_runner import run_isolated
 
                 run_dir = run_isolated(
-                    lab_config, args.config, args.output_root, power=power, scenario=scenario
+                    lab_config,
+                    args.config,
+                    args.output_root,
+                    power=power,
+                    scenario=scenario,
+                    fault=fault,
                 )
             else:
                 run_dir = V01Runner(lab_config, args.config, args.output_root).run()
@@ -238,7 +284,11 @@ def main(argv: list[str] | None = None) -> int:
         from pvcomm.qc.v01 import qc_run
 
         try:
-            if args.profile == "schedule":
+            if args.profile == "fault":
+                from pvcomm.qc.fault import qc_fault
+
+                report = qc_fault(args.run_dir)
+            elif args.profile == "schedule":
                 from pvcomm.qc.schedule import qc_schedule
 
                 report = qc_schedule(args.run_dir)

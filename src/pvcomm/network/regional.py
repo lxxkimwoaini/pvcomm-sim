@@ -4,6 +4,7 @@ import json
 import sys
 from typing import Any
 
+from pvcomm.config.faults import FaultScope, RegionScope, StationScope
 from pvcomm.config.multisite import NormalLink, V03Config
 from pvcomm.network.isolated import IsolatedNetwork
 
@@ -150,6 +151,61 @@ class RegionalNetwork(IsolatedNetwork):
         if namespace not in self._owned:
             raise RuntimeError("region is not owned")
         self._run("-n", namespace, "link", "set", "uplink", "up" if up else "down")
+
+    def interruption_ports(self, scope: FaultScope) -> tuple[tuple[str, str], ...]:
+        """Resolve configuration identities, never arbitrary namespace/interface input."""
+        if isinstance(scope, StationScope):
+            return tuple(
+                (self.regions[s.region_id], f"access{i}")
+                for i, s in enumerate(self.config.protocol.stations, 1)
+                if s.station_id in scope.station_ids
+            )
+        regions = (scope.region_id,) if isinstance(scope, RegionScope) else tuple(self.regions)
+        return tuple((self.regions[r], "uplink") for r in regions)
+
+    def bridge_port_evidence(self, namespace: str, interface: str) -> dict[str, Any]:
+        self.prefix(namespace)
+        allowed = {
+            *((ns, "uplink") for ns in self.regions.values()),
+            *(
+                (self.regions[s.region_id], f"access{i}")
+                for i, s in enumerate(self.config.protocol.stations, 1)
+            ),
+        }
+        if (namespace, interface) not in allowed:
+            raise ValueError("bridge port is not a configured owned laboratory link")
+        rows = json.loads(self._run("-n", namespace, "-j", "-d", "link", "show", "dev", interface))
+        if len(rows) != 1 or rows[0].get("master") != "aggregate":
+            raise RuntimeError("laboratory bridge attachment disagrees with configuration")
+        row = rows[0]
+        return {
+            "namespace": namespace,
+            "interface": interface,
+            "bridge": row["master"],
+            "state": row["linkinfo"]["info_slave_data"]["state"],
+            "flags": row["flags"],
+        }
+
+    def set_bridge_forwarding(
+        self, namespace: str, interface: str, *, enabled: bool
+    ) -> dict[str, Any]:
+        self.bridge_port_evidence(namespace, interface)  # Validate before mutation.
+        self._run(
+            "netns",
+            "exec",
+            namespace,
+            "bridge",
+            "link",
+            "set",
+            "dev",
+            interface,
+            "state",
+            "3" if enabled else "0",
+        )
+        actual = self.bridge_port_evidence(namespace, interface)
+        if actual["state"] != ("forwarding" if enabled else "disabled"):
+            raise RuntimeError("kernel bridge state disagrees with requested fault operation")
+        return actual
 
     def set_site_state(self, station_id: str, up: bool) -> None:
         index = next(

@@ -78,3 +78,13 @@ truth/scenario保存source.yaml、effective.json、expanded-plan.json；manifest
 master_dispatch_allocated附加observed_available_kw（容量分配为null），记录真正消费的主站链路观测，不是可信独立M3气象/电气信息。调度QC验证这些值在分配前确已接收且未过期；不读取Oracle填补主站缺失值。六表Arrow字段不改，附加信息仍保存在已版本化payload_json中。
 
 qc/v04-normal-schedule-v2仅为Oracle正常场景验收；command_assessments保留accepted_complete/rejected/timeout等独立证据，不生成正式异常标签。旧profile及QC目录均不变。
+
+## V0.4c A01开发契约
+
+`schemas/v04-fault.schema.json`版本`0.4-fault.1`组合既有正常背景与单个A01事件。fault字段为event_id、fault_type=A01、逻辑start_s、duration_s=5/20/60及互斥scope；station允许站点子集，region指定单个配置区域，global使用全部区域。未知引用、重复站点、混合范围和不足预热/恢复窗均拒绝。当前只实现A01，其余P0不接受为可执行配置。
+
+`truth/fault/source.yaml/effective.json/events.jsonl`均为Oracle。manifest.fault_contract保存版本、源/有效配置SHA256、结束时事件文件SHA256及Oracle范围。背景仍独立保存truth/scenario，主站执行背景到期业务，不读取故障计划。既有六表Arrow和电力契约不变。
+
+事件主键event_id与故障身份fault_event_id分别记录；所有操作有run_id、ts_mono_ns、映射ts_event_utc_ns、sim_elapsed_ms。apply_requested/apply_verified保存实际端口基线与disabled读回；restore_requested/restore_verified保存撤销原因及forwarding读回；fault_active与fault_finished保存整体阶段。apply_failed/restore_failed及部分结果保留，finally只恢复已触及的自有端口。状态作用时刻在请求与成功读回之间，不把请求时刻或配置时刻冒充精确生效点。
+
+`qc/v04-a01-mechanism-v1`独立核对配置/哈希/事件身份/时间/端口/持续时间/撤销及原实验质量；另给P0/P1实际测量交付、物理更新与主站恢复观测事实。报告内排除最初1秒在途包的诊断内区间仅用于机制对照，不定义在线异常起点、新鲜度门槛或service_violation标签。注入成功与实际影响分开报告，label_quality仍not_evaluated，不能将机制核验通过当正式标签或完整V0.4c验收。

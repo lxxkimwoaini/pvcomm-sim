@@ -354,3 +354,14 @@ V0.4b真实批次已实际结束：21 passed/2907.66s、退出0；N01–N10各�
 验收文档提交00914b1c8bc82008f5a43892a4118048fd1a8347已实际push，git ls-remote与本地一致。pull_request CI45756164645五job均success；push CI45756156864在本次补记时四job success、前端安装浏览器依赖仍in_progress，不冒称全部通过，最终状态另以实际查询为准。草稿PR #5已更新标题和正文为V0.4a/b实际实现及验收范围，仍OPEN/isDraft=true，base=feat/v03-multisite、head=feat/v04-scenarios；PR #1→#2→#3→#4→#5堆叠关系核对正确，全部未合并。仓库lxxkimwoaini/pvcomm-sim仍PUBLIC、默认main。
 
 修正覆盖报告末尾多余空行，git diff --check退出0。只读文档核验实际退出0：21个run_id均在覆盖报告，指标文件SHA256=700d7d5ec36dcb0c14b72f498be2ff223a378f9d856a1ecf16e0d6196e11f45b匹配，22个本地Markdown链接有效；未重跑或修改真实运行。本次仅文档收尾，先前运行/核验/UI冻结归属不变。下一任务仍为V0.4c真实单故障机制，正式标签、配对及后续多站验收尚未完成。本次补记提交的push/CI最终结果在交付时独立核验。
+
+
+## V0.4c A01候选实施（2026-11-26）
+
+从feat/v04-scenarios的231671237c2978e7934b26b48a373962ec795f9d继续，初始工作区干净；该基线实际push CI45756607836和PR CI45756612798五job均success，最终核验记录outputs/v04b-delivery-2316712.json。重新核对AGENTS、V1.3故障/观测/标签/QC契约、进度、V0.4b报告及ADR0011/0015。PR #1→#2→#3→#4→#5仍正确堆叠且OPEN，#3–#5 draft，未合并。gh账号lxxkimwoaini、Git2.52.0、gh2.102.0、uv0.11.13、Windows/WSL Python3.11.15可用；隔离namespace初始为空，原生Linux可用约907GiB（不当作宿主空闲保证）。
+
+新增ADR0016及A01首片计划；0.4-fault.1组合既有背景，显式站点/子集/区域/全局范围，保持5/20/60s候选。源/有效配置与逐操作事件仅在truth/fault，主站无故障计划。受限桥端口状态关闭转发，不停止RTU/物理；修改前后读回、部分施加失败与finally撤销保留。实际内核探针发现ip link bridge_slave命令成功但读回不变，bridge link命令才实际disabled；两份探针日志outputs/v04c-bridge-probe*.jsonl保留，均清理本次namespace，不冒称真实协议故障验收。
+
+新增validate-fault-scenario/run-fault、独立A01机制QC及模板生成脚本，同步schema/数据字典/README。QC分别保留实验质量、施加事实、双端影响和恢复观测；正式label_quality仍not_evaluated，不放宽旧正常门禁。相关单元37 passed/0.57s；Windows完整check退出0、199 passed/40 deselected、mypy104及Ruff/schema/前端质量/Vitest3/build通过；随后新增生成脚本的全仓Ruff/format/mypy105退出0，生成配置与validate-fault-scenario实际退出0。保留既有两条HTML缩进warning和817.73kB构建提示。
+
+当前A01尚未通过真实验收；下一步冻结clean代码，在/var/lib/pvcomm下新持久目录顺序执行三站低/中/高持续时间和站点/子集/区域/全局范围，首次失败停止批次并保留证据，再核验旧正常兼容。A02/A04/A05/A06/A08、配对、正式标签及完整V0.4c–f尚未完成；不生成720h或训练。

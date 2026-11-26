@@ -127,7 +127,7 @@ uv run pvcomm archive-lossless --source <retained_file> --destination <new_archi
 uv run pvcomm validate-weather-source --config <historical_source_descriptor.json>
 ```
 
-存储审计只读，归档保留原件并核验解压SHA256，禁止删除源文件。新气象描述符支持显式日期、位置和产品版本，当前仅实现离线NASA POWER小时数据适配；旧0.2/0.3配置及哈希保持可复现。新来源必须具备完整原始数据、许可/引用快照与哈希。未接入独立M3来源。N01–N10、P0故障、配对标签与任务队列尚待后续切片实现；`label`仍返回3。
+存储审计只读，归档保留原件并核验解压SHA256，禁止删除源文件。新气象描述符支持显式日期、位置和产品版本，当前仅实现离线NASA POWER小时数据适配；旧0.2/0.3配置及哈希保持可复现。新来源必须具备完整原始数据、许可/引用快照与哈希。未接入独立M3来源。N01–N10三站开发覆盖见下文；P0故障、配对标签与任务队列按后续切片验收；`label`仍返回3。
 
 
 ## V0.4b 显式正常业务计划（三站开发验收通过）
@@ -144,3 +144,18 @@ PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli qc --profile schedule --run-di
 ```
 
 运行默认分配不含场景代码的唯一ID，已有目录拒绝覆盖。`qc --profile schedule`核验实际计划和独立证据，保留旧normal回归结果；不是异常标签。历史输入继续使用归档NASA小时背景，云影为显式模型扰动，未进行现场高频校准。实测26,132个完整APDU全部匹配、工具丢包0、日志P99最大3.840095ms；兼容回归及新CLI全链路通过。完整运行清单、来源组映射和边界见[覆盖报告](docs/reports/2026-11-26-v04b-normal-coverage.md)与[实施计划](docs/plans/2026-11-26-v04b-normal-scenes.md)。下一切片为[单故障机制](docs/plans/2026-11-26-v04c-single-faults.md)，不将三站正常覆盖冒称完整V0.4验收。
+
+## V0.4c A01候选（真实验收待执行）
+
+新增独立故障外层及A01自有桥端口中断，站点/子集/区域/全局范围共用运行器；不停止电力模型。操作前后实际读回、失败及finally撤销保存在Oracle，M2不读取故障计划。其余五类P0尚未实现。
+
+```sh
+uv run python scripts/make_fault_scenario.py --scope station --stations PV01 --duration 5 --variant 0 --output outputs/new-fault.yaml
+uv run pvcomm validate-fault-scenario --config outputs/new-fault.yaml
+# 以下仅限授权隔离Linux及已有真实协议/物理/Arrow环境：
+PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli run-fault --config outputs/new-fault.yaml --output-root /var/lib/pvcomm/runs/NEW_FAULT_ROOT
+PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli parse --run-dir <实际返回运行目录> --parquet
+PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli qc --profile fault --run-dir <实际返回运行目录>
+```
+
+`fault` profile核验实验质量和A01施加事实，单列真实影响与恢复，不生成正式业务异常标签。旧正常门禁不变。设计见[ADR0016](docs/decisions/0016-v04-owned-link-interruption.md)；候选代码不代表A01或完整V0.4验收通过。
