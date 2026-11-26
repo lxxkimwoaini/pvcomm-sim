@@ -182,7 +182,7 @@ PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli run-fault --config outputs/new
 
 A04暂停日常测量全集的周期/事件/总召唤上送，保留已接受设定值1006；A06仅在实际接受命令后暂停1001/1006调控反馈，其他日常遥测继续。A05在真实c104终端回调中延后处理，A08在已有单站授权维护后保持业务数据未恢复。四类复用同一终端控制、读回、撤销、运行器及独立QC。A08首片只支持单站计划维护；多站和区域维护恢复尚未验收。
 
-当前冻结矩阵的结果以`docs/progress.md`最新记录为准，不能由CI代替真实验收。新增P03/P04/P06及维护恢复失败配对、分层标签和独立标签QC；真实配对尚待当前机制矩阵通过后执行。标签输出只在Oracle的`labels/v04-label-v1/`，M2接口不增加任何注入、P1或物理真值。
+当前冻结矩阵的结果以`docs/progress.md`最新记录为准，不能由CI代替真实验收。新增P03/P04/P06及维护恢复失败配对、分层标签和独立标签QC；真实配对尚待当前机制矩阵通过后执行。标签输出只在Oracle的`labels/v04-label-v2/`，M2接口不增加任何注入、P1或物理真值。
 
 ```bash
 uv run --group data pvcomm label --run-dir <已有机制或正常场景QC的run目录>

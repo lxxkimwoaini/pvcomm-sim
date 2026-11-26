@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from pvcomm.config.fault_scenes import terminal_scenario
+from pvcomm.config.fault_scenes import a01_scenario, terminal_scenario
 from pvcomm.config.faults import StationScope
 from pvcomm.config.normal_scenes import normal_scenario
 from pvcomm.config.pairs import PairConfig, development_pair
@@ -324,3 +324,106 @@ def test_p06_retains_device_operations_and_rejects_different_business_schedule()
     raw["changed"]["background"]["business_schedule"][0]["targets_kw"]["PV01"] = 21.0
     with pytest.raises(ValueError, match="conditions differ"):
         PairConfig.model_validate(raw)
+
+
+@pytest.mark.parametrize("code", ["A01", "A06"])
+def test_actual_fault_intervals_and_transport_have_independent_evidence(
+    tmp_path: Path, code: str
+) -> None:
+    inputs = fixture_inputs(tmp_path)
+    scope = StationScope(kind="station", station_ids=("PV01",))
+    fault = a01_scenario(scope, 20) if code == "A01" else terminal_scenario(code, scope, 10)
+    directory = tmp_path / "truth/fault"
+    directory.mkdir()
+    config_path, journal_path = directory / "effective.json", directory / "events.jsonl"
+    config_path.write_text(fault.model_dump_json(), encoding="utf-8")
+    journal_path.write_text(
+        "\n".join(
+            json.dumps(dict(event_type=k, ts_event_utc_ns=t * 10**9, after=dict(station_id="PV01")))
+            for k, t in (("apply_verified", 20), ("restore_verified", 40))
+        ),
+        encoding="utf-8",
+    )
+    for path in (config_path, journal_path):
+        inputs.hashes[path.relative_to(tmp_path).as_posix()] = file_sha256(path)
+    inputs.report["fault_verification"] = {"passed": True}
+    if code == "A06":
+        hold = dict(
+            event_id="hold",
+            event_type="terminal_fault_feedback_hold",
+            station_id="PV01",
+            fault_event_id=fault.fault.event_id,
+            ts_event_utc_ns=25 * 10**9,
+        )
+        inputs.terminal.append(hold)
+        inputs.records["hold"] = ("truth/terminal_events_test.jsonl", hold)
+        inputs.report["communication_effects"] = dict(
+            stations=dict(PV01=dict(passed=True, begin_utc_ns=25 * 10**9, end_utc_ns=40 * 10**9))
+        )
+    else:
+        inputs.report["communication_effects"] = dict(
+            verified_blocked_interval_utc_ns=[20 * 10**9, 39 * 10**9],
+            stations=dict(PV01=dict(withheld_evidence=[dict(p1_frame_ref=123)])),
+        )
+    rows = build_labels(inputs)
+    assert rows[0].fault_start_utc_ns == (25 if code == "A06" else 20) * 10**9
+    assert rows[0].communication_impact is True
+    assert rows[0].transport_impact is (True if code == "A01" else None)
+    assert audit_label_records(inputs, rows)["passed"]
+    raw = rows[0].model_dump(mode="json")
+    raw["fault_start_utc_ns"] -= 1
+    rows[0] = EventLabel.model_validate(raw)
+    assert not audit_label_records(inputs, rows)["passed"]
+
+
+def test_full_recovery_requires_new_complete_gi_not_first_old_measurement(tmp_path: Path) -> None:
+    from pvcomm.pipeline.labels import full_recovery
+
+    inputs = fixture_inputs(tmp_path)
+    request = dict(
+        event_id="request",
+        event_type="master_interrogation_requested",
+        station_id="PV01",
+        dispatch_id="recovery",
+        available_at=60 * 10**9,
+    )
+    result = dict(
+        event_id="result",
+        event_type="master_interrogation_result",
+        station_id="PV01",
+        dispatch_id="recovery",
+        available_at=61 * 10**9,
+        success=True,
+    )
+    for event in (request, result):
+        inputs.master.append(event)
+        inputs.records[event["event_id"]] = ("observed/master_events_master.jsonl", event)
+    assert full_recovery(inputs, "PV01", 40 * 10**9) == (None, [])
+    for index, (type_id, cot, ioa) in enumerate(
+        [
+            (100, 6, 0),
+            (100, 7, 0),
+            *[(13, 20, n) for n in (1001, 1002, 1003, 1006, 1008)],
+            (1, 20, 2001),
+            (100, 10, 0),
+        ]
+    ):
+        obj = dict(
+            apdu_id=f"gi{index}",
+            object_index=0,
+            type_id=type_id,
+            cot=cot,
+            ioa=ioa,
+            ca=1,
+            flow_id=2,
+            available_at=60 * 10**9 + index + 1,
+            src_ip="10.204.0.1" if cot == 6 else "10.204.1.2",
+            dst_ip="10.204.1.2" if cot == 6 else "10.204.0.1",
+        )
+        inputs.objects.append(obj)
+        inputs.records[f"gi{index}:0"] = (f"parsed/{PARSER_VERSION}/iec104_objects.jsonl", obj)
+    complete, refs = full_recovery(inputs, "PV01", 40 * 10**9)
+    assert complete == 60 * 10**9 + 9 and refs
+    # GI termination alone or partial measurement transfer cannot prove full recovery.
+    inputs.objects[:] = [r for r in inputs.objects if r.get("ioa") != 1008]
+    assert full_recovery(inputs, "PV01", 40 * 10**9) == (None, [])

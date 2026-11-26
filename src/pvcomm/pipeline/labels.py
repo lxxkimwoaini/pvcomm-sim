@@ -17,7 +17,7 @@ from pvcomm.domain.labels import EventLabel, EvidenceRef, ServiceFinding
 from pvcomm.pipeline.iec104_parser import PARSER_VERSION
 from pvcomm.storage.parquet import read_jsonl
 
-VERSION = "v04-label-v1"
+VERSION = "v04-label-v2"
 
 
 def file_sha256(path: Path) -> str:
@@ -375,6 +375,80 @@ def command_findings(inputs: LabelInputs, station_id: str) -> list[ServiceFindin
     return findings
 
 
+def full_recovery(
+    inputs: LabelInputs, station_id: str, after: int | None
+) -> tuple[int | None, list[EvidenceRef]]:
+    """A new successful GI with actual measurements, not first queued telemetry."""
+    if after is None:
+        return None, []
+    site = next(
+        s
+        for s in power_document(inputs.root / "power_config.json").protocol.stations
+        if s.station_id == station_id
+    )
+    address = inputs.manifest["network"]["addresses"][
+        list(power_document(inputs.root / "power_config.json").protocol.stations).index(site)
+    ]
+    requests = sorted(
+        (
+            r
+            for r in inputs.master
+            if r["event_type"] == "master_interrogation_requested"
+            and r.get("station_id") == station_id
+            and r["available_at"] >= after
+        ),
+        key=lambda r: r["available_at"],
+    )
+    for request in requests:
+        results = [
+            r
+            for r in inputs.master
+            if r["event_type"] == "master_interrogation_result"
+            and r.get("station_id") == station_id
+            and r.get("dispatch_id") == request.get("dispatch_id")
+            and r["available_at"] > request["available_at"]
+            and r.get("success")
+        ]
+        if len(results) != 1:
+            continue
+        result = results[0]
+        window = [
+            r
+            for r in inputs.objects
+            if r.get("ca") == site.common_address
+            and request["available_at"] <= r["available_at"] < result["available_at"]
+            and not r.get("test_flag")
+            and not r.get("negative_confirm")
+        ]
+        sent = [
+            r
+            for r in window
+            if r.get("type_id") == 100 and r.get("cot") == 6 and r.get("dst_ip") == address
+        ]
+        if len(sent) != 1:
+            continue
+        responses = [
+            r
+            for r in window
+            if r.get("src_ip") == address
+            and r.get("flow_id") == sent[0].get("flow_id")
+            and r["available_at"] >= sent[0]["available_at"]
+        ]
+        if not {7, 10}.issubset({r["cot"] for r in responses if r["type_id"] == 100}):
+            continue
+        if not {1001, 1002, 1003, 1006, 1008, 2001}.issubset(
+            {r["ioa"] for r in responses if r["cot"] == 20}
+        ):
+            continue
+        return max(r["available_at"] for r in responses), [
+            inputs.ref(request),
+            inputs.ref(result),
+            inputs.ref(sent[0]),
+            *(inputs.ref(r) for r in responses),
+        ]
+    return None, []
+
+
 def build_labels(inputs: LabelInputs) -> list[EventLabel]:
     config = power_document(inputs.root / "power_config.json")
     report = inputs.report
@@ -415,6 +489,18 @@ def build_labels(inputs: LabelInputs) -> list[EventLabel]:
             if r["event_type"] == "restore_verified"
             and (r.get("after", {}).get("station_id") in (None, station.station_id))
         ]
+        if target and fault and fault.fault.fault_type == "A06":
+            # Arming does not suppress feedback. The actual accepted command starts the hold.
+            actual = [
+                r
+                for r in inputs.terminal
+                if r.get("station_id") == station.station_id
+                and r.get("fault_event_id") == fault.fault.event_id
+                and r["event_type"] == "terminal_fault_feedback_hold"
+            ]
+            refs.extend(inputs.ref(r) for r in actual)
+        fault_start = min((r["ts_event_utc_ns"] for r in actual), default=None) if target else None
+        fault_end = max((r["ts_event_utc_ns"] for r in restored), default=None) if target else None
         fault_ok = report.get("fault_verification", {}).get("passed") if target else False
         # Endpoint loss/delay is transport evidence; application suppression alone is not.
         transport = (
@@ -425,6 +511,43 @@ def build_labels(inputs: LabelInputs) -> list[EventLabel]:
             and report.get("communication_effects", {}).get("passed")
             else None
         )
+        effects = report.get("communication_effects", {})
+        effect = effects.get("stations", {}).get(station.station_id, {}) if target else {}
+        impact, impact_start, impact_end = None, None, None
+        if target and fault:
+            kind = fault.fault.fault_type
+            if kind == "A01" and effect.get("withheld_evidence"):
+                transport = impact = True
+                impact_start, impact_end = effects["verified_blocked_interval_utc_ns"]
+            elif kind == "A02":
+                measured = [
+                    r
+                    for r in effects.get("directions", [])
+                    if r["station_id"] == station.station_id and r["targeted"]
+                ]
+                if measured and all(r["passed"] for r in measured):
+                    transport = impact = True
+                    impact_start, impact_end = effects["windows_utc_ns"]["active"]
+            elif kind in ("A04", "A05", "A06", "A08") and effect.get("passed"):
+                impact = True
+                impact_start, impact_end = effect["begin_utc_ns"], effect["end_utc_ns"]
+                if kind == "A05":
+                    waits = [
+                        r
+                        for r in inputs.terminal
+                        if r.get("station_id") == station.station_id
+                        and r.get("fault_event_id") == fault.fault.event_id
+                        and r["event_type"]
+                        in ("terminal_response_delay_started", "terminal_response_delay_finished")
+                    ]
+                    if len(waits) == 2:
+                        impact_start = min(r["ts_event_utc_ns"] for r in waits)
+                        impact_end = max(r["ts_event_utc_ns"] for r in waits)
+                        refs.extend(inputs.ref(r) for r in waits)
+                    else:
+                        impact, impact_start, impact_end = None, None, None
+        recovered, recovery_refs = full_recovery(inputs, station.station_id, fault_end)
+        refs.extend(recovery_refs)
         if not target or (fault and fault.fault.fault_type in ("A04", "A05", "A06", "A08")):
             endpoints = quality.get("transport_observations", {})
             if endpoints and all(r["same_bytes"] for r in endpoints.values()):
@@ -440,13 +563,14 @@ def build_labels(inputs: LabelInputs) -> list[EventLabel]:
                 scope=fault.fault.scope.kind if target and fault else "station",
                 fault_applied=bool(fault_ok) if target else False,
                 fault_type=(fault.fault.fault_type,) if target and fault else (),
-                fault_start_utc_ns=min((r["ts_event_utc_ns"] for r in actual), default=None)
-                if target
-                else None,
-                fault_end_utc_ns=max((r["ts_event_utc_ns"] for r in restored), default=None)
-                if target
-                else None,
+                fault_start_utc_ns=fault_start,
+                fault_end_utc_ns=fault_end,
                 transport_impact=transport,
+                communication_impact=impact,
+                communication_impact_start_utc_ns=impact_start,
+                communication_impact_end_utc_ns=impact_end,
+                recovery_complete_utc_ns=recovered,
+                recovery_censored=recovered is None,
                 service_violation=None if invalid else violation,
                 observable_anomaly=None if invalid or violation is None else violation,
                 operating_context=tuple(
@@ -474,7 +598,9 @@ def build_labels(inputs: LabelInputs) -> list[EventLabel]:
                 else "valid",
                 findings=tuple(findings),
                 evidence=tuple(refs),
-                uncertainty_reasons=("transport_not_fully_characterized",)
+                uncertainty_reasons=(
+                    ("transport_not_fully_characterized",) if transport is None else ()
+                )
                 + (("experiment_quality_or_injection_invalid",) if invalid else ()),
             )
         )
@@ -522,7 +648,7 @@ def label_run(root: Path) -> dict[str, Any]:
                 pa.field("label_status", pa.string(), nullable=False),
                 pa.field("payload_json", pa.string(), nullable=False),
             ],
-            metadata={b"scope": b"Oracle", b"pvcomm_schema": b"0.4-label.1", b"utc_unit": b"ns"},
+            metadata={b"scope": b"Oracle", b"pvcomm_schema": b"0.4-label.2", b"utc_unit": b"ns"},
         )
         projection = [
             dict(

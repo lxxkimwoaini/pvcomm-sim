@@ -208,6 +208,44 @@
       "title": "Anomaly Id",
       "type": "string"
     },
+    "communication_impact": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Communication Impact"
+    },
+    "communication_impact_end_utc_ns": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Communication Impact End Utc Ns"
+    },
+    "communication_impact_start_utc_ns": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Communication Impact Start Utc Ns"
+    },
     "evidence": {
       "items": {
         "$ref": "#/$defs/EvidenceRef"
@@ -280,8 +318,8 @@
       "type": "string"
     },
     "label_version": {
-      "const": "0.4-label.1",
-      "default": "0.4-label.1",
+      "const": "0.4-label.2",
+      "default": "0.4-label.2",
       "title": "Label Version",
       "type": "string"
     },
@@ -308,6 +346,24 @@
       },
       "title": "Operating Context",
       "type": "array"
+    },
+    "recovery_censored": {
+      "default": true,
+      "title": "Recovery Censored",
+      "type": "boolean"
+    },
+    "recovery_complete_utc_ns": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Recovery Complete Utc Ns"
     },
     "region_id": {
       "title": "Region Id",

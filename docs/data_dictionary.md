@@ -123,3 +123,9 @@ findings记录命令/接收新鲜度约束，含task_id或IOA、实际outcome、
 evidence包含run相对路径、SHA256、原event_id或apdu_id:object_index、tier、available_at及online/retrospective用途。在线引用不能来自Oracle或晚于可判定点；恢复/事后设备证据不回填在线输入。manifest记录原PCAP、原事件、配置、机制/正常QC哈希及标签计算代码归属。Arrow显式run_id/station_id/service_violation/label_status索引及完整嵌套JSON负载逐值读回。独立qc/v04-label-qc-v1重新核对外键、覆盖、期限、维护、新鲜度及业务证据，不调用标签生成器自证。
 
 独立配对QC记录共享条件、起点、成员与标签质量，并报告固定上下行包数/字节数、窗口及活动持续时间、到达间隔均值/P50/P95及相对距离。contrast_observed与配对条件有效性分开，不伪造相似度或修改报文。该首片不声称完成统计匹配、正式划分或40次/类覆盖。
+
+### 标签0.4-label.2增量
+
+当前label入口写labels/v04-label-v2，独立核验写qc/v04-label-qc-v2。历史v1输出继续通过其冻结代码复核，两个版本不互相覆盖。A06故障区间从实际feedback_hold起算。communication_impact及其start/end为Oracle机制证据覆盖的通信影响诊断区间，不能代替业务违约起点。A05使用真实延后处理事件的等待区间，A01/A02使用既有双端核验区间。transport_impact在缺乏传输层证明时保留null。
+
+recovery_complete_utc_ns为撤销后新GI成功结束且包含1001/1002/1003/1006/1008/2001实际测量对象的完成时间。缺少完整证据时为null并保留recovery_censored=true。正常成员未施加故障时该恢复字段不适用，也为空。业务findings仍独立记录各约束的恢复与截尾。所有增量仅供Oracle标签核验。

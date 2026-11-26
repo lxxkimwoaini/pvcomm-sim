@@ -68,7 +68,7 @@ class ServiceFinding(LabelContract):
 
 
 class EventLabel(LabelContract):
-    label_version: Literal["0.4-label.1"] = "0.4-label.1"
+    label_version: Literal["0.4-label.2"] = "0.4-label.2"
     run_id: str
     anomaly_id: str
     station_id: str
@@ -79,6 +79,11 @@ class EventLabel(LabelContract):
     fault_start_utc_ns: Nanoseconds | None
     fault_end_utc_ns: Nanoseconds | None
     transport_impact: bool | None
+    communication_impact: bool | None = None
+    communication_impact_start_utc_ns: Nanoseconds | None = None
+    communication_impact_end_utc_ns: Nanoseconds | None = None
+    recovery_complete_utc_ns: Nanoseconds | None = None
+    recovery_censored: bool = True
     service_violation: bool | None
     observable_anomaly: bool | None
     operating_context: tuple[str, ...]
@@ -91,6 +96,18 @@ class EventLabel(LabelContract):
 
     @model_validator(mode="after")
     def consistent_layers(self) -> Self:
+        if self.recovery_censored != (self.recovery_complete_utc_ns is None):
+            raise ValueError("full recovery and censoring must agree")
+        if self.recovery_complete_utc_ns is not None and (
+            self.fault_end_utc_ns is None or self.recovery_complete_utc_ns < self.fault_end_utc_ns
+        ):
+            raise ValueError("full recovery must follow actual restoration")
+        for start, end in (
+            (self.fault_start_utc_ns, self.fault_end_utc_ns),
+            (self.communication_impact_start_utc_ns, self.communication_impact_end_utc_ns),
+        ):
+            if start is not None and end is not None and end <= start:
+                raise ValueError("diagnostic interval must be nonempty and half open")
         if any(f.station_id != self.station_id for f in self.findings):
             raise ValueError("cross-station finding")
         actual = (

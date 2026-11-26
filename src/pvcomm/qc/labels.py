@@ -15,7 +15,137 @@ from pvcomm.domain.labels import EventLabel, ServiceFinding
 from pvcomm.pipeline.labels import VERSION as LABEL_VERSION
 from pvcomm.pipeline.labels import LabelInputs, file_sha256, load_label_inputs
 
-VERSION = "v04-label-qc-v1"
+VERSION = "v04-label-qc-v2"
+
+
+def audit_diagnostic_layers(inputs: LabelInputs, label: EventLabel) -> bool:
+    """Check source events, independent mechanism results and complete new GI evidence."""
+    path = inputs.root / "truth/fault/effective.json"
+    fault = FaultScenarioConfig.model_validate_json(path.read_bytes()) if path.exists() else None
+    target = fault is not None and label.station_id in fault.target_stations()
+    start, end = None, None
+    transport, impact, begin, finish = None, None, None, None
+    if target and fault:
+        journal = [
+            json.loads(line) for line in (path.parent / "events.jsonl").read_text().splitlines()
+        ]
+        own = [
+            r for r in journal if r.get("after", {}).get("station_id") in (None, label.station_id)
+        ]
+        starts = [r["ts_event_utc_ns"] for r in own if r["event_type"] == "apply_verified"]
+        ends = [r["ts_event_utc_ns"] for r in own if r["event_type"] == "restore_verified"]
+        if fault.fault.fault_type == "A06":
+            starts = [
+                r["ts_event_utc_ns"]
+                for r in inputs.terminal
+                if r.get("station_id") == label.station_id
+                and r.get("fault_event_id") == fault.fault.event_id
+                and r["event_type"] == "terminal_fault_feedback_hold"
+            ]
+        start, end = min(starts, default=None), max(ends, default=None)
+        facts = inputs.report.get("communication_effects", {})
+        if fault.fault.fault_type == "A01":
+            if facts.get("stations", {}).get(label.station_id, {}).get("withheld_evidence"):
+                transport = impact = True
+                begin, finish = facts["verified_blocked_interval_utc_ns"]
+        elif fault.fault.fault_type == "A02":
+            own_directions = [
+                r
+                for r in facts.get("directions", [])
+                if r["station_id"] == label.station_id and r["targeted"]
+            ]
+            if own_directions and all(r["passed"] for r in own_directions):
+                transport = impact = True
+                begin, finish = facts["windows_utc_ns"]["active"]
+        else:
+            effect = facts.get("stations", {}).get(label.station_id, {})
+            if effect.get("passed"):
+                impact = True
+                begin, finish = effect["begin_utc_ns"], effect["end_utc_ns"]
+                if fault.fault.fault_type == "A05":
+                    starts = [
+                        r["ts_event_utc_ns"]
+                        for r in inputs.terminal
+                        if r.get("station_id") == label.station_id
+                        and r.get("fault_event_id") == fault.fault.event_id
+                        and r["event_type"] == "terminal_response_delay_started"
+                    ]
+                    stops = [
+                        r["ts_event_utc_ns"]
+                        for r in inputs.terminal
+                        if r.get("station_id") == label.station_id
+                        and r.get("fault_event_id") == fault.fault.event_id
+                        and r["event_type"] == "terminal_response_delay_finished"
+                    ]
+                    if len(starts) == len(stops) == 1:
+                        begin, finish = starts[0], stops[0]
+                    else:
+                        impact, begin, finish = None, None, None
+    ok = (label.fault_start_utc_ns, label.fault_end_utc_ns) == (start, end)
+    ok &= (
+        label.transport_impact,
+        label.communication_impact,
+        label.communication_impact_start_utc_ns,
+        label.communication_impact_end_utc_ns,
+    ) == (transport, impact, begin, finish)
+    # Independently enumerate completed GIs in the actual post-restoration trace.
+    site = next(
+        s
+        for s in power_document(inputs.root / "power_config.json").protocol.stations
+        if s.station_id == label.station_id
+    )
+    address = inputs.manifest["network"]["addresses"][
+        list(power_document(inputs.root / "power_config.json").protocol.stations).index(site)
+    ]
+    completions = []
+    for result in inputs.master:
+        if (
+            end is None
+            or result["event_type"] != "master_interrogation_result"
+            or result.get("station_id") != label.station_id
+            or not result.get("success")
+        ):
+            continue
+        requests = [
+            r
+            for r in inputs.master
+            if r["event_type"] == "master_interrogation_requested"
+            and r.get("station_id") == label.station_id
+            and r.get("dispatch_id") == result.get("dispatch_id")
+            and end <= r["available_at"] < result["available_at"]
+        ]
+        if len(requests) != 1:
+            continue
+        objects = [
+            r
+            for r in inputs.objects
+            if r.get("ca") == site.common_address
+            and requests[0]["available_at"] <= r["available_at"] < result["available_at"]
+            and not r.get("test_flag")
+            and not r.get("negative_confirm")
+        ]
+        commands = [
+            r for r in objects if r["type_id"] == 100 and r["cot"] == 6 and r["dst_ip"] == address
+        ]
+        if len(commands) != 1:
+            continue
+        returned = [
+            r
+            for r in objects
+            if r["flow_id"] == commands[0]["flow_id"]
+            and r["src_ip"] == address
+            and r["available_at"] >= commands[0]["available_at"]
+        ]
+        flags = {r["cot"] for r in returned if r["type_id"] == 100}
+        measurements = {r["ioa"] for r in returned if r["cot"] == 20}
+        if {7, 10} <= flags and {1001, 1002, 1003, 1006, 1008, 2001} <= measurements:
+            completions.append(max(r["available_at"] for r in returned))
+    recovery = min(completions, default=None)
+    return bool(
+        ok
+        and label.recovery_complete_utc_ns == recovery
+        and label.recovery_censored == (recovery is None)
+    )
 
 
 def audit_command_finding(inputs: LabelInputs, finding: ServiceFinding) -> bool:
@@ -218,9 +348,11 @@ def audit_label_records(inputs: LabelInputs, labels: list[EventLabel]) -> dict[s
         and all(r.run_id == inputs.manifest["run_id"] for r in labels)
     )
     references, causal, commands, freshness, layers = True, True, True, True, True
+    diagnostics = True
     for label in labels:
         if label.station_id not in sites:
             continue
+        diagnostics &= audit_diagnostic_layers(inputs, label)
         for ref in (*label.evidence, *(r for f in label.findings for r in f.evidence)):
             path = (inputs.root / ref.path).resolve()
             references &= path.is_relative_to(inputs.root.resolve()) and path.is_file()
@@ -287,6 +419,7 @@ def audit_label_records(inputs: LabelInputs, labels: list[EventLabel]) -> dict[s
         command_deadlines_and_evidence=bool(commands),
         freshness_and_maintenance=bool(freshness),
         independent_layers=bool(layers),
+        diagnostic_intervals_and_full_recovery=bool(diagnostics),
     )
     return dict(checks=checks, passed=all(checks.values()))
 
