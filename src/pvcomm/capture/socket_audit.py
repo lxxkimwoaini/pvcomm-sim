@@ -91,16 +91,16 @@ class SocketAudit:
                 raise RuntimeError("socket audit produced no evidence")
             for path in paths:
                 content = path.read_bytes()
-                if (
-                    not content.splitlines()
-                    or b"+++ exited with 0 +++" not in content.splitlines()[-1]
-                ):
+                last = content.splitlines()[-1] if content.splitlines() else b""
+                completed = re.search(rb"\+\+\+ exited with ([0-9]+) \+\+\+$", last)
+                if completed is None:
                     raise RuntimeError(f"socket audit is incomplete: {path.name}")
                 files.append(
                     {
                         "role": role,
                         "path": str(path.relative_to(self.root)),
                         "sha256": hashlib.sha256(content).hexdigest(),
+                        "trace_exit_code": int(completed[1]),
                     }
                 )
         return {

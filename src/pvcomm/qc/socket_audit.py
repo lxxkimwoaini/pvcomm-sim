@@ -48,6 +48,7 @@ def read_socket_calls(root: Path, manifest: dict[str, Any]) -> list[dict[str, An
             hashlib.sha256(content).hexdigest() != item["sha256"]
             or not lines
             or "+++ exited with 0 +++" not in lines[-1]
+            or item["trace_exit_code"] != 0
         ):
             raise ValueError("socket audit hash or completion disagrees")
         paths.append(path.resolve())

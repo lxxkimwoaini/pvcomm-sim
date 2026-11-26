@@ -387,3 +387,7 @@ single-medium的run_a0cf52da16704be79783a0f1a10256fc真实completed/clean/cleanu
 S3诊断退出1、194.041s，依旧只失败于原主站多余TESTFR回调；实际sendto6字节已被内核接受，随后同socket ENOTCONN及close，P0没有该报文。新增ADR0017，A01端点增加固定strace Oracle证据；v3独立核验哈希/清单/退出及窄范围TESTFR尝试核算，原正常结果和其他质量要求保留。-D PID/tracee探针实际一致，退出0。新单元36 passed/0.38s、Ruff及mypy108通过；最初测试揭示独立模块truth父目录创建问题及长行格式问题，已修正，未删除测试。新机制尚待普通总检和新冻结真实取消/各范围验收。
 
 内核证据候选Windows完整check退出0：218 passed/41 deselected、4.54s，Ruff/format/mypy108/schema/生成类型和前端lint/typecheck/Vitest3/build通过；日志outputs/v04c-s4-check.log。既有两条HTML缩进warning和817.73kB提示保留。当前普通测试验证证据缺失、错误方向/类型/站点/时间、部分写入、复用证据、清单/哈希不符以及其他质量失败均拒绝；真实跟踪取消和各强度尚待冻结执行。
+
+881dfa871bd946fe631caefc2d8158d7d28a1c49已push并冻结/var/lib/pvcomm/sources/v04c_a01_s4。科学/Arrow225 passed/34 deselected、13.68s。取消预检失败1项/41.16s，原件/var/lib/pvcomm/runs/v04c_a01_s4/cancel/test_a01_sigterm_restores_befo0/run_8a0f170280614687ac270848a593c4b8；五种A01及兼容均未执行。桥端口已恢复、namespace为空，但现有主站按InterruptedError取消退出1，跟踪已完整结束；采集器错误地把“跟踪完成”要求为所有worker退出0，导致cleanup_errors记录socket audit incomplete。修正为完整退出与退出码分别保存（trace_exit_code），取消不伪装0；正常完成QC继续要求0。新增回归，相关37 passed/0.37s、Ruff/mypy108通过，待新冻结取消重验。
+
+取消修正后的普通回归实际219 passed/41 deselected、4.51s，Ruff/format/mypy108及diff检查退出0。此小改未变前端或schema入口，未重复声称真实协议通过；新冻结仍先取消预检，失败即停。

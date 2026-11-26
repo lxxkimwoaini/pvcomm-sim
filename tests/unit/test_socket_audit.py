@@ -139,6 +139,7 @@ def manifest_fixture(root: Path) -> dict[str, Any]:
                     "role": "master",
                     "path": "truth/socket_audit/master.100",
                     "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                    "trace_exit_code": 0,
                 }
             ],
         },
@@ -210,3 +211,21 @@ def test_command_is_fixed_and_preserves_worker_pid_contract(
     assert command[:3] == ["/usr/bin/strace", "-D", "-ff"]
     with pytest.raises(ValueError, match="owned"):
         audit.command("../../outside", ["python"])
+
+
+def test_finished_trace_keeps_worker_exit_code_without_confusing_it_with_completion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("pvcomm.capture.socket_audit.shutil.which", lambda _: "/usr/bin/strace")
+    monkeypatch.setattr(
+        "pvcomm.capture.socket_audit.subprocess.check_output", lambda *a, **k: "unit_fixture\n"
+    )
+    audit = SocketAudit(tmp_path)
+    audit.workers["master"] = {"worker_pid": 100, "tracer_pid": 999999999}
+    path = audit.directory / "master.100"
+    path.write_text("13.000000 +++ exited with 1 +++\n", encoding="utf-8")
+    report = audit.finish()
+    assert report["completed"] is True and report["files"][0]["trace_exit_code"] == 1
+    path.write_text("incomplete syscall", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="incomplete"):
+        audit.finish()
