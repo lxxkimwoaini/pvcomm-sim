@@ -5,6 +5,17 @@
   "maximum_concurrency": 1,
   "minimum_free_bytes": 10737418240,
   "maximum_output_bytes": 53687091200,
+  "retention": {
+    "schema_version": "0.4-retention.1",
+    "level": "full_evidence",
+    "delete_sources": false,
+    "compression": "gzip_lossless",
+    "formal_hours": 720,
+    "retained_bytes_per_hour": 1383250188,
+    "capacity_margin": 1.5,
+    "concurrent_instances": 1,
+    "measured_parse_temporary_bytes": 11275084964
+  },
   "matching": {
     "policy": {
       "schema_version": "0.4-similarity.1",

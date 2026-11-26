@@ -8,6 +8,16 @@
 
 7666306已推送并核验Actions 45816183448、45816175204为success；冻结至`/var/lib/pvcomm/sources/v04d_maintenance_s1`，WSL普通测试350 passed、64 deselected（19.46s）。三项分组维护真实实验执行中，持久目录`/var/lib/pvcomm/runs/v04d_maintenance_s1/experiments`，尚无最终通过结论。
 
+### 分组维护首轮失败及修复（后续实际记录）
+
+首轮pytest实际3 failed（650.32s）。区域全部失败及跨区域站点组的机制/数据/独立标签QC均通过，但末尾测试误要求没有故障的控制站也有故障恢复记录；已按原字段不适用契约修正测试，不放宽受影响站的恢复门禁。混合恢复则是实际机制失败：PV01连接OPEN迟到约66秒、没有相应恢复GI/完整遥测，PV02正常恢复，实验数据QC仍通过；不能把这次混合运行计为机制验收通过。
+
+bade029修正启动顺序：实际RTU恢复启动后发布实验进程就绪标记，再由主站连接；依然受原15秒预算约束，不读取电气真值或未来反馈。旧原件保留，新冻结源及实验目录分别为`/var/lib/pvcomm/sources/v04d_maintenance_s2`、`/var/lib/pvcomm/runs/v04d_maintenance_s2`，三项真实复验执行中。7b85cfc验收聚合中的临时机制门禁遗漏已在bade029恢复，未使用其发布任何通过报告。bade029 Actions 45821147355、45821134130实际success。
+
+队列代码及固定12组配对矩阵已建立，普通测试包含有限重试、取消/续跑、路径/哈希、并发锁、容量前置阻断和未匹配样本保留；真实队列、覆盖、吞吐仍未验收，不用CI代替真实运行。
+
+冻结队列验证前复核：Windows普通测试361 passed、65 deselected（13.63s），Ruff/format208文件、mypy146源文件及schema检查退出0；后新增真实队列测试由lab标记隔离。全矩阵（含有限重试）留存预估及单次临时PDML下限均纳入存储前置检查，复用既有保留策略，不把下限冒充峰值。CLI在completed_with_failures时退出1。当前PR #1→#2→#3→#4→#5依次堆叠，均OPEN，#3～#5为Draft；未合并任何PR。
+
 ## 接续切片：分组维护代码冻结准备
 
 - 统计规则冻结提交3ef4f83已推送；Actions 45812668204、45812656897实际success。冻结源码`/var/lib/pvcomm/sources/v04d_similarity_s1`，WSL普通测试332 passed、61 deselected（22.18s）。六组独立正常重复校准在`/var/lib/pvcomm/runs/v04d_similarity_s1/calibration`执行中，阈值尚未完成，不宣称统计相似性通过。

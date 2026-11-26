@@ -135,6 +135,18 @@ def test_capacity_gate_stops_before_executor_and_retains_manifest(
     assert state["status"] == "blocked" and state["coverage"]["attempts"] == 0
 
 
+def test_full_matrix_storage_projection_prevents_launch(
+    tmp_path: Path, authorized_fixture: None
+) -> None:
+    raw = matrix().model_dump(mode="json")
+    raw["maximum_output_bytes"] = 1024**3
+    raw["tasks"] = [{**raw["tasks"][0], "task_id": f"job_{i}"} for i in range(20)]
+    config = BatchConfig.model_validate(raw)
+    with pytest.raises(ValueError, match="projected retained storage"):
+        run_batch(config, tmp_path / "too_large")
+    assert not (tmp_path / "too_large").exists()
+
+
 def test_nonmatching_valid_pair_is_not_an_invalid_experiment() -> None:
     record = dict(data_quality_passed=True, business_contrast=True, hard_pair_selected=False)
     counts = pair_counts(record)
@@ -187,6 +199,20 @@ def test_batch_contract_rejects_missing_thresholds_duplicates_and_concurrency() 
     raw["tasks"].append(raw["tasks"][0])
     with pytest.raises(ValueError, match="unique"):
         BatchConfig.model_validate(raw)
+    raw = matrix().model_dump(mode="json")
+    raw["maximum_concurrency"] = 2
+    with pytest.raises(ValueError):
+        BatchConfig.model_validate(raw)
+    raw["maximum_concurrency"] = 1
+    raw["tasks"] = [
+        dict(
+            kind="pair",
+            task_id="pair_1",
+            pair=independent_pair_templates()[0].model_dump(mode="json"),
+        )
+    ]
+    with pytest.raises(ValueError, match="thresholds frozen"):
+        BatchConfig.model_validate(raw)
 
 
 def test_resume_checks_evidence_hashes_and_rejects_state_path_changes(
@@ -208,17 +234,3 @@ def test_resume_checks_evidence_hashes_and_rejects_state_path_changes(
     (root / "manifest.json").write_text(json.dumps(state))
     with pytest.raises(ValueError, match="unsafe retained"):
         run_batch(matrix(), root, resume=True)
-    raw = matrix().model_dump(mode="json")
-    raw["maximum_concurrency"] = 2
-    with pytest.raises(ValueError):
-        BatchConfig.model_validate(raw)
-    raw["maximum_concurrency"] = 1
-    raw["tasks"] = [
-        dict(
-            kind="pair",
-            task_id="pair_1",
-            pair=independent_pair_templates()[0].model_dump(mode="json"),
-        )
-    ]
-    with pytest.raises(ValueError, match="thresholds frozen"):
-        BatchConfig.model_validate(raw)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import sqlite3
@@ -22,6 +23,22 @@ from pvcomm.config.scenes import canonical_hash, instantiate_scenario
 from pvcomm.pipeline.labels import file_sha256
 
 VERSION = "v04-batch-v1"
+
+
+def duration_s(task: BatchJob) -> int:
+    if isinstance(task, PairJob):
+        return (
+            task.pair.normal.simulation.protocol.duration_s
+            + task.pair.changed.background.simulation.protocol.duration_s
+        )
+    if isinstance(task, FaultJob):
+        return task.scenario.background.simulation.protocol.duration_s
+    return task.scenario.simulation.protocol.duration_s
+
+
+def projected_retained_bytes(config: BatchConfig, seconds: int) -> int:
+    policy = config.retention
+    return math.ceil(seconds / 3600 * policy.retained_bytes_per_hour * policy.capacity_margin)
 
 
 def code_version() -> str:
@@ -223,6 +240,11 @@ def run_batch(config: BatchConfig, output: Path, *, resume: bool = False) -> dic
     if os.environ.get("PVCOMM_ALLOW_LAB") != "1":
         raise RuntimeError("batch requires explicitly authorized isolated laboratory execution")
     sha = code_version()
+    projected = projected_retained_bytes(
+        config, sum(duration_s(t) * t.max_attempts for t in config.tasks)
+    )
+    if projected > config.maximum_output_bytes:
+        raise ValueError("matrix projected retained storage exceeds acceptance output budget")
     fingerprint = canonical_hash(config.model_dump(mode="json"))
     output.mkdir(parents=True, exist_ok=resume)
     # A separate SQLite write lock survives across manifest commits and is released
@@ -248,6 +270,13 @@ def run_batch(config: BatchConfig, output: Path, *, resume: bool = False) -> dic
                 code_version=sha,
                 scope="Oracle_experiment_management_never_M2_features",
                 created_at=datetime.now(UTC).isoformat(),
+                storage_plan=dict(
+                    projected_retained_bytes=projected,
+                    temporary_lower_bound_bytes=config.retention.measured_parse_temporary_bytes,
+                    temporary_peak_measured=False,
+                    concurrency_throughput_validated=False,
+                    basis="V0.3 measurement and configured margin; not measured batch peak",
+                ),
                 status="queued",
                 tasks=[
                     dict(
@@ -287,7 +316,14 @@ def run_batch(config: BatchConfig, output: Path, *, resume: bool = False) -> dic
                 while len(task["attempts"]) < specification.max_attempts:
                     used = sum(p.stat().st_size for p in output.rglob("*") if p.is_file())
                     free = shutil.disk_usage(output).free
-                    if free < config.minimum_free_bytes or used >= config.maximum_output_bytes:
+                    next_bytes = projected_retained_bytes(config, duration_s(specification))
+                    if (
+                        free
+                        < config.minimum_free_bytes
+                        + next_bytes
+                        + config.retention.measured_parse_temporary_bytes
+                        or used + next_bytes > config.maximum_output_bytes
+                    ):
                         raise RuntimeError(f"storage budget blocked: free={free}, used={used}")
                     directory = output / task["task_id"] / f"attempt_{len(task['attempts']) + 1}"
                     directory.mkdir(parents=True, exist_ok=False)
@@ -318,6 +354,7 @@ def run_batch(config: BatchConfig, output: Path, *, resume: bool = False) -> dic
                     finally:
                         attempt["elapsed_s"] = time.monotonic() - began
                         attempt["artifacts"] = artifact_inventory(directory)
+                        attempt["retained_bytes"] = sum(a["bytes"] for a in attempt["artifacts"])
                         save()
                     if attempt["status"] == "completed":
                         task["status"] = "completed"

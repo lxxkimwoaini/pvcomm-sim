@@ -136,3 +136,13 @@ recovery_complete_utc_ns为撤销后新GI成功结束且包含1001/1002/1003/100
 配对报告新增`data_quality_passed`、`business_contrast.stations`、`targets_passed`和`controls_passed`；`passed`同时要求数据质量及逐站预期对照。正常/改变身份、目标及控制站集合须完整，非valid或null不作正常负例。
 
 标签契约`0.4-label.3`另写`labels/v04-label-v3`，独立QC为`v04-label-qc-v4`。命令finding新增`recovery_kind`（late_positive_confirmation/late_negative_confirmation/feedback/null）、`execution_recovery_utc_ns`（Oracle物理执行旁证，缺证据为空）、`superseded_at_utc_ns`（后续同站同IOA任务覆盖边界）。迟到确认只恢复确认交付，1001/1006只恢复反馈交付，均不得直接推断功率执行成功。未恢复事件保持截尾；被后续任务覆盖时end等于覆盖时刻且recovery为空。版本2文件和历史QC不可覆盖；默认M2接口不新增任何标签字段。
+
+## 分组维护、统计匹配和有限队列
+
+场景0.4-scenario.2新增maintenance_windows：maintenance_id、scope=stations/region、显式station_ids、可选region_id、start_s/duration_s；固定15秒恢复期限沿用原政策。区域成员必须完整，每站当前限一个窗口。旧.1序列化不新增字段，不改变旧规范哈希。主站提前发布逐站合法维护计划，不加载故障目标。分组维护QC写normal-schedule-v3/terminal-mechanism-v3；旧单站继续使用v2。
+
+authorized_maintenance.stations逐站区分connection_recovered_utc_ns、protocol_recovered_utc_ns、business_recovered_utc_ns、recovery_deadline_utc_ns及business_recovered_within_deadline，保留原事件和APDU引用。连接及GI不代替1001/1006有效接收，业务接收也不代替物理命令执行。无故障站的顶层recovery_complete_utc_ns为空及recovery_censored=true表示该故障恢复字段不适用，不能解释为正常业务失败；其维护恢复按上述专用证据及业务finding核验。
+
+相似性0.4-similarity.1及0.4-similarity-calibration.1固定P0特征、窗口、距离和local/global逐项阈值。v04-traffic-similarity-v1记录evaluation_valid、business_contrast、matched、hard_pair_selected、特征和失败原因；matched=false不使有效实验变invalid。报告仅供Oracle离线配对子集选择，不进入M2在线特征。
+
+0.4-batch.1包含matrix_id、normal/fault/pair任务、最多3次尝试、固定串行并发、RetentionPolicy、容量限额和可选冻结matching输入。manifest记录矩阵/代码指纹、每次尝试状态、产物路径/字节/哈希及覆盖计数。实际run_id/pair_id为UUID，source_group_id保持历史来源；一次任务的首次有效尝试贡献运行覆盖，不以站点或窗口膨胀数量。中断的实时协议尝试不从中间续传，保留并消耗预算。所有队列配置及结果均为Oracle管理数据，当前M2 API不读取这些字段。

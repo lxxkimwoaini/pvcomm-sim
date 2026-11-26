@@ -9,6 +9,7 @@ from pvcomm.config.lab import Identifier, V01Contract
 from pvcomm.config.pairs import PairConfig, development_pair
 from pvcomm.config.scenes import ScenarioConfig
 from pvcomm.config.similarity import CalibratedSimilarity, SimilarityPolicy
+from pvcomm.storage.retention import RetentionPolicy
 
 
 class Job(V01Contract):
@@ -55,6 +56,11 @@ class BatchConfig(V01Contract):
     maximum_concurrency: Literal[1] = 1
     minimum_free_bytes: Annotated[int, Field(strict=True, ge=1024**3)] = 10 * 1024**3
     maximum_output_bytes: Annotated[int, Field(strict=True, ge=1024**3)] = 50 * 1024**3
+    retention: RetentionPolicy = Field(
+        default_factory=lambda: RetentionPolicy(
+            schema_version="0.4-retention.1", level="full_evidence"
+        )
+    )
     matching: MatchingInputs | None = None
     tasks: Annotated[tuple[BatchJob, ...], Field(min_length=1, max_length=1000)]
 

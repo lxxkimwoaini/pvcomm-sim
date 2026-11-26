@@ -200,6 +200,9 @@ def test_grouped_acceptance_requires_target_recovery_but_not_a_fault_on_normal_s
     ]
     assessments = {"PV03": [dict(outcome="accepted_complete")]}
     assert recovery_outcomes(config, maintenance, labels, assessments)
+    maintenance["passed"] = False
+    assert not recovery_outcomes(config, maintenance, labels, assessments)
+    maintenance["passed"] = True
     labels[0]["recovery_censored"] = True
     assert not recovery_outcomes(config, maintenance, labels, assessments)
     labels[0]["recovery_censored"] = False

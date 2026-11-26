@@ -2,7 +2,7 @@
 
 分布式光伏电力—通信联合仿真平台。研究依据为 [V1.3 方案](docs/分布式光伏电力—通信联合仿真数据集构建方案_V1.3.md) 和 [AGENTS.md](AGENTS.md)。
 
-当前版本为 0.4.0.dev0，V0.4a 前置修复、V0.4b 配置化正常场景及 V0.4c 的 A01/A02 三站开发切片已通过，**V0.4 尚未验收**。V0.3 多站点开发门禁已通过：完成3→10→20→30站逐级实跑，以及30站、3通信区域、3600秒电力—通信联合仿真和关闭Web/实时监测/历史回放资源验收。保留已验收的V0.0基础、V0.1真实协议和V0.2三站物理复现能力；当前提供配置驱动多站点、真实c104、pvlib/pandapower、独立P0/P1、Arrow、独立QC及M2只读工作台。未发布正式科研数据集或异常检测结果。实测、适用边界和复现方式见 [V0.3验收报告](docs/reports/2026-11-25-v03-acceptance.md) 及 [进度](docs/progress.md)。
+当前版本为 0.4.0.dev0，V0.4a/b、六类P0三站机制及首四组配对/分层标签开发切片已通过，**V0.4 尚未验收**。V0.3 多站点开发门禁已通过：完成3→10→20→30站逐级实跑，以及30站、3通信区域、3600秒电力—通信联合仿真和关闭Web/实时监测/历史回放资源验收。保留已验收的V0.0基础、V0.1真实协议和V0.2三站物理复现能力；当前提供配置驱动多站点、真实c104、pvlib/pandapower、独立P0/P1、Arrow、独立QC及M2只读工作台。未发布正式科研数据集或异常检测结果。实测、适用边界和复现方式见 [V0.3验收报告](docs/reports/2026-11-25-v03-acceptance.md) 及 [进度](docs/progress.md)。
 
 ## 安装与复现
 
@@ -198,3 +198,18 @@ PVCOMM_ALLOW_LAB=1 .venv-wsl/bin/python -m pvcomm.cli run-pair --config outputs/
 ## V0.4 配对及标签复核接续
 
 当前接续计划见 [V0.4完成计划](docs/plans/2026-11-26-v04-completion.md)。配对QC v2把逐目标站业务对照及非目标站正常结果纳入总门禁，独立报告数据质量。标签生成当前另写`labels/v04-label-v3`，QC另写`qc/v04-label-qc-v4`；前文v2/v3为历史验收结果。新增迟到正/否确认、反馈交付与电气执行恢复、同点后续事务覆盖字段，见ADR0021及数据字典。已有原件可用`uv run --group data python scripts/recheck_v04_pairs.py --pair-dir <原配对目录> --output <新账本文件>`版本化复核，拒绝覆盖。统计匹配、规模及重复门禁仍未完成，V0.5尚未启动。
+
+六组12次独立正常重复校准已完成，36个站点标签均valid/false，固定60项阈值保存在`configs/v0.4-similarity-calibration-dev.json`。原四组配对在同一规则下有效4/4、业务对照4/4、统计匹配0/4；保留全部未匹配样本，见[校准与回顾性报告](docs/reports/2026-11-26-v04-similarity-calibration.md)。没有根据匹配率放宽阈值。
+
+串行批量入口复用现有仿真/配对、解析、Arrow、标签和QC，支持有限重试、失败证据、任务级续跑及哈希检查。预声明矩阵为四类型各三组，仍待真实运行验证，不代表40次/类覆盖已完成：
+
+```bash
+# 必须在已授权隔离Linux、clean冻结源码和历史气象输入就绪时执行。
+PVCOMM_ALLOW_LAB=1 PYTHONPATH=src .venv-wsl/bin/python scripts/run_v04_batch.py \
+  --matrix configs/v0.4-pair-repeat-matrix.json --output /var/lib/pvcomm/runs/NEW_BATCH
+# 中断续跑使用同一冻结源码和同一矩阵；不会恢复到协议运行中途。
+PVCOMM_ALLOW_LAB=1 PYTHONPATH=src .venv-wsl/bin/python scripts/run_v04_batch.py \
+  --matrix configs/v0.4-pair-repeat-matrix.json --output /var/lib/pvcomm/runs/NEW_BATCH --resume
+```
+
+场景.2支持显式站点组/区域维护，故障目标可为维护成员子集；旧场景.1序列化和哈希保持兼容。A08分组实际实验及启动顺序缺陷复验进行中，尚不宣称多站恢复全部通过。批量Web管理、30站异常与正式重复覆盖、全流程临时峰值及并发吞吐仍待实现或验收。

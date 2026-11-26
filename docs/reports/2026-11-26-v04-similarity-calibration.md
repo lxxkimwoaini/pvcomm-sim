@@ -11,7 +11,7 @@
 | calibration/thresholds.json | 276c634a7c9664208e0a9228a5778f87c8d1a78482021f85623b97b31c15e96d |
 | calibration/calibration-records.jsonl | f77af451bd5e4cff54941130feaf508c4ab06ee6b1a7ea280ee3b18278167209 |
 
-阈值作为小型开发配置归档于`configs/v0.4-similarity-calibration-dev.json`。原PCAP、解析、物理输出、标签和QC仍留在上述持久目录，未提交Git。它仅来自六组独立正常重复，含预声明工程裕量，不是现场校准或统计置信保证；个别高变异特征可能得到较宽阈值，必须连同具体数值报告。
+阈值作为小型开发配置归档于`configs/v0.4-similarity-calibration-dev.json`，实际60项，其中global.up.iat_p50_s达到上限1，该项在当前校准中不具备筛选能力，其他59项仍按具体阈值检查。12次运行共36个valid/false站点标签，invalid/uncertain/违约均0，48路工具抓包drop合计0。原PCAP、解析、物理输出、标签和QC仍留在上述持久目录，未提交Git。它仅来自六组独立正常重复，含预声明工程裕量，不是现场校准或统计置信保证。
 
 使用同一冻结代码的`evaluate_v04_similarity.py`，以已有四组pair目录、该policy和thresholds参数执行，退出0；只增加新版本匹配报告，不重跑或修改原实验。总账为`retrospective.jsonl`，各pair内增加`qc/v04-traffic-similarity-v1/report.json`。
 
