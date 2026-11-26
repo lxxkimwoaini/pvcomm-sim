@@ -28,19 +28,16 @@ def recovery_outcomes(
     if (
         config.fault.fault_type != "A08"
         or not config.background.maintenance_windows
+        or not maintenance["passed"]
         or set(maintenance["stations"]) != maintained
         or {r["station_id"] for r in labels} != all_stations
         or len(labels) != len(all_stations)
     ):
         return False
-    label_by_station = {row["station_id"]: row for row in labels}
     for station, evidence in maintenance["stations"].items():
-        if not evidence["authorized_plan_valid"] or not evidence["lifecycle_valid"]:
-            return False
-        if station in targets:
-            if label_by_station[station]["service_violation"] is not True:
-                return False
-        elif evidence["business_recovered_within_deadline"] is not True:
+        if not evidence["passed"] or evidence["business_recovered_within_deadline"] is (
+            station in targets
+        ):
             return False
     for label in labels:
         target = label["station_id"] in targets
@@ -86,9 +83,7 @@ def qc_grouped_recovery(root: Path) -> dict[str, Any]:
         and manifest["status"] == "completed"
         and not manifest["code_dirty"]
         and not manifest["cleanup_errors"]
-        and mechanism["experiment_quality"]["passed"]
-        and mechanism["no_unexplained_endpoint_loss"]["passed"]
-        and all(r["passed"] for r in mechanism["physical_continuity"].values())
+        and mechanism["passed"]
         and mechanism["run_id"] == previous["run_id"] == manifest["run_id"]
     )
     outcomes = recovery_outcomes(

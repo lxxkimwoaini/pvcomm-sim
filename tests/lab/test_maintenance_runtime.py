@@ -72,8 +72,7 @@ def test_grouped_maintenance_real_recovery(tmp_path: Path, case: str) -> None:
     export_parquet(root)
     export_power_parquet(root)
     mechanism = qc_fault(root)
-    if case != "mixed":
-        assert mechanism["passed"], root / "qc"
+    assert mechanism["passed"], root / "qc"
     maintenance = mechanism["authorized_maintenance"]
     assert set(maintenance["stations"]) == maintained
     for station, evidence in maintenance["stations"].items():

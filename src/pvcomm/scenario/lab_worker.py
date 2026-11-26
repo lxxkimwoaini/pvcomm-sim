@@ -142,6 +142,7 @@ def main() -> None:
                     recorder.record_event(
                         "terminal_resumed", {"station_id": config.stations[index].station_id}
                     )
+                    (root / f"{args.role}.resumed").touch(exist_ok=False)
         else:
             scenario = None
             if explicit_scenario:
@@ -226,6 +227,24 @@ def main() -> None:
                         master_endpoint.suspend_for_maintenance(maintenance_event.station_id)
                         (root / maintenance_event.ready_file).touch(exist_ok=False)
                         wait_until(maintenance_event.start_s + maintenance_event.duration_s)
+                        # Laboratory process lifecycle ordering, like initial rtu.ready.
+                        # No electrical state or future response is read into observations.
+                        index = next(
+                            i
+                            for i, site in enumerate(config.stations, 1)
+                            if site.station_id == maintenance_event.station_id
+                        )
+                        resumed = root / f"rtu{index}.resumed"
+                        resume_deadline = (
+                            start + maintenance_event.start_s + maintenance_event.duration_s + 15
+                        )
+                        while not resumed.exists():
+                            if time.monotonic() >= resume_deadline:
+                                raise RuntimeError(
+                                    "maintenance endpoint did not resume before recovery deadline"
+                                )
+                            if stop.wait(0.05):
+                                raise InterruptedError("maintenance resume cancelled")
                         master_endpoint.resume_connection(maintenance_event.station_id)
                         if explicit_scenario:
                             wait_until(maintenance_event.start_s + maintenance_event.duration_s + 1)

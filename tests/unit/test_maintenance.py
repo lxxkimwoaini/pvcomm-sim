@@ -188,7 +188,6 @@ def test_grouped_acceptance_requires_target_recovery_but_not_a_fault_on_normal_s
     raw["fault"]["scope"] = dict(kind="station", station_ids=["PV01"])
     config = FaultScenarioConfig.model_validate(raw)
     maintenance = audit_maintenance(*evidence())
-    maintenance["passed"] = True
     labels = [
         dict(
             station_id=s,
