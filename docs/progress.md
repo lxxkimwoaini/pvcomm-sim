@@ -295,3 +295,13 @@ v04a_s4冻结32f93f1前置真实2 passed/238.41s：三站clean/completed/cleanup
 缓冲排空候选完整check退出0：162 passed/14 deselected、mypy90、Ruff/format/schema/TS、前端ESLint/Prettier/vue-tsc/Vitest3/build均通过；保留既有2条缩进warning与817.61kB包提示。该结果不替代新的真实兼容验收。
 
 67ee2ef冻结v04a_s5旧回归实际1 failed/4 passed、67.67s。V0.3启动时暴露原有master.ready存在性与write_text内容发布竞态，读取空串报ValueError，未进入完整业务实验；manifest如实failed、保留证据。四路捕获排空均complete、captured=received、kernel drop0；真实尾包fixture及旧协议三项通过。改为同目录临时文件关闭后原子rename发布业务起点，新增阻塞半写入的并发回归（1 passed），不能用重试sleep吞掉无效值。67ee2ef push CI45744263481五job实际success。新冻结完整真实兼容重验仍待执行。
+
+### V0.4a最终前置验收通过（限定范围）
+
+冻结097a616bc19ad7204c34aaa4ff25f9cc011ae485，原生源码/var/lib/pvcomm/sources/v04a_s6，新持久证据/var/lib/pvcomm/runs/v04a_s6；全部manifest clean、completed、cleanup=[]。旧真实回归5 passed/188.19s：V0.3断联2109/2109完整APDU、P99=1.868130ms/max2.793382ms、9个accepted_complete；独立端点/回调对应、物理连续/恢复新状态、Arrow/潮流及四路缓冲排空全部通过。旧V0.1真实回环、独立端点、取消清理及ICMP尾包fixture也通过。未重跑1h/30min正式门禁，不把短兼容回归冒称整套旧版本重新验收。
+
+同冻结V0.4a前置2 passed/237.40s：2528/2528完整APDU、100%、不完整0、P99=3.748478ms/max4.084588ms；P0/3份P1捕获和12路qdisc丢失0，独立回调/字节一致。4个accepted_complete+1 rejected，PV01 stale被排除，PV02真实否定确认，PV03及后续任务继续；657物理样本、来源/重算/Arrow/快照/平衡通过。run_integrity/data_quality=true，normal_regression=false保留真实正常回归结果。silent协议fixture确认超时3.000455484s、同会话隔离、另一站成功；fixture不当作正式A05或双端故障验收。
+
+同冻结旧V0.2晴天90s CLI run→parse --parquet→默认严格QC均退出0；462/462完整APDU、工具丢失0、P99=11.492783ms/max12.092638ms、9次事务完整。WSL科学/Arrow全量170 passed/7 deselected/12.56s；Windows最新普通163 passed/14 deselected及Ruff/format/mypy91通过。完整前端/schema检查和真实小时M2回放结果见此前记录，本轮抓包/IPC修复未改前端。097a616 push CI45744568239五job实际success。最终namespace为空，旧失败PCAP与运行目录均保留。
+
+README旧“V0.4尚未开展”及开发指南过期QC版本已修正，新增完整V0.4a报告docs/reports/2026-11-26-v04a-acceptance.md，并细化V0.4b正常场景计划。当前仅前置修复/兼容门禁通过：故障施加和标签质量仍not_evaluated，N01–N10、六类P0、配对/正式标签/UI任务队列及最终四报告未完成。下一任务按V0.4b计划实现配置驱动业务时序，先验证无调控正常背景，再逐类三站真实覆盖，不直接展开正式720h或训练。仓库仍https://github.com/lxxkimwoaini/pvcomm-sim、lxxkimwoaini、PUBLIC、默认main；PR #1–#4堆叠OPEN不合并。最新交付提交/推送及CI以实际远程核验为准。

@@ -76,6 +76,6 @@ PowerShell 设置 PVCOMM_RUN_ROOT 与 PVCOMM_E2E_REAL_ROOT 为同一个真实验
 
 M2事件索引采用临时SQLite、追加字节摄入和联合时间/ID索引；IPC固定尾读；快照每条测量最多600个原始点，多站显示缩减为最多120个保留极值/首尾/间隙的点。`GET /api/runs/{key}/events`固定at_ns，before_ns/before_id配对，limit≤100；不能用未来观测回填。`GET /api/diagnostics/runs/{key}/resources`为单独基础设施诊断，不进入M2快照。真实浏览器验证额外设置PVCOMM_E2E_STATIONS=30；各根目录和实际运行名必须一致。
 
-当前独立QC版本：V0.2 v02-power-v6；V0.3 v03-power-v4，内部协议核验v01-evidence-v4。历史v1/v2/v3及失败报告保持原样，不覆盖。v4修正TCP前序缺口补齐时的后序完整APDU可用时间/归属帧，不删除严格比较项。normal_device_operations及物理/电气诊断保持原门槛。Windows与WSL解释器/虚拟环境继续分离。V0.3通过与否须依据完整规模/1h/界面资源实测，不能由单测或CI替代。
+当前独立QC版本：V0.2 v02-power-v7；V0.3 v03-power-v5，内部协议核验v01-evidence-v5，实验完整性/质量v04-experiment-quality-v1。历史v1/v2/v3及失败报告保持原样，不覆盖。v4修正TCP前序缺口补齐时的后序完整APDU可用时间/归属帧，不删除严格比较项。normal_device_operations及物理/电气诊断保持原门槛。Windows与WSL解释器/虚拟环境继续分离。V0.3通过与否须依据完整规模/1h/界面资源实测，不能由单测或CI替代。
 
 `frontend/scripts/measure-v03.mjs`在实际页面记录请求耗时、服务耗时和DOM更新后两次animation frame的近似绘制时间；DOM属性仅包含已有M2游标及功率接收时间。实时显示延迟统计每站初始快照之后、新显示的最近功率观测相对主站available_at的时间，不将2/5/10s采样间隔误算为网页延迟；回放旧样本单独标记。该测量不是传感器端到端延迟或显示硬件扫描测量。

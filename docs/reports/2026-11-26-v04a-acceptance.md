@@ -1,12 +1,12 @@
 # V0.4a 前置修复验证记录
 
-2026-11-26（Asia/Shanghai）。当前为前置修复切片，**不是V0.4场景库、六类P0、配对或标签验收报告**。真实前置用例已通过；旧版兼容回归结果待本轮结束补记。
+2026-11-26（Asia/Shanghai）。当前为前置修复切片，**不是V0.4场景库、六类P0、配对或标签验收报告**。V0.4a前置修复门禁已通过，最终冻结及完整兼容结果见“最终完整验收”一节。故障施加和正式标签机制留给后续切片，当前明确not_evaluated。
 
 ## 范围与冻结
 
 从已验收V0.3的5c406666e31e6edb3268e2be041ec9aa881ed26d建立feat/v04-scenarios。计划见`docs/plans/2026-11-26-v04.md`，设计依据ADR0011–0013。未合并PR #1–#4，保留原有堆叠关系及main。
 
-本轮真实源码冻结为`32f93f1f02878939d79c082b20a1e847bea339a8`，原生Linux目录`/var/lib/pvcomm/sources/v04a_s4`，Git clean。WSL使用已验证的Python3.11.15、c1042.2.1、pvlib0.16.1、pandapower3.5.6、tcpdump4.99.6、TShark4.6.4。外部输入通过被忽略的实体data目录访问原有NASA缓存，不重写原件。
+首轮通过前置用例的真实源码冻结为`32f93f1f02878939d79c082b20a1e847bea339a8`，原生Linux目录`/var/lib/pvcomm/sources/v04a_s4`，Git clean。WSL使用已验证的Python3.11.15、c1042.2.1、pvlib0.16.1、pandapower3.5.6、tcpdump4.99.6、TShark4.6.4。外部输入通过被忽略的实体data目录访问原有NASA缓存，不重写原件。
 
 证据根`/var/lib/pvcomm/runs/v04a_s4`；前置用例位于`prerequisites/`，日志为`prerequisites.log`。用例标识沿用配置中的v04a_03_degradation_001，复验由不同持久根隔离，不能把同名开发用例当作正式数据集全局唯一run_id。V0.4b起批量/配对编排须分配全局唯一run_id，pair_id/source_group_id另存。
 
@@ -20,7 +20,7 @@
 - 新离线气象来源契约支持声明日期、位置、产品版本和来源/许可快照；旧配置不改。当前仅NASA小时适配，不声称接入新高频数据或M3。
 - 保留等级、只读预算、保留原件的无损归档；协议与物理Arrow逐值对原JSONL投影核验，新物理Parquet使用zstd，原表版本保留。
 
-## 三站真实联合仿真
+## 三站真实联合仿真（s4前置复验）
 
 运行210秒，PV01授权维护40–60秒；PV02正常本地停机45–75秒；第50、130秒执行两次基于实际收到可用功率的区域任务。使用三个独立RTU、真实区域网络、主站P0和三份独立P1。
 
@@ -67,10 +67,46 @@ V0.4b–f仍未验收：N01–N10完整覆盖、六类P0多强度多范围复验
 
 不生成720h、不训练模型，不改变正式参数/划分/标签定义，不合并未授权PR。正式生成前仍须落实约1.494TB主存储、额外备份、解析临时峰值和并发验证。
 
-## 旧版兼容回归的未通过项
+## 兼容回归历史失败与修复
 
 冻结32f93f1的旧版回归为1 failed/3 passed、193.29s；V0.1真实回环、独立端点及取消清理三项通过。V0.3断联物理继续和恢复最新状态断言通过，严格独立协议QC失败：PV02/PV03的P1原始PCAP各缺3条最终S/STOPDT帧，P0与各终端raw均存在。tcpdump captured/received分别866/875、783/792，kernel dropped均0。证据在`/var/lib/pvcomm/runs/v04a_s4/legacy`，不修写原始文件或放宽QC。
 
-按ADR0014修复有界缓冲排空；真实ICMP尾包预检1 passed/3.56s（三次），仅是捕获回归fixture。新冻结代码的V0.3/V0.4a和旧V0.2真实兼容验收待执行，**V0.4a整体门禁仍未通过**。当前WSL科学/Arrow全量实际168 passed/6 deselected、32.48s。
+按ADR0014修复有界缓冲排空；真实ICMP尾包预检1 passed/3.56s（三次），仅是捕获回归fixture。当时新冻结代码的V0.3/V0.4a和旧V0.2真实兼容验收待执行，未标为通过；最终s6结果见下文。当前WSL科学/Arrow全量实际168 passed/6 deselected、32.48s。
 
-冻结67ee2ef的v04a_s5旧回归1 failed/4 passed、67.67s：启动阶段读取半写入的master.ready为空，manifest failed，未冒称已完成120秒运行。四路抓包均drain_complete=1、captured=received、kernel dropped0。采用临时文件原子发布起点，新增半写入并发回归通过；Ruff/format/mypy91及普通163 passed/14 deselected。该实际新问题与原P1尾帧缺失分开记录，仍待完整新冻结实跑。
+冻结67ee2ef的v04a_s5旧回归1 failed/4 passed、67.67s：启动阶段读取半写入的master.ready为空，manifest failed，未冒称已完成120秒运行。四路抓包均drain_complete=1、captured=received、kernel dropped0。采用临时文件原子发布起点，新增半写入并发回归通过；Ruff/format/mypy91及普通163 passed/14 deselected。该实际新问题与原P1尾帧缺失分开记录，当时仍待完整新冻结实跑；后续结果见下文。
+
+
+## 最终完整验收
+
+最终冻结提交为`097a616bc19ad7204c34aaa4ff25f9cc011ae485`，源码`/var/lib/pvcomm/sources/v04a_s6`，实验根`/var/lib/pvcomm/runs/v04a_s6`。全部新运行manifest均code_dirty=false；未修改冻结树、原始PCAP、旧QC或失败证据。以下结果由该提交重新执行，不将s4/s5结果混作最终结果。
+
+|验证|实际结果及证据|
+|---|---|
+|旧版真实回归|`legacy.log`：5 passed /188.19s，包括V0.3断联、V0.1真实回环、独立端点、取消清理和缓冲尾包|
+|V0.3断联严格QC|120s业务；2109/2109完整APDU、100%、不完整0；日志P99=1.868130ms/max2.793382ms；9次事务均accepted_complete；物理连续、恢复最新状态及独立端点/Arrow/潮流检查通过|
+|V0.3捕获排空|P0/P1 captured=received分别2511/853/865/793，全部drain_complete=1，kernel drop0；completed/cleanup=[]|
+|V0.4a真实前置|`prerequisites.log`：2 passed /237.40s；210s三站模型和真实超时协议fixture|
+|V0.4a独立协议|2528/2528完整APDU、100%、不完整0；日志P99=3.748478ms/max4.084588ms，四路capture和12路qdisc丢失0；双端回调/字节对应通过|
+|V0.4a业务/物理|PV01 stale排除、PV02真实否定确认、PV03接受；后续三站接受；4 accepted_complete+1 rejected；657物理样本及Arrow/重算/快照/平衡通过|
+|V0.4a质量分离|run_integrity=true、data_quality=true、normal_regression=false；拒绝/缺测事实保留，未放宽原正常门禁|
+|实际确认耗时|4次正确认23.864911/74.703258/231.802931/194.619488ms，均在原3s期限内|
+|silent协议fixture|实际超时3.000455484s，同会话session_quarantined、其他站accepted；无伪造否定确认。fixture_only=true，不冒充正式A05或双端异常库|
+|V0.2兼容|`v02-run.log`、`v02-parse.log`、`v02-qc.log`：90s运行→parse --parquet→默认严格QC均退出0；462/462完整APDU、100%、工具drop0，日志P99=11.492783ms/max12.092638ms，9次完整业务闭环|
+
+V0.3报告在`legacy/test_physics_continues_without0/v03_03_disconnect_001/prerequisite-qc.json`；V0.4a报告在`prerequisites/test_planned_missing_availabil0/v04a_03_degradation_001/qc/v04-experiment-quality-v1/report.json`；V0.2报告在`v02/v02_clear_001/qc/v02-power-v7/report.json`。最终namespace列表为空；所有运行的cleanup_errors=[]。
+
+复现需要授权WSL Linux、原有许可/哈希输入、可选protocol/power/data组及独立新输出根。测试入口如下；真实实验按顺序执行，不与其他namespace负载并行：
+
+```sh
+PYTHONPATH=src PVCOMM_ALLOW_LAB=1 /mnt/e/project/pv/.venv-wsl/bin/python -m pytest tests/lab/test_v03_prerequisites.py tests/lab/test_v01_runtime.py tests/lab/test_isolated_network.py tests/lab/test_capture_drain.py -q --basetemp /var/lib/pvcomm/runs/NEW_UNIQUE_ROOT/legacy
+PYTHONPATH=src PVCOMM_ALLOW_LAB=1 /mnt/e/project/pv/.venv-wsl/bin/python -m pytest tests/lab/test_v04a_degradation.py -q --basetemp /var/lib/pvcomm/runs/NEW_UNIQUE_ROOT/prerequisites
+PYTHONPATH=src /mnt/e/project/pv/.venv-wsl/bin/python -m pvcomm.cli run --isolated --config configs/v0.2-clear.yaml --output-root /var/lib/pvcomm/runs/NEW_UNIQUE_ROOT/v02
+PYTHONPATH=src /mnt/e/project/pv/.venv-wsl/bin/python -m pvcomm.cli parse --run-dir /var/lib/pvcomm/runs/NEW_UNIQUE_ROOT/v02/v02_clear_001 --parquet
+PYTHONPATH=src /mnt/e/project/pv/.venv-wsl/bin/python -m pvcomm.cli qc --run-dir /var/lib/pvcomm/runs/NEW_UNIQUE_ROOT/v02/v02_clear_001
+```
+
+Windows当前普通检查163 passed/14 deselected，Ruff/format/mypy91通过；之前完整check含schema/TS及前端质量/Vitest3/build通过，最新两次生产修改仅涉及抓包及启动IPC。097a616 push CI45744568239实际success、五job成功；普通CI不运行特权实验。未重跑V0.3一小时或30分钟V0.1门禁，本次为旧配置短兼容回归，原完整验收证据继续保留。
+
+V0.4a通过仅表示本文范围的前置修复和兼容门禁通过，不代表V0.4整体完成。N01–N10后续切片设计已细化到`docs/plans/2026-11-26-v04b-normal-scenes.md`；六类P0、P03/P04/P06、正式标签、任务队列和四份V0.4最终报告尚未完成。
+
+最终冻结097a616的WSL科学/Arrow全量为170 passed/7 deselected、12.56s（`science-data-regression.log`）；该结果包含全部非lab测试及可选科学/Arrow依赖，不与Windows163项相加成独立用例总数。
