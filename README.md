@@ -240,7 +240,7 @@ PVCOMM_ALLOW_LAB=1 PYTHONPATH=src .venv-wsl/bin/python scripts/run_v04_batch.py 
   --matrix outputs/NEW_SCALE_MATRIX.json --output /var/lib/pvcomm/runs/NEW_SCALE_BATCH
 ```
 
-受控Web提交与诊断查询已建立，30站异常与正式重复覆盖、全流程临时峰值及并发吞吐仍待验收。
+受控Web提交与诊断查询已建立。十站六类门禁通过；三十站首轮A02/A06/A08通过，A01/A04/A05质量失败，原件保留，详见[首轮规模报告](docs/reports/2026-11-26-v04-scale30-first-pass.md)。正式重复覆盖及有限并发吞吐尚待验收，不以队列结束代替QC通过。
 
 六表Arrow现按4096行转换及逐行回读比较；标签使用临时磁盘索引按站点访问原始证据，标签schema与判据保持v3。可在保留运行上比较列表与索引路径，原标签/QC不覆盖：`uv run --frozen --group data python scripts/profile_v04_evidence.py --run-dir <运行目录> --mode indexed --output <新报告目录>`；`--mode list`提供同一代码下的兼容比较。该测量的Python分配峰值不等于进程RSS或全流程峰值。
 
