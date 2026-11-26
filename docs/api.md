@@ -1,18 +1,35 @@
 # API 与 CLI（0.4.0.dev0）
 
 启动：`uv run uvicorn pvcomm.web.app:create_app --factory --host 127.0.0.1 --port 8000`。
-OpenAPI 位于 `/openapi.json`，交互文档 `/docs`。服务仅用于本机工程开发，无运行控制接口；只读运行根由服务端指定。
+OpenAPI 位于 `/openapi.json`，交互文档 `/docs`。服务仅用于本机科研开发；M2运行根及独立Oracle实验根由服务端指定。Oracle可提交受限模板请求，网络操作由独立授权Linux执行器处理。
 
 | 接口 | 输入 | 实际响应 |
 |---|---|---|
-| GET /api/health | 无 | status=ok、stage=V0.4-development、simulation_available=true、web_run_submission_available=false |
+| GET /api/health | 无 | status=ok、stage=V0.4-development、simulation_available=true；web_run_submission_available按实验根是否显式配置返回布尔值 |
 | POST /api/scenarios/validate | JSON 对象 `{ "yaml_text": "..." }` | valid、schema_version、config_sha256、station_count；非法配置 HTTP 422 |
 
-校验接口只支持 schema 0.0 工程契约，没有故障注入或完整场景执行能力。CLI 与 API 调用同一 config.service；配置例子为 configs/foundation.yaml。输入 UTF-8 大小、深度、展开节点均受限；输入不写磁盘。当前 API 不返回真值、标签或场景配置，保留 V0.0 配置校验契约；V0.1 新增下述运行查询/回放接口，尚无 WS；隔离实验仅由 CLI 执行。
+校验接口只支持 schema 0.0 工程契约。CLI 与 API 调用同一 config.service；配置例子为 configs/foundation.yaml。输入 UTF-8 大小、深度、展开节点均受限；校验输入不写磁盘。M2查询不返回真值、标签或场景配置；显式Oracle入口见下文。尚无WS；隔离实验仅由受控本地执行器执行。
 
 生成：`uv run python scripts/generate_schemas.py`，然后 `pnpm --dir frontend types:generate`。检查：`uv run python scripts/dev.py schemas`。frontend/src/types/api.generated.ts 为自动生成文件，不能手改。跨字段引用校验以共享后端服务为准，JSON schema 不表达全部关系规则。
 
-CLI `pvcomm --version` 和 `validate-config --config <path>` 已实现。成功返回 0；配置/参数错误返回 2；run/parse/qc 实现 V0.1 实验操作；预留 label/split/features/benchmark 返回 3（not implemented）。校验命令不创建运行或输出数据；run/parse/qc 按指定路径创建实际产物。
+CLI `pvcomm --version` 和 `validate-config --config <path>` 已实现。成功返回0，配置/参数错误返回2；run/parse/qc及Oracle label已实现，split/features/benchmark仍返回3（not implemented）。校验命令不创建运行或输出数据；运行和派生命令按指定路径创建实际产物。
+
+## V0.4 独立Oracle实验管理
+
+全部使用`/api/diagnostics/experiments`前缀，scope固定`Oracle_experiment_management_never_M2_features`，不进入M2接口或特征。服务显式设置PVCOMM_EXPERIMENT_ROOT才允许提交；成对配置PVCOMM_SIMILARITY_POLICY和PVCOMM_SIMILARITY_CALIBRATION后开放配对。文件路径仅由服务启动环境提供，不由HTTP输入选择。
+
+| 接口 | 实际功能 |
+|---|---|
+| GET /catalog | 模板、既定强度、站点规模、提交能力；不伪造执行能力 |
+| POST 空后缀 | 受限ExperimentRequest；成功201仅表示已写队列；跨源Origin拒绝403，未启用503，非法参数422 |
+| GET 空后缀 | offset/limit分页（最多50）；紧凑状态及覆盖，不读取完整产物哈希清单 |
+| GET /{identity} | 单请求与当前summary.json；尚未执行时queue=null |
+| GET /{identity}/quality | 实际已存在运行的QC摘要；缺失运行不补造报告 |
+| GET /{identity}/runs/{opaque_run_key}/labels | 分页分层标签、时间和原件证据引用；纳秒为字符串；只用于事后诊断 |
+
+网页不启动任何命令或网络操作。`scripts/run_v04_requests.py --root <预设目录> --maximum-jobs N`在授权Linux读取原子请求、核对矩阵哈希、按提交时间消费；全局SQLite锁阻止双执行器，复用run_batch的冻结代码、有限尝试及续跑。`--resume`不重复完成任务；实时协议尝试无法从中间续传。当前最大并发1；并发生产吞吐未通过。
+
+新批次维护不含artifacts的summary.json供轮询，详细manifest和全部原件保留。模板、范围及强度由后端现有生成器和Pydantic校验；配对目前仅三站既有共享条件模板。质量、合法拒绝、资源不足、故障施加及业务违约分别保留。完整曲线配对、协议事件定位与证据导出待后续切片，不能据此宣称V0.4整体验收。
 
 ## V0.1 M2 只读接口
 
@@ -32,7 +49,7 @@ snapshot增加regions、dispatches、protocol_statistics，以及站点馈线/�
 
 `GET /api/runs/{run_key}/events?at_ns=<ns>&limit=100&mode=M2`提供历史分页。后续页同时传before_ns和before_id，按时间/ID联合游标严格排除边界，limit为1–100；只传其中一个返回422。索引按新增observed字节摄入，原始文件截断或重复ID返回409。
 
-`GET /api/diagnostics/runs/{run_key}/resources`仅提供独立基础设施诊断，scope=infrastructure_only_not_M2_features，包含时间、单核口径CPU、RSS、磁盘IO及UTC映射漂移；不进入M2快照或特征。没有资源记录时字段为null，不伪造零值。Web仍不能操作命名空间、执行命令、启动仿真或读Oracle。完整机器契约见schemas/openapi.json。
+`GET /api/diagnostics/runs/{run_key}/resources`仅提供独立基础设施诊断，scope=infrastructure_only_not_M2_features，包含时间、单核口径CPU、RSS、磁盘IO及UTC映射漂移；不进入M2快照或特征。没有资源记录时字段为null，不伪造零值。Web不操作命名空间或执行命令，M2接口不读Oracle；独立管理入口见上文。完整机器契约见schemas/openapi.json。
 
 ## V0.4a 前置契约
 

@@ -1,6 +1,14 @@
 # 开发数据字典
 
-当前包含0.0工程配置、0.1协议开发证据和0.2物理开发证据，未发布正式数据集/标签/特征 schema。方案第 11–12 节保留为后续实现依据。0.0 JSON schema 位于 schemas/foundation.schema.json，由 Pydantic 生成；不是场景运行 schema 1.0。
+当前包含0.0工程配置、0.1协议证据、0.2/0.3物理及多站证据、0.4开发场景/配对/分层标签与队列契约；未发布正式科研数据集或训练特征。标签0.4-label.3已实现，完整阶段门禁以进度/报告为准。0.0 JSON schema 位于 schemas/foundation.schema.json，由 Pydantic 生成；不是场景运行 schema 1.0。
+
+## Oracle实验请求与队列投影
+
+`request_version=v04-experiment-request-v1`保存受限模板参数、创建UTC、唯一experiment_id及规范化matrix_sha256；所有信息仅用于Oracle管理。模板限定N01～N10、A01/A02/A04/A05/A06/A08及四种既有三站配对；site_count为3/10/30、variant为0/1/2、seed显式记录。strength必须采用既定档位，A02单位毫秒、A04/A08周期，其余秒。站点/区域目标需在配置中实际存在；正常及配对模板不接受任意业务目标覆盖。
+
+新队列summary.json是manifest的紧凑原子投影：保留任务/尝试状态、结果、覆盖、来源和预算，移除artifacts清单，防止轮询重复加载大文件索引。详细manifest及原件不删除。Web读取summary而非从Oracle给M2补数据。质量摘要保留passed/null和实际版本；标签HTTP分页将*_ns及available_at转为十进制字符串，保留false、null和恢复截尾语义。
+
+`v04-batch-audit-v1`为独立离线终态汇总，先验证矩阵及留存产物哈希，再逐成员统计完整质量、合法正常负例及配对对照/相似数。失败配对中已通过独立QC的正常成员单独列出，不充当有效配对，也不自动扩大队列首次有效任务覆盖额度。未完成队列拒绝终态审计，输出须为全新外部目录，不回写原件。
 
 | 配置字段 | 类型/单位 | 来源与语义 |
 |---|---|---|

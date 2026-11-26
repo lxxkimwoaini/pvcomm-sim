@@ -4,6 +4,12 @@
 
 ## 分组维护通过与队列测试环境修正
 
+36b8e72普通推送已恢复并核对远程SHA相同，先前761568f/87f50ed也已同步；push45832152566、PR45832162862实际success。WSL冻结普通396 passed、66 deselected（25.15s）；真实API→授权消费者→c104→解析/标签/QC为1 passed（139.96s），运行run_120a668b863d4f1da4193150df79b12a，3个valid正常标签、四路丢包0、清理无错。启用态浏览器2 passed（4.0s），原件与唯一截图保留。首个pytest setup因basetemp父目录不存在退出1，未启动网络，换新s2根执行，日志不删除。详见工作台首切片报告；图形时间轴、配对图、PCAP定位和导出仍未完成。
+
+新增终态队列只读审计入口，独立核验产物哈希并单列失败配对内有效成员，不将其混入有效配对/任务覆盖；invalid/uncertain/null不作正常负例。相关7项普通测试通过（0.50s），含单边有效/单边失败的配对、哈希篡改及未结束队列拒绝。完整固定复验队列尚未结束，未生成其最终报告。
+
+该审计切片完整Windows普通回归403 passed、66 lab deselected（18.61s），Ruff及strict mypy164源文件通过。随后仅补充审计代码/来源指纹，相关7项复核通过（0.30s）。源/标签和历史QC不变，等待队列终态后从新冻结源码运行只读汇总。
+
 工作台新增测试最终Windows普通回归396 passed、66 lab deselected（20.21s），strict mypy161源文件及schema检查通过。此前同一普通回归1 failed、395 passed：仅标签HTTP合成夹具缺manifest，不符合新运行发现条件；补齐明确标注的fixture后通过，没有修改真实门禁。工作台ESLint无新增warning，旧RunWorkbench两条缩进warning保留。
 
 配对trial_05的P04正常成员实际finalization失败：`worker 15708 required kill`，整对失败，原件保留，不计有效运行；其余队列继续，未延长关闭等待或放宽清理门禁。
