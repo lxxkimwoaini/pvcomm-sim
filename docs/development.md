@@ -87,4 +87,4 @@ M2事件索引采用临时SQLite、追加字节摄入和联合时间/ID索引；
 
 `tests/lab/test_normal_scenarios.py`为真实三站、NASA/pvlib/pandapower和独立抓包验收，20个两变体用例另加日落用例，共21项；必须冻结干净代码、新持久目录、顺序运行，可用pytest -k选择小切片。普通CI不运行这些特权用例。N02变体0/1/2分别为夜间/日出/日落的真实历史时刻（UTC），不倍速推进。来源小时零阶保持与模型太阳几何不构成真实秒级气象。完整覆盖仅以实际lab结果为准。
 
-新增qc/v04-normal-schedule-v1在独立实验质量后验证任务成员、命令独占证据、实际总召唤、正常本地停机拒绝和维护恢复。保留旧normal_regression=false等结果，不能用新profile把原正常回归改成成功。标签和故障核验仍未实现。相关决策见ADR0015。
+新增qc/v04-normal-schedule-v2在独立实验质量后验证任务成员、命令独占证据、实际总召唤、正常本地停机拒绝和维护恢复。保留旧normal_regression=false等结果，不能用新profile把原正常回归改成成功。标签和故障核验仍未实现。相关决策见ADR0015。

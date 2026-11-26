@@ -14,7 +14,7 @@ from pvcomm.config.presets import configuration
 from pvcomm.config.scenes import ScenarioConfig, canonical_hash, instantiate_scenario, load_scenario
 from pvcomm.domain.command import CommandResult, ObservationUnavailable
 from pvcomm.protocol.c104_runtime import C104Master
-from pvcomm.qc.schedule import audit_schedule
+from pvcomm.qc.schedule import audit_schedule, normal_transport_quality
 from pvcomm.web.observation_index import ObservationIndex
 
 
@@ -429,3 +429,15 @@ def test_failed_observation_publication_does_not_publish_an_unrecorded_value() -
     with pytest.raises(OSError):
         master._publish_observation("PV01", 1008, 12.0, True, "PERIODIC")
     assert not master._observations
+
+
+def test_normal_scene_cannot_drop_the_strict_cross_endpoint_gate() -> None:
+    experiment: dict[str, Any] = {
+        "passed": True,
+        "transport_observations": {"PV01": {"same_bytes": False}},
+    }
+    # Fault-profile quality may be valid, but that cannot certify normal transport.
+    assert not normal_transport_quality(experiment)["passed"]
+    experiment["transport_observations"]["PV01"]["same_bytes"] = True
+    assert normal_transport_quality(experiment)["passed"]
+    assert not normal_transport_quality({"transport_observations": {}})["passed"]

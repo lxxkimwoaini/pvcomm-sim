@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -22,7 +23,16 @@ from pvcomm.pipeline.iec104_parser import PARSER_VERSION
 from pvcomm.qc.experiment import evaluate_experiment
 from pvcomm.storage.parquet import read_jsonl
 
-VERSION = "v04-normal-schedule-v1"
+VERSION = "v04-normal-schedule-v2"
+
+
+def normal_transport_quality(experiment: dict[str, Any]) -> dict[str, Any]:
+    """Normal cases retain the original strict P0/P1 correspondence gate."""
+    endpoints = experiment["transport_observations"]
+    return {
+        "passed": bool(endpoints) and all(r["same_bytes"] for r in endpoints.values()),
+        "evidence": endpoints,
+    }
 
 
 def audit_schedule(
@@ -270,6 +280,14 @@ def qc_schedule(root: Path) -> dict[str, Any]:
         == json.loads((root / "power_config.json").read_bytes())
     )
     experiment = evaluate_experiment(root)
+    transport = normal_transport_quality(experiment)
+    repository = Path(__file__).resolve().parents[3]
+    evaluator = subprocess.check_output(
+        ["git", "-C", str(repository), "rev-parse", "HEAD"], text=True
+    ).strip()
+    evaluator_dirty = bool(
+        subprocess.check_output(["git", "-C", str(repository), "status", "--porcelain"], text=True)
+    )
     master = read_jsonl(list((root / "observed").glob("master_events*.jsonl")))
     terminal = read_jsonl(list((root / "truth").glob("terminal_events*.jsonl")))
     objects = read_jsonl([root / "parsed" / PARSER_VERSION / "iec104_objects.jsonl"])
@@ -308,14 +326,20 @@ def qc_schedule(root: Path) -> dict[str, Any]:
     report = {
         "qc_version": VERSION,
         "run_id": manifest["run_id"],
+        "run_code_version": manifest["code_version"],
+        "evaluation_code_version": evaluator,
+        "evaluation_code_dirty": evaluator_dirty,
         "scope": "Oracle_normal_schedule_acceptance_not_anomaly_labels",
         "configuration_integrity": integrity,
         "experiment_quality": experiment,
         "scheduled_business": business,
         "telemetry_and_initial_interrogation": telemetry,
         "normal_context": context,
+        "normal_transport": transport,
         "passed": integrity
+        and not evaluator_dirty
         and experiment["passed"]
+        and transport["passed"]
         and business["passed"]
         and all(v["passed"] for v in telemetry.values())
         and all(v["passed"] for v in context.values()),

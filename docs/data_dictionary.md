@@ -77,4 +77,4 @@ truth/scenario保存source.yaml、effective.json、expanded-plan.json；manifest
 
 master_dispatch_allocated附加observed_available_kw（容量分配为null），记录真正消费的主站链路观测，不是可信独立M3气象/电气信息。调度QC验证这些值在分配前确已接收且未过期；不读取Oracle填补主站缺失值。六表Arrow字段不改，附加信息仍保存在已版本化payload_json中。
 
-qc/v04-normal-schedule-v1仅为Oracle正常场景验收；command_assessments保留accepted_complete/rejected/timeout等独立证据，不生成正式异常标签。旧profile及QC目录均不变。
+qc/v04-normal-schedule-v2仅为Oracle正常场景验收；command_assessments保留accepted_complete/rejected/timeout等独立证据，不生成正式异常标签。旧profile及QC目录均不变。
