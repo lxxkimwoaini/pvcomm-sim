@@ -6,6 +6,7 @@ import hashlib
 import json
 import subprocess
 import tempfile
+from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +16,7 @@ from pvcomm.qc.experiment import evaluate_experiment
 from pvcomm.qc.pcap import read_apdus
 from pvcomm.storage.parquet import read_jsonl
 
-VERSION = "v04-a01-mechanism-v1"
+VERSION = "v04-a01-mechanism-v2"
 
 
 def audit_operations(
@@ -176,6 +177,31 @@ def communication_effects(
         ]
         sent_inside = [r for r in source if begin <= r["available_at"] < end]
         received_inside = [r for r in received if begin <= r["available_at"] < end]
+        # TCP/IEC104 backpressure can stop new sends soon after a link fails.
+        # Match actual P1 transmissions over the entire verified blocked phase
+        # to P0 deliveries; do not require another send in the inner interval.
+        arrivals: dict[tuple[Any, ...], deque[dict[str, Any]]] = defaultdict(deque)
+
+        def signature(row: dict[str, Any]) -> tuple[Any, ...]:
+            return tuple(row[k] for k in ("src_ip", "dst_ip", "src_port", "dst_port", "data_hex"))
+
+        for row in sorted(received, key=lambda r: r["available_at"]):
+            arrivals[signature(row)].append(row)
+        withheld = []
+        for row in sorted(source, key=lambda r: r["available_at"]):
+            queue = arrivals[signature(row)]
+            arrival = queue.popleft() if queue else None
+            if active["ts_event_utc_ns"] <= row["available_at"] < end and (
+                arrival is None or arrival["available_at"] >= end
+            ):
+                withheld.append(
+                    {
+                        "p1_frame_ref": row["packet_index"],
+                        "p1_available_at": row["available_at"],
+                        "p0_frame_ref": arrival["packet_index"] if arrival else None,
+                        "p0_available_at": arrival["available_at"] if arrival else None,
+                    }
+                )
         observations = [
             r
             for r in master
@@ -212,7 +238,9 @@ def communication_effects(
             "p0_measurement_apdus_inside": len(received_inside),
             "p1_frame_refs": [r["packet_index"] for r in sent_inside],
             "p0_frame_refs": [r["packet_index"] for r in received_inside],
-            "delivery_gap_observed": bool(sent_inside) and not received_inside,
+            "withheld_measurement_apdus": len(withheld),
+            "withheld_evidence": withheld,
+            "delivery_gap_observed": bool(withheld) and not received_inside,
             "master_measurements_inside": sum(
                 begin <= r["available_at"] < end for r in observations
             ),
@@ -225,6 +253,7 @@ def communication_effects(
             else None,
         }
     return {
+        "verified_blocked_interval_utc_ns": [active["ts_event_utc_ns"], end],
         "diagnostic_interval_utc_ns": [begin, end],
         "restoration_completed_utc_ns": recovery_start,
         "stations": rows,

@@ -365,3 +365,11 @@ V0.4b真实批次已实际结束：21 passed/2907.66s、退出0；N01–N10各�
 新增validate-fault-scenario/run-fault、独立A01机制QC及模板生成脚本，同步schema/数据字典/README。QC分别保留实验质量、施加事实、双端影响和恢复观测；正式label_quality仍not_evaluated，不放宽旧正常门禁。相关单元37 passed/0.57s；Windows完整check退出0、199 passed/40 deselected、mypy104及Ruff/schema/前端质量/Vitest3/build通过；随后新增生成脚本的全仓Ruff/format/mypy105退出0，生成配置与validate-fault-scenario实际退出0。保留既有两条HTML缩进warning和817.73kB构建提示。
 
 当前A01尚未通过真实验收；下一步冻结clean代码，在/var/lib/pvcomm下新持久目录顺序执行三站低/中/高持续时间和站点/子集/区域/全局范围，首次失败停止批次并保留证据，再核验旧正常兼容。A02/A04/A05/A06/A08、配对、正式标签及完整V0.4c–f尚未完成；不生成720h或训练。
+
+### A01首轮失败及背压证据修正
+
+候选5c21fe48a6fd11679ebff75f93ec7f4f50284e97已push，CI45758875823及PR CI45758882136实际success。冻结源码/var/lib/pvcomm/sources/v04c_a01_s1，科学/Arrow206 passed/33 deselected、12.59s。首项真实single-low在/var/lib/pvcomm/runs/v04c_a01_s1/lab/test_real_a01_single_low_0/run_ed094257f9434adeb15b6e4705f7f815，1 failed/177.13s；失败即停，其余四项及兼容未执行。completed、clean、cleanup=[]，原独立质量和施加核验通过，但delivery_gap_observed断言失败，不能计A01通过。原PCAP/日志及qc/v04-a01-mechanism-v1报告保留。
+
+实际disabled约20.031s至25.069s，P0作用期间无PV01测量，P1在初始1秒发送6条测量后背压停止；内区间要求P1持续发送导致漏判。v2改为经核验阻断期内真实P1/P0独占匹配并留帧索引，仍保留内区间无交付及旧质量门槛。新增真实SIGTERM恢复测试尚未执行；单元18 passed/0.30s、Ruff和mypy105实际退出0。下一步普通总检、新冻结六项A01及旧正常兼容；当前仍未验收。
+
+修正后Windows完整check退出0：200 passed/41 deselected、4.11s；Ruff/format、mypy105、schema/生成类型、前端lint/typecheck/Vitest3/build通过，既有两条缩进warning及817.73kB构建提示保留，日志outputs/v04c-s2-check.log。随后为single-low真实用例接入validate→run-fault→parse --parquet→qc --profile fault全CLI链路，逐命令保存结果；六项lab收集、Ruff/format/mypy105实际通过，尚待冻结执行。

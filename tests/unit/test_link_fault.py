@@ -18,7 +18,7 @@ from pvcomm.config.faults import (
     load_fault_scenario,
 )
 from pvcomm.network.regional import RegionalNetwork
-from pvcomm.qc.fault import audit_operations
+from pvcomm.qc.fault import audit_operations, communication_effects
 from pvcomm.scenario.link_fault import LinkFaultController
 
 
@@ -226,3 +226,70 @@ def test_restoration_error_is_preserved_and_foreign_port_rejected(
     with pytest.raises(RuntimeError, match="restore failure"):
         controller.close()
     assert '"event_type": "restore_failed"' in (tmp_path / "truth/fault/events.jsonl").read_text()
+
+
+def test_backpressure_uses_matched_p1_p0_delivery_not_later_sends() -> None:
+    config = fixture_config()
+    start = 1_000_000_000_000
+    events = [
+        {"event_type": "fault_active", "ts_event_utc_ns": start},
+        {"event_type": "restore_requested", "ts_event_utc_ns": start + 5_000_000_000},
+        {"event_type": "restore_verified", "ts_event_utc_ns": start + 5_010_000_000},
+    ]
+    packet = {
+        "src_ip": "10.204.1.2",
+        "dst_ip": "10.204.1.1",
+        "src_port": 2404,
+        "dst_port": 12345,
+        "type_id": 13,
+        "data_hex": "synthetic_fixture_not_a_wire_frame",
+        "packet_index": 10,
+        "available_at": start + 100_000_000,
+    }
+    delivery = {**packet, "packet_index": 20, "available_at": start + 6_000_000_000}
+    captures: dict[str, dict[str, Any]] = {
+        "primary": {"apdus": [delivery]},
+        "diagnostic_rtu1": {"apdus": [packet]},
+        "diagnostic_rtu2": {"apdus": []},
+        "diagnostic_rtu3": {"apdus": []},
+    }
+    row = communication_effects(config, events, [], [], captures)["stations"]["PV01"]
+    assert row["p1_measurement_apdus_inside"] == 0
+    assert row["delivery_gap_observed"] and row["withheld_measurement_apdus"] == 1
+    assert row["withheld_evidence"][0]["p0_frame_ref"] == 20
+    # An actually delivered early packet is not withheld just because the
+    # diagnostic inner window contains no traffic.
+    delivery["available_at"] = start + 200_000_000
+    assert not communication_effects(config, events, [], [], captures)["stations"]["PV01"][
+        "delivery_gap_observed"
+    ]
+    delivery["available_at"] = start + 5_000_000_000
+    assert (
+        communication_effects(config, events, [], [], captures)["stations"]["PV01"][
+            "withheld_measurement_apdus"
+        ]
+        == 1
+    )
+    # Reused APDU content on another TCP connection cannot prove delivery.
+    delivery["available_at"] = start + 200_000_000
+    delivery["dst_port"] = 54321
+    assert (
+        communication_effects(config, events, [], [], captures)["stations"]["PV01"][
+            "withheld_measurement_apdus"
+        ]
+        == 1
+    )
+    delivery["dst_port"] = packet["dst_port"]
+    # A P0 delivery may be consumed only once when identical content repeats.
+    captures["diagnostic_rtu1"]["apdus"].append({**packet, "packet_index": 11})
+    assert (
+        communication_effects(config, events, [], [], captures)["stations"]["PV01"][
+            "withheld_measurement_apdus"
+        ]
+        == 1
+    )
+    # Silence without an actual P1 transmission is not evidence of withholding.
+    captures["diagnostic_rtu1"]["apdus"].clear()
+    assert not communication_effects(config, events, [], [], captures)["stations"]["PV01"][
+        "delivery_gap_observed"
+    ]

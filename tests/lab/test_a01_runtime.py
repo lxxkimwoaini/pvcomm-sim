@@ -1,9 +1,11 @@
 """Real A01 runs. Independent frozen evidence is required for every invocation."""
 
+import hashlib
 import json
 import os
 import subprocess
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -19,7 +21,7 @@ from pvcomm.config.faults import (
     instantiate_fault,
 )
 from pvcomm.pipeline.iec104_parser import parse_run
-from pvcomm.qc.fault import qc_fault
+from pvcomm.qc.fault import VERSION, qc_fault
 from pvcomm.scenario.isolated_runner import run_isolated
 from pvcomm.storage.parquet import export_parquet
 from pvcomm.storage.power_parquet import export_power_parquet
@@ -32,6 +34,26 @@ CASES: list[tuple[FaultScope, int, int]] = [
     (RegionScope(kind="region", region_id="R1"), 20, 1),
     (GlobalScope(kind="global"), 60, 0),
 ]
+
+
+def run_cli_evidence(directory: Path, name: str, *arguments: str) -> None:
+    command = [sys.executable, "-m", "pvcomm.cli", *arguments]
+    started = time.monotonic()
+    result = subprocess.run(command, capture_output=True, text=True)
+    (directory / f"cli-{name}.json").write_text(
+        json.dumps(
+            {
+                "command": command,
+                "exit_code": result.returncode,
+                "elapsed_s": time.monotonic() - started,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    assert result.returncode == 0, (result.stdout, result.stderr)
 
 
 @pytest.mark.lab
@@ -49,22 +71,43 @@ def test_real_a01(tmp_path: Path, scope: FaultScope, duration: int, variant: int
     config = instantiate_fault(template, f"run_{uuid.uuid4().hex}")
     scenario = config.background
     before = subprocess.check_output(["ip", "netns", "list"], text=True)
-    root = run_isolated(
-        scenario.simulation.protocol,
-        source,
-        tmp_path,
-        power=scenario.simulation,
-        scenario=scenario,
-        fault=config,
-    )
+    cli_case = scope.kind == "station" and len(scope.station_ids) == 1 and duration == 5
+    if cli_case:
+        run_cli_evidence(tmp_path, "validate", "validate-fault-scenario", "--config", str(source))
+        run_cli_evidence(
+            tmp_path,
+            "run",
+            "run-fault",
+            "--config",
+            str(source),
+            "--output-root",
+            str(tmp_path),
+            "--run-id",
+            scenario.simulation.protocol.run_id,
+        )
+        root = tmp_path / scenario.simulation.protocol.run_id
+    else:
+        root = run_isolated(
+            scenario.simulation.protocol,
+            source,
+            tmp_path,
+            power=scenario.simulation,
+            scenario=scenario,
+            fault=config,
+        )
     manifest = json.loads((root / "manifest.json").read_bytes())
     assert manifest["status"] == "completed" and not manifest["code_dirty"]
     assert not manifest["cleanup_errors"]
     assert subprocess.check_output(["ip", "netns", "list"], text=True) == before
-    parse_run(root)
-    export_parquet(root)
-    export_power_parquet(root)
-    report = qc_fault(root)
+    if cli_case:
+        run_cli_evidence(tmp_path, "parse", "parse", "--run-dir", str(root), "--parquet")
+        run_cli_evidence(tmp_path, "qc", "qc", "--run-dir", str(root), "--profile", "fault")
+        report = json.loads((root / "qc" / VERSION / "report.json").read_bytes())
+    else:
+        parse_run(root)
+        export_parquet(root)
+        export_power_parquet(root)
+        report = qc_fault(root)
     assert report["passed"], report
     assert report["label_quality"]["status"] == "not_evaluated"
     effects = report["communication_effects"]
@@ -102,3 +145,71 @@ def test_real_a01(tmp_path: Path, scope: FaultScope, duration: int, variant: int
             scenario=scenario,
             fault=config,
         )
+
+
+@pytest.mark.lab
+def test_a01_sigterm_restores_before_endpoint_shutdown(tmp_path: Path) -> None:
+    if sys.platform != "linux" or os.environ.get("PVCOMM_ALLOW_LAB") != "1":
+        pytest.skip("requires authorized isolated Linux, retained weather and science/Arrow")
+    config = a01_scenario(RegionScope(kind="region", region_id="R1"), 60)
+    source = tmp_path / "input.yaml"
+    source.write_text(config.model_dump_json(indent=2), encoding="utf-8")
+    identity = f"run_{uuid.uuid4().hex}"
+    root = tmp_path / identity
+    before = subprocess.check_output(["ip", "netns", "list"], text=True)
+    routes = subprocess.check_output(["ip", "-j", "route"], text=True)
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "pvcomm.cli",
+            "run-fault",
+            "--config",
+            str(source),
+            "--output-root",
+            str(tmp_path),
+            "--run-id",
+            identity,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        deadline = time.monotonic() + 60
+        journal = root / "truth/fault/events.jsonl"
+        while True:
+            if journal.exists() and '"event_type": "fault_active"' in journal.read_text():
+                break
+            if process.poll() is not None or time.monotonic() > deadline:
+                pytest.fail("A01 did not reach verified active state before cancellation")
+            time.sleep(0.05)
+        process.terminate()
+        stdout, stderr = process.communicate(timeout=30)
+        assert process.returncode == 130, (stdout, stderr)
+        manifest = json.loads((root / "manifest.json").read_bytes())
+        assert manifest["status"] == "cancelled" and manifest["cleanup_errors"] == []
+        assert (
+            manifest["fault_contract"]["events_sha256"]
+            == hashlib.sha256(journal.read_bytes()).hexdigest()
+        )
+        assert all(
+            c["exit_code"] == 0 and c["statistics"]["packets_dropped_by_kernel"] == 0
+            for c in manifest["captures"]
+        )
+        events = [json.loads(line) for line in journal.read_text().splitlines()]
+        restored = [r for r in events if r["event_type"] == "restore_verified"]
+        assert len(restored) == 1 and restored[0]["reason"] == "run_finalization"
+        assert restored[0]["before"]["state"] == "disabled"
+        assert restored[0]["after"]["state"] == "forwarding"
+        stopped = [
+            json.loads(line)
+            for line in (root / "observed/master_events_master.jsonl").read_text().splitlines()
+            if json.loads(line)["event_type"] == "master_stopped"
+        ]
+        assert len(stopped) == 1 and stopped[0]["ts_mono_ns"] >= restored[0]["ts_mono_ns"]
+        assert subprocess.check_output(["ip", "netns", "list"], text=True) == before
+        assert subprocess.check_output(["ip", "-j", "route"], text=True) == routes
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            process.communicate(timeout=30)
