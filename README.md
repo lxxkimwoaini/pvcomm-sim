@@ -149,6 +149,8 @@ PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli qc --profile schedule --run-di
 
 新增独立故障外层及A01自有桥端口中断，站点/子集/区域/全局范围共用运行器；不停止电力模型。操作前后实际读回、失败及finally撤销保存在Oracle，M2不读取故障计划。其余五类P0尚未实现。
 
+A01运行另需Linux `strace`，只跟踪本次隔离端点的固定socket调用，证据存Oracle；用于区分c104写入前回调与实际接口发送。严格正常QC和解析/丢包/对齐门槛保留，规则见[ADR0017](docs/decisions/0017-v04-prewrite-testfr-evidence.md)。
+
 ```sh
 uv run python scripts/make_fault_scenario.py --scope station --stations PV01 --duration 5 --variant 0 --output outputs/new-fault.yaml
 uv run pvcomm validate-fault-scenario --config outputs/new-fault.yaml

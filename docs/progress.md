@@ -373,3 +373,17 @@ V0.4b真实批次已实际结束：21 passed/2907.66s、退出0；N01–N10各�
 实际disabled约20.031s至25.069s，P0作用期间无PV01测量，P1在初始1秒发送6条测量后背压停止；内区间要求P1持续发送导致漏判。v2改为经核验阻断期内真实P1/P0独占匹配并留帧索引，仍保留内区间无交付及旧质量门槛。新增真实SIGTERM恢复测试尚未执行；单元18 passed/0.30s、Ruff和mypy105实际退出0。下一步普通总检、新冻结六项A01及旧正常兼容；当前仍未验收。
 
 修正后Windows完整check退出0：200 passed/41 deselected、4.11s；Ruff/format、mypy105、schema/生成类型、前端lint/typecheck/Vitest3/build通过，既有两条缩进warning及817.73kB构建提示保留，日志outputs/v04c-s2-check.log。随后为single-low真实用例接入validate→run-fault→parse --parquet→qc --profile fault全CLI链路，逐命令保存结果；六项lab收集、Ruff/format/mypy105实际通过，尚待冻结执行。
+
+### A01第二轮及长中断质量失败
+
+修正提交4bf0c7a2fd56738cbf1b1fa27346ea50023a70fb已push，push CI45760032224、PR CI45760041019实际success。新冻结/var/lib/pvcomm/sources/v04c_a01_s2；科学/Arrow207 passed/34 deselected、12.12s。真实批次/var/lib/pvcomm/runs/v04c_a01_s2：1 passed、1 failed/354.70s；失败后停止，子集/区域/全局/取消及兼容尚未执行。
+
+single-low的run_4c42bb06e82c4195823854befcef2201实际通过完整CLI及机制断言：1867/1867完整APDU、四路0drop、P99=3.835006ms，disabled期间6条P1测量未及时交付，物理最大间隔1.004976s，未选站调控继续。恢复后首次遥测约2.444791s，可能为TCP排队的旧报文，不将其单独当作最新状态或完整业务恢复标签。
+
+single-medium的run_a0cf52da16704be79783a0f1a10256fc真实completed/clean/cleanup=[]，独立质量失败于主站原始回调比P0多一条TESTFR_ACT（680443000000），逻辑38.642s，随后39.273s进入CLOSED_AWAIT_RECONNECT；不能计有效通过。原报告及所有证据保留，当前QC门槛未修改。实际核对c104 v2.2.1固定submodule m-unkel/lib60870@97c5f856e0cf78c938f549f8f9f83f6aba8a3cd5，writeToSocket在Socket_write之前调用rawMessageHandler；需要额外内核证据区分发送尝试与实际接口发送，不能仅凭该源码豁免失败。源码快照outputs/lib60870-97c5-{cs104_connection,socket_linux}.c及诊断脚本保留。
+
+在已授权WSL隔离实验范围安装strace6.19及libunwind8（apt-get退出0，无既有包升级/删除）；同一冻结4bf0c7a启动独立诊断/var/lib/pvcomm/runs/v04c_a01_sendprobe_s3，记录真实sendto/sendmsg/connect/close/shutdown调用，只用于定位，不预先计验收。namespace实验顺序执行，S2结束后列表为空。下一步依据实际系统调用结果修复或明确保留限制；A01及V0.4c均未验收。
+
+S3诊断退出1、194.041s，依旧只失败于原主站多余TESTFR回调；实际sendto6字节已被内核接受，随后同socket ENOTCONN及close，P0没有该报文。新增ADR0017，A01端点增加固定strace Oracle证据；v3独立核验哈希/清单/退出及窄范围TESTFR尝试核算，原正常结果和其他质量要求保留。-D PID/tracee探针实际一致，退出0。新单元36 passed/0.38s、Ruff及mypy108通过；最初测试揭示独立模块truth父目录创建问题及长行格式问题，已修正，未删除测试。新机制尚待普通总检和新冻结真实取消/各范围验收。
+
+内核证据候选Windows完整check退出0：218 passed/41 deselected、4.54s，Ruff/format/mypy108/schema/生成类型和前端lint/typecheck/Vitest3/build通过；日志outputs/v04c-s4-check.log。既有两条HTML缩进warning和817.73kB提示保留。当前普通测试验证证据缺失、错误方向/类型/站点/时间、部分写入、复用证据、清单/哈希不符以及其他质量失败均拒绝；真实跟踪取消和各强度尚待冻结执行。

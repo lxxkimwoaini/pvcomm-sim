@@ -1,0 +1,15 @@
+# ADR0017：以独立系统调用核验未在接口出现的TESTFR发送尝试
+
+2026-11-26，A01长中断前置修复。不是新的异常类别，不更改协议计时器、正常QC或正式标签定义。
+
+第二轮20秒中断的原始TESTFR_ACT回调比P0多一条，故按既有门禁失败并保留。追加同冻结4bf0c7a的独立诊断`v04c_a01_sendprobe_s3`仍失败于同项。strace6.19记录：socket33570的sendto于UTC1795670604.832411返回6；1795670605.344353的shutdown返回ENOTCONN，随后close成功；接口未捕获该TESTFR。不能把内核接受写入当成已上线或已送达。
+
+核对c104 v2.2.1固定子模块m-unkel/lib60870@97c5f856e0cf78c938f549f8f9f83f6aba8a3cd5的`lib60870-C/src/iec60870/cs104/cs104_connection.c`中writeToSocket，以及`src/hal/socket/linux/socket_linux.c`中Socket_write：原始发送回调在非阻塞send之前发生。c104的Connection.cpp再将Python回调排入异步调度队列。因此发送回调是尝试证据，不能等同于实际接口发送；接收回调和PCAP仍需逐条对应。源码快照在本机outputs，来源及精确版本保留，不提交外部源码。
+
+仅在A01受控运行中，以`strace -D -ff`包裹本次自有namespace中的已知Python端点，保留worker直接PID和既有信号生命周期；不修改原生协议栈。跟踪范围固定为sendto/connect/shutdown/close，不接收用户系统命令。原始记录、角色/worker/tracer身份、工具版本、完整退出及每文件哈希仅写Oracle的`truth/socket_audit/`及manifest.socket_audit。采样资源计入tracer PID；退出须待其结束再核对日志和清理namespace。旧正常路径不启用跟踪。
+
+故障QC v3增加严格的内核证据完整性门禁。只有确切TESTFR_ACT、master_send、实际已核验A01目标与阻断半开区间、100ms内唯一相同socket方向及字节的sendto返回6、恢复前同fd的ENOTCONN和成功close，且没有对应P0交付，才能记为`kernel_accepted_TESTFR_attempt_not_observed_on_interface`。关联独占；缺证据、其他类型（包括I帧命令）、接收回调、错误站点、部分/失败写入、跨边界或歧义均不能据此放行。此结果不是发送成功、交付成功或业务异常标签。
+
+在A01显式质量报告中按上述证据核算额外发送尝试，并嵌套保留原strict_normal_comparison；正常QC默认入口及normal_regression仍按原零多余回调要求报告。所有已捕获完整APDU解析分母/≥99.5%、各端工具丢失0、P99≤100ms、接收回调、RTU回调、Arrow及物理QC不变，其他失败不由该项掩盖。新v3不能无证据放行旧S2失败运行；旧v1/v2和诊断失败记录不改写。
+
+这是对原始回调语义和证据链的工程修正，未改变科研异常定义或候选强度。新运行必须冻结验证取消/清理及低中高/各范围；strace开销属于当前开发运行测量，不据此重报V0.3的一小时性能。后续如其他帧出现类似情况，先保留失败并另行核查，不能扩展豁免列表。

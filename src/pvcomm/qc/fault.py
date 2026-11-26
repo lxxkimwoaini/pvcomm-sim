@@ -14,9 +14,10 @@ from pvcomm.config.faults import FaultScenarioConfig, instantiate_fault, load_fa
 from pvcomm.config.scenes import canonical_hash
 from pvcomm.qc.experiment import evaluate_experiment
 from pvcomm.qc.pcap import read_apdus
+from pvcomm.qc.socket_audit import account_socket_quality, audit_unobserved_tests
 from pvcomm.storage.parquet import read_jsonl
 
-VERSION = "v04-a01-mechanism-v2"
+VERSION = "v04-a01-mechanism-v3"
 
 
 def audit_operations(
@@ -287,7 +288,13 @@ def evaluate_fault(root: Path) -> dict[str, Any]:
     operations = audit_operations(config, manifest, events)
     experiment = evaluate_experiment(root)
     effects = None
+    socket_evidence = None
     if operations["passed"]:
+        socket_evidence = audit_unobserved_tests(root, events, config.target_stations())
+        # Normal regression remains strict. Only independently audited, pre-write
+        # TESTFR attempts during this A01 block can resolve extra send callbacks.
+        # Every received callback and every actual captured APDU still corresponds.
+        account_socket_quality(experiment, socket_evidence)
         effects = communication_effects(
             config,
             events,
@@ -312,6 +319,7 @@ def evaluate_fault(root: Path) -> dict[str, Any]:
             "operations": operations,
         },
         "communication_effects": effects,
+        "socket_evidence": socket_evidence,
         "label_quality": {"status": "not_evaluated"},
         "passed": experiment["passed"] and configuration_ok and operations["passed"],
         "scope": "A01_mechanism_and_data_quality_not_formal_label_acceptance",

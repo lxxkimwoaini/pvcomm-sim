@@ -46,8 +46,9 @@ def run_isolated(
             raise RuntimeError(f"lab tool is unavailable: {name}")
     dependencies = {name: version(name) for name in ("c104", "pydantic", "PyYAML")}
     if fault is not None:
-        if shutil.which("bridge") is None:
-            raise RuntimeError("lab tool is unavailable: bridge")
+        for name in ("bridge", "strace"):
+            if shutil.which(name) is None:
+                raise RuntimeError(f"lab tool is unavailable: {name}")
         if fault.background != scenario or not isinstance(power, V03Config):
             raise ValueError("fault and compiled scenario disagree")
         if instantiate_fault(load_fault_scenario(source), config.run_id) != fault:
@@ -163,31 +164,40 @@ def run_isolated(
     )
     feeder = None
     fault_controller = None
+    socket_audit = None
     resources = ResourceSampler(root, origin) if isinstance(power, V03Config) else None
 
     def launch(role: str, namespace: str) -> subprocess.Popen[bytes]:
         log = (root / f"{role}.stderr.log").open("x", encoding="utf-8")
         logs.append(log)
+        command = [
+            sys.executable,
+            "-m",
+            "pvcomm.scenario.lab_worker",
+            "--run-dir",
+            str(root),
+            "--role",
+            role,
+        ]
+        if socket_audit is not None:
+            command = socket_audit.command(role, command)
         process = subprocess.Popen(
-            [
-                *network.prefix(namespace),
-                sys.executable,
-                "-m",
-                "pvcomm.scenario.lab_worker",
-                "--run-dir",
-                str(root),
-                "--role",
-                role,
-            ],
+            [*network.prefix(namespace), *command],
             stdin=subprocess.DEVNULL,
             stdout=log,
             stderr=log,
             start_new_session=True,
         )
         processes.append(process)
+        if socket_audit is not None:
+            socket_audit.bind(role, process.pid)
         return process
 
     try:
+        if fault is not None:
+            from pvcomm.capture.socket_audit import SocketAudit
+
+            socket_audit = SocketAudit(root)
         if power is not None:
             from pvcomm.power.runtime import FeederRuntime, prepare_power
 
@@ -259,6 +269,7 @@ def run_isolated(
                 resources.sample(
                     [p.pid for p in processes]
                     + [c.process_id for c in captures if c.process_id is not None]
+                    + (socket_audit.tracer_pids() if socket_audit is not None else [])
                 )
             if feeder is not None:
                 feeder.step()
@@ -342,6 +353,11 @@ def run_isolated(
                 process.kill()
                 process.wait(timeout=5)
                 failures.append(f"worker {process.pid} required kill")
+        if socket_audit is not None:
+            try:
+                manifest["socket_audit"] = socket_audit.finish()
+            except Exception as exc:
+                failures.append(f"socket audit finalization: {exc}")
         capture_results = []
         for capture in reversed(captures):
             try:

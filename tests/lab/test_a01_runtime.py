@@ -131,7 +131,7 @@ def test_real_a01(tmp_path: Path, scope: FaultScope, duration: int, variant: int
     assert response.status_code == 200
     assert all(
         word not in response.text
-        for word in ("fault_contract", "A01", "single_fault_development", "event_1")
+        for word in ("fault_contract", "A01", "single_fault_development", "event_1", "socket_audit")
     )
     for row in response.json()["stations"]:
         if row["station_id"] in config.target_stations():
