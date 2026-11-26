@@ -212,6 +212,7 @@ def test_repeated_action_uses_new_application_task_id() -> None:
     def transmit(**_: Any) -> bool:
         import time
 
+        assert type(point.value) is float  # c104's native setter requires float even for 10 kW.
         endpoint._confirmations.observe(
             "PV01", Confirmation(1, 3001, 10, True, "unit"), time.monotonic_ns()
         )

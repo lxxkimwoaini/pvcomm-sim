@@ -647,6 +647,9 @@ class C104Master:
     ) -> CommandResult:
         if not math.isfinite(target_kw) or target_kw < 0:
             raise ValueError("setpoint must be finite and nonnegative")
+        # c104's pybind setter distinguishes Python int from native float.
+        # Both are valid numeric kW inputs to this application API.
+        target_kw = float(target_kw)
         station = self._remote_stations[station_config.station_id]
         point = station.get_point(io_address=3001)
         if point is None:
