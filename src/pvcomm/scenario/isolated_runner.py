@@ -22,6 +22,7 @@ from pvcomm.clock import ClockOrigin, SceneClock
 from pvcomm.config.faults import (
     FaultScenarioConfig,
     LinkDelay,
+    TerminalFault,
     instantiate_fault,
     load_fault_scenario,
 )
@@ -229,9 +230,14 @@ def run_isolated(
         if fault is not None and isinstance(network, RegionalNetwork):
             from pvcomm.scenario.delay_fault import DelayFaultController
             from pvcomm.scenario.link_fault import LinkFaultController
+            from pvcomm.scenario.terminal_fault import TerminalFaultController
 
             controller_type = (
-                DelayFaultController if isinstance(fault.fault, LinkDelay) else LinkFaultController
+                DelayFaultController
+                if isinstance(fault.fault, LinkDelay)
+                else TerminalFaultController
+                if isinstance(fault.fault, TerminalFault)
+                else LinkFaultController
             )
             fault_controller = controller_type(root, fault, network, origin)
         if isinstance(network, RegionalNetwork):

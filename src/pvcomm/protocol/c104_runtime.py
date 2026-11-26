@@ -20,6 +20,7 @@ from typing import Any, Protocol
 from pvcomm.config.lab import V01StationConfig
 from pvcomm.domain.command import CommandResult, ObservationUnavailable
 from pvcomm.protocol.confirmation import ConfirmationTracker, confirmations
+from pvcomm.protocol.terminal_faults import TerminalFaultRuntime
 
 RecordEvent = Callable[[str, dict[str, object]], None]
 RecordRaw = Callable[[str, str, bytes], None]
@@ -82,14 +83,17 @@ class C104StationEndpoint:
         record_raw: RecordRaw,
         state: StationModel | None = None,
         logical_elapsed: Callable[[float], float] | None = None,
+        fault: TerminalFaultRuntime | None = None,
     ) -> None:
         c104 = importlib.import_module("c104")
         self._c104 = c104
         self.config = config
         self._record_event = record_event
         self._record_raw = record_raw
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._logical_elapsed = logical_elapsed
+        self.fault = fault
+        self._reporting_mask: frozenset[int] = frozenset()
         self._active = False
         self._next_report_s = float(getattr(config, "telemetry_phase_s", 0))
         self._last_sent_power: float | None = None
@@ -171,6 +175,58 @@ class C104StationEndpoint:
                 *self.extra_points.values(),
             ):
                 point.report_ms = 0
+        if fault is not None:
+            fault.bind(self.set_reporting_mask)
+
+    def measurement_points(self) -> dict[int, Any]:
+        return {
+            1001: self.power_point,
+            1002: self.reactive_point,
+            1003: self.voltage_point,
+            1006: self.accepted_setpoint_point,
+            2001: self.status_point,
+            **self.extra_points,
+        }
+
+    def set_reporting_mask(self, suppressed: frozenset[int]) -> list[int]:
+        """Suspend registration as well as explicit reports so GI cannot bypass a fault.
+
+        Point definitions and current physical values remain in this adapter;
+        restoration re-registers them through c104, never writes wire bytes.
+        """
+        with self._lock:
+            points = self.measurement_points()
+            selected = suppressed & points.keys()
+            for ioa in selected - self._reporting_mask:
+                if not self.station.remove_point(io_address=ioa):
+                    raise RuntimeError(f"c104 could not suspend reporting point {ioa}")
+            restored = self._reporting_mask - selected
+            for ioa in restored:
+                previous = points[ioa]
+                point = self.station.add_point(io_address=ioa, type=previous.type, report_ms=0)
+                if point is None:
+                    raise RuntimeError(f"c104 could not restore reporting point {ioa}")
+                point.value = previous.value
+                if ioa in self.extra_points:
+                    self.extra_points[ioa] = point
+                else:
+                    attr = {
+                        1001: "power_point",
+                        1002: "reactive_point",
+                        1003: "voltage_point",
+                        1006: "accepted_setpoint_point",
+                        2001: "status_point",
+                    }[ioa]
+                    setattr(self, attr, point)
+            self._reporting_mask = frozenset(selected)
+            if restored:
+                self._install_callbacks()
+            registered = sorted(p.io_address for p in self.station.points)
+            if any(ioa in registered for ioa in selected) or any(
+                ioa not in registered for ioa in points.keys() - selected
+            ):
+                raise RuntimeError("c104 reporting registry readback mismatch")
+            return registered
 
     def _refresh_telemetry(self) -> None:
         points = {
@@ -209,7 +265,17 @@ class C104StationEndpoint:
                         self.status_point,
                         *self.extra_points.values(),
                     ):
-                        point.transmit(cause=cause)
+                        if point.io_address not in self._reporting_mask:
+                            point.transmit(cause=cause)
+                        else:
+                            self._record_event(
+                                "terminal_report_suppressed",
+                                {
+                                    "station_id": self.config.station_id,
+                                    "ioa": point.io_address,
+                                    "reason": "periodic" if periodic else "event",
+                                },
+                            )
                     self._last_sent_power, self._last_sent_running = self.state.actual_kw, running
                     self._record_event(
                         "terminal_telemetry_report",
@@ -232,10 +298,14 @@ class C104StationEndpoint:
 
         def on_command(point: Any, previous_info: Any, message: Any) -> Any:
             target = float(point.value)
+            if self.fault is not None:
+                self.fault.delay_response()
             with self._lock:
                 accepted = self.state.accept(target, time.monotonic())
                 if accepted:
                     self.accepted_setpoint_point.value = target
+                    if self.fault is not None:
+                        self.fault.accepted()
                 else:
                     point.info = previous_info
             self._record_event(
@@ -251,7 +321,8 @@ class C104StationEndpoint:
                 },
             )
             if accepted:
-                self.accepted_setpoint_point.transmit(cause=c104.Cot.SPONTANEOUS)
+                if 1006 not in self._reporting_mask:
+                    self.accepted_setpoint_point.transmit(cause=c104.Cot.SPONTANEOUS)
                 return c104.ResponseState.SUCCESS
             return c104.ResponseState.FAILURE
 

@@ -341,6 +341,11 @@ def qc_fault(root: Path) -> dict[str, Any]:
         from pvcomm.qc.delay import evaluate_delay
 
         version, evaluate = DELAY_VERSION, evaluate_delay
+    elif config.fault.fault_type in ("A04", "A05", "A06", "A08"):
+        from pvcomm.qc.terminal import VERSION as TERMINAL_VERSION
+        from pvcomm.qc.terminal import evaluate_terminal
+
+        version, evaluate = TERMINAL_VERSION, evaluate_terminal
     else:
         version, evaluate = VERSION, evaluate_fault
     destination = root / "qc" / version

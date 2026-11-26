@@ -69,9 +69,29 @@ def main() -> None:
     endpoint: C104StationEndpoint | C104Master | None = None
     maintenance: threading.Thread | None = None
     maintenance_errors: list[Exception] = []
+    terminal_fault = None
     try:
         if args.role.startswith("rtu"):
             index = int(args.role[3:]) - 1
+            if "fault_contract" in scenario_metadata:
+                from pvcomm.config.faults import FaultScenarioConfig, TerminalFault
+                from pvcomm.protocol.terminal_faults import TerminalFaultRuntime
+
+                fault_config = FaultScenarioConfig.model_validate_json(
+                    (root / "truth/fault/effective.json").read_bytes()
+                )
+                if (
+                    isinstance(fault_config.fault, TerminalFault)
+                    and config.stations[index].station_id in fault_config.target_stations()
+                ):
+                    terminal_fault = TerminalFaultRuntime(
+                        root,
+                        config.stations[index].station_id,
+                        fault_config.fault,
+                        config.stations[index].telemetry_period_s,
+                        recorder.record_event,
+                        stop,
+                    )
             physical = None
             if power is not None:
                 from pvcomm.power.runtime import PhysicalStationState, read_snapshot
@@ -95,12 +115,15 @@ def main() -> None:
                 logical_elapsed=physical.elapsed
                 if physical is not None and isinstance(power, V03Config)
                 else None,
+                fault=terminal_fault,
             )
             endpoint.start()
             (root / f"{args.role}.ready").touch(exist_ok=False)
             active = True
             next_tick = time.monotonic()
             while not stop.wait(0.05):
+                if terminal_fault is not None:
+                    terminal_fault.step()
                 if power is not None and time.monotonic() >= next_tick:
                     endpoint.tick()
                     while next_tick <= time.monotonic():
@@ -243,6 +266,8 @@ def main() -> None:
         finally:
             try:
                 if endpoint is not None:
+                    if terminal_fault is not None:
+                        terminal_fault.restore("worker_finalization")
                     endpoint.stop()
             finally:
                 recorder.close()

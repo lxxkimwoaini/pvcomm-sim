@@ -60,11 +60,52 @@ class LinkDelay(V01Contract):
         return value
 
 
+class TerminalFault(V01Contract):
+    event_id: Identifier
+    fault_type: Literal["A04", "A05", "A06", "A08"]
+    start_s: Annotated[int, Field(strict=True, ge=1)]
+    duration_s: Annotated[int, Field(strict=True, ge=1)]
+    scope: FaultScope
+    missing_cycles: Literal[2, 5, 12] | None = None
+    response_delay_s: Literal[2, 5, 15] | None = None
+    feedback_duration_s: Literal[10, 30, 60] | None = None
+    recovery_cycles: Literal[1, 3, 5] | None = None
+
+    @field_validator(
+        "missing_cycles",
+        "response_delay_s",
+        "feedback_duration_s",
+        "recovery_cycles",
+        mode="before",
+    )
+    @classmethod
+    def strict_strength(cls, value: object) -> object:
+        if value is not None and type(value) is not int:
+            raise ValueError("terminal fault strength must be an integer")
+        return value
+
+    @model_validator(mode="after")
+    def strength(self) -> Self:
+        names = {
+            "A04": "missing_cycles",
+            "A05": "response_delay_s",
+            "A06": "feedback_duration_s",
+            "A08": "recovery_cycles",
+        }
+        if [name for name in names.values() if getattr(self, name) is not None] != [
+            names[self.fault_type]
+        ]:
+            raise ValueError("exactly the selected terminal mechanism strength is required")
+        return self
+
+
 class FaultScenarioConfig(V01Contract):
-    schema_version: Literal["0.4-fault.1", "0.4-fault.2"]
+    schema_version: Literal["0.4-fault.1", "0.4-fault.2", "0.4-fault.3"]
     purpose: Literal["single_fault_development"]
     background: ScenarioConfig
-    fault: Annotated[LinkInterruption | LinkDelay, Field(discriminator="fault_type")]
+    fault: Annotated[
+        LinkInterruption | LinkDelay | TerminalFault, Field(discriminator="fault_type")
+    ]
 
     def target_stations(self) -> tuple[str, ...]:
         stations = self.background.simulation.protocol.stations
@@ -78,8 +119,36 @@ class FaultScenarioConfig(V01Contract):
     @model_validator(mode="after")
     def references_and_recovery(self) -> Self:
         protocol = self.background.simulation.protocol
-        if protocol.interruption is not None:
+        if protocol.interruption is not None and self.fault.fault_type != "A08":
             raise ValueError("single fault cannot contain a second maintenance/interruption event")
+        if isinstance(self.fault, TerminalFault):
+            fault = self.fault
+            if self.schema_version != "0.4-fault.3":
+                raise ValueError("terminal mechanisms require fault contract 0.4-fault.3")
+            if fault.fault_type == "A04":
+                expected = max(
+                    s.telemetry_period_s
+                    for s in protocol.stations
+                    if s.station_id in self.target_stations()
+                ) * int(fault.missing_cycles or 0)
+                if fault.duration_s != expected:
+                    raise ValueError(
+                        "A04 duration must equal selected maximum report period times cycles"
+                    )
+            if fault.fault_type == "A06" and fault.duration_s != fault.feedback_duration_s:
+                raise ValueError("A06 hold duration must match its strength")
+            if fault.fault_type == "A08":
+                maintenance = protocol.interruption
+                if (
+                    maintenance is None
+                    or not maintenance.planned
+                    or self.target_stations() != (maintenance.station_id,)
+                    or fault.start_s != maintenance.start_s + maintenance.duration_s
+                    or fault.duration_s != 15 * int(fault.recovery_cycles or 0)
+                ):
+                    raise ValueError(
+                        "A08 requires matching single-station planned recovery and 15s cycles"
+                    )
         if isinstance(self.fault, LinkDelay):
             if self.schema_version != "0.4-fault.2":
                 raise ValueError("A02 requires fault contract 0.4-fault.2")

@@ -104,3 +104,9 @@ v04-fault.schema.json新增0.4-fault.2与LinkDelay（A02）：start_s、duration
 qc/v04-a02-mechanism-v1分别给出configuration/operations、原experiment_quality、无未解释双端丢失、双向三阶段实测分布及逐APDU双端帧索引/available_at、恢复GI、物理持续更新和label_quality=not_evaluated。重复内容无法唯一归属时列ambiguous，缺失列unmatched，不填0；每端TCP重组去重重传，时延含TCP有序交付等待，不能当作独立单包传播时延或正式业务标签。evaluation_code_version/dirty从加载模块仓库查询，dirty不能通过。
 
 A02 v2另记录manifest.network.delay_segments（配置端点、内部namespace/双向出口、透明桥及实际ip link读回）。原链路双向基线只迁移一次，不叠加；A01与默认正常网络不启用该内部段。v04-a02-mechanism-v2拒绝将源端AF_PACKET时间之后的qdisc视为双端可测时延，原v1报告保留。
+
+## V0.4c 终端机制增量契约
+
+0.4-fault.3新增TerminalFault（A04/A05/A06/A08），保留旧A01/A02配置。强度字段分别为missing_cycles=2/5/12、response_delay_s=2/5/15、feedback_duration_s=10/30/60、recovery_cycles=1/3/5，拒绝混用及非整数。A04各站持续自身周期数，外层duration_s为最大值；A06从接受触发保持，A08沿用15秒恢复观察周期且首片只接受与计划维护相同的单站。
+
+truth/fault/<station>.state.json保存有界最新状态；terminal_fault_applied/feedback_hold/restored记录原始事件、单调时间、受抑制IOA和实际注册点；truth/fault/control.json仅允许本次事件restore。主站不加载这些文件。v04-terminal-mechanism-v1为独立机制核验，label_quality仍not_evaluated，正式标签另在V0.4d实现。

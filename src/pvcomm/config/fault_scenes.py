@@ -100,3 +100,75 @@ def a02_scenario(
         )
     raw["background"]["business_schedule"] = tasks
     return FaultScenarioConfig.model_validate(raw)
+
+
+def terminal_scenario(
+    code: str, scope: FaultScope, strength: int, variant: int = 0
+) -> FaultScenarioConfig:
+    """Implemented RTU mechanisms using the same three-site background and runner."""
+    raw = a01_scenario(scope, 20, variant).model_dump(mode="json")
+    raw["schema_version"] = "0.4-fault.3"
+    protocol = raw["background"]["simulation"]["protocol"]
+    raw["background"]["business_schedule"] = []
+    fields = {
+        "A04": "missing_cycles",
+        "A05": "response_delay_s",
+        "A06": "feedback_duration_s",
+        "A08": "recovery_cycles",
+    }
+    if code not in fields:
+        raise ValueError("unknown terminal fault")
+    targets = a01_scenario(scope, 20, variant).target_stations()
+    duration = (
+        max(s["telemetry_period_s"] for s in protocol["stations"] if s["station_id"] in targets)
+        * strength
+        if code == "A04"
+        else strength
+        if code == "A06"
+        else 15 * strength
+        if code == "A08"
+        else 30
+    )
+    start = 60 if code == "A08" else 20
+    # A06 hold begins at actual acceptance, rather than the earlier arm time.
+    recovery = max(100, start + duration + 20)
+    protocol["duration_s"] = recovery + 70
+    if code == "A08":
+        protocol.update(
+            release_after_s=25,
+            interruption=dict(station_id=targets[0], start_s=40, duration_s=20, planned=True),
+        )
+    raw["fault"] = dict(
+        event_id="event_1",
+        fault_type=code,
+        start_s=start,
+        duration_s=duration,
+        scope=scope.model_dump(mode="json"),
+        **{fields[code]: strength},
+    )
+    tasks: list[dict[str, Any]] = []
+    if code in ("A05", "A06"):
+        tasks.append(
+            dict(
+                kind="setpoint",
+                schedule_id="task_1",
+                at_s=25,
+                station_ids=list(targets),
+                targets_kw={s: 20.0 for s in targets},
+            )
+        )
+    if "PV03" not in targets:
+        tasks.append(
+            dict(
+                kind="setpoint",
+                schedule_id="background",
+                at_s=26,
+                station_ids=["PV03"],
+                targets_kw={"PV03": 35.0},
+            )
+        )
+    tasks.append(
+        dict(kind="interrogation", schedule_id="recovery", at_s=recovery, station_ids=list(targets))
+    )
+    raw["background"]["business_schedule"] = tasks
+    return FaultScenarioConfig.model_validate(raw)
