@@ -516,9 +516,8 @@ class C104Master:
                 message: Any,
             ) -> Any:
                 quality = point.info.quality
-                valid = (
-                    quality is not None and quality.is_good() and math.isfinite(float(point.value))
-                )
+                value = float(point.value)
+                valid = quality is not None and quality.is_good() and math.isfinite(value)
                 with self._observation_lock:
                     key = (station_config.station_id, point.io_address)
                     if valid:
@@ -526,7 +525,7 @@ class C104Master:
                     else:
                         self._invalid_observations.add(key)
                     self._observations[(station_config.station_id, point.io_address)] = (
-                        float(point.value),
+                        value,
                         time.monotonic(),
                     )
                 self._record_event(
@@ -534,7 +533,7 @@ class C104Master:
                     {
                         "station_id": station_config.station_id,
                         "ioa": point.io_address,
-                        "value": point.value,
+                        "value": point.value if math.isfinite(value) else None,
                         "cot": message.cot.name,
                         "quality_valid": bool(valid),
                     },

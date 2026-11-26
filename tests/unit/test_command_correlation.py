@@ -161,6 +161,7 @@ def test_rejection_timeout_and_missing_feedback_are_distinct() -> None:
     assert audit(data)[0]["outcome"] == "confirmation_timeout"
     data = fixture()
     data[0].pop(3)
+    data[0][:] = data[0][:3]  # Keep a complete execution window without a superseding task.
     data[0].append(
         {
             "event_type": "master_business_finished",
@@ -246,3 +247,14 @@ def test_invalid_quality_cannot_complete_power_feedback() -> None:
     data = fixture()
     data[0][3]["quality_valid"] = False
     assert audit(data)[0]["power_feedback_event"] is None
+
+
+def test_superseded_command_does_not_become_missing_feedback_violation() -> None:
+    data = fixture()
+    data[0].pop(3)
+    data[0].append(
+        dict(event_type="master_connection_state", station_id="PV01", ts_mono_ns=20_000_000_000)
+    )
+    first = audit(data)[0]
+    assert first["execution_end_mono_ns_exclusive"] < first["execution_deadline_mono_ns"]
+    assert first["outcome"] == "incomplete_or_ambiguous"

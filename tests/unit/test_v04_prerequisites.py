@@ -315,3 +315,45 @@ def test_retention_budget_and_lossless_archive_leave_source_and_existing_output(
     assert json.loads((destination / "manifest.json").read_text())["source_retained"]
     with pytest.raises(FileExistsError):
         archive_lossless(source, destination)
+
+
+def test_nonfinite_received_value_is_preserved_as_unknown_without_breaking_event_storage() -> None:
+    from types import ModuleType, SimpleNamespace
+
+    master = C104Master.__new__(C104Master)
+    master._observations = {}
+    master._invalid_observations = set()
+    master._observation_lock = threading.Lock()
+    callbacks: dict[int, Any] = {}
+    points = {
+        ioa: SimpleNamespace(
+            io_address=ioa,
+            value=float("nan"),
+            info=SimpleNamespace(quality=SimpleNamespace(is_good=lambda: True)),
+            on_receive=lambda callback, ioa=ioa: callbacks.update({ioa: callback}),
+        )
+        for ioa in (1001, 1002, 1003, 1004, 1005, 1006, 1008, 1009, 1010, 1011, 2001, 3001)
+    }
+    master._c104 = ModuleType("synthetic_unit_c104")
+    master._c104.__dict__.update(
+        Point=object,
+        Information=object,
+        IncomingMessage=object,
+        ResponseState=SimpleNamespace(SUCCESS=True),
+        Type=SimpleNamespace(M_ME_NC_1=13, M_SP_NA_1=1),
+    )
+    events: list[dict[str, Any]] = []
+
+    def record(kind: str, payload: dict[str, object]) -> None:
+        json.dumps(payload, allow_nan=False)
+        events.append(payload)
+
+    master._record_event = record
+    station = V03Config.model_validate(configuration(3, 120)).protocol.stations[0]
+    master._install_point_callbacks(
+        station, SimpleNamespace(get_point=lambda io_address: points[io_address])
+    )
+    callbacks[1008](points[1008], None, SimpleNamespace(cot=SimpleNamespace(name="PERIODIC")))
+    assert events[0]["value"] is None and events[0]["quality_valid"] is False
+    with pytest.raises(ObservationUnavailable, match="invalid"):
+        master.available_power(station)

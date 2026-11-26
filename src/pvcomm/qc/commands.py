@@ -198,7 +198,12 @@ def audit_commands(
             else "rejected"
             if rejected
             else "feedback_missing"
-            if response and accept and wire and ack and cutoff >= execution_deadline
+            if response
+            and accept
+            and wire
+            and ack
+            and cutoff >= execution_deadline
+            and end == execution_deadline
             else "confirmation_timeout"
             if wire
             and not response

@@ -279,3 +279,5 @@ V0.3开发门禁通过，详见docs/reports/2026-11-25-v03-acceptance.md；READM
 新三站210s真实配置v0.4a-prerequisite.yaml将验证PV01维护缺测排除、PV02正常停机后合法拒绝、PV03和后续任务继续；独立协议fixture将实测不回复、超时隔离及其他站成功。当前均未执行，未标记通过。六类P0正式异常、故障核验、自动标签、配对/覆盖报告、场景表单队列仍未完成。原始历史输入与既有运行证据未删除，未生成720h或训练模型。
 
 冻结候选前最终检查：完整`uv run --frozen python scripts/dev.py check`退出0，158 passed/13 deselected，mypy88文件，Ruff/format/schema/TS/ESLint/Prettier/vue-tsc/Vitest3/build通过；保留既有2条HTML缩进warning及817.61kB构建提示。WSL `pytest -q -m "not lab"`为165 passed/6 deselected、14.90s，含科学/Arrow。真实本机API的Playwright为2 passed/1 skipped、4.4s，跳过需实际运行数据的回放项，不能算实验验收。准备以本次候选提交创建原生Linux干净源码worktree，使用新持久输出执行lab；未与其他namespace运行并行。
+
+冻结候选2f152d9已普通push，CI待实际查询。首轮v04a_s1的顶层data符号链接被git报告为未跟踪，manifest正确记录dirty；该运行完整保留但不用于验收。下轮改为实体data目录内的忽略输入链接，不修改原始输入或运行中的源码。等待期间独立复核修复：非有限遥测写null且quality_valid=false，防止allow_nan=False日志失败；被后续命令截短的执行窗不生成反馈缺失标签。对应45项回归及mypy88/Ruff通过。旧反馈缺失fixture含5s后续命令，应拆为完整10s无取代事务；新测试保留取代情况下的incomplete_or_ambiguous，不放宽期限。真实NASA新接口验证valid=true，原hash不变；V0.3备份只读storage-audit退出0，结果在outputs/v04a-v03-storage-audit.json。
