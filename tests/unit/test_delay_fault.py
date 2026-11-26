@@ -11,7 +11,7 @@ from pvcomm.clock import ClockOrigin
 from pvcomm.config.fault_scenes import a02_scenario
 from pvcomm.config.faults import FaultScenarioConfig, GlobalScope, RegionScope, StationScope
 from pvcomm.network.regional import RegionalNetwork
-from pvcomm.qc.delay import audit_delay_operations, match_deliveries
+from pvcomm.qc.delay import audit_delay_operations, match_deliveries, measure_delays
 from pvcomm.scenario.delay_fault import DelayFaultController
 
 
@@ -246,3 +246,51 @@ def test_bad_kernel_readback_and_restore_failure_remain_failures(
     with pytest.raises(RuntimeError, match="restore failure"):
         controller.close()
     assert '"event_type": "restore_failed"' in (tmp_path / "truth/fault/events.jsonl").read_text()
+
+
+def test_measured_direction_and_missing_delivery_cannot_be_filled_from_plan() -> None:
+    config = configuration()
+    origin = 10**12
+    events = [
+        {"event_type": "fault_active", "ts_event_utc_ns": origin + 20 * 10**9},
+        {"event_type": "restore_requested", "ts_event_utc_ns": origin + 50 * 10**9},
+        {"event_type": "queue_drained", "ts_event_utc_ns": origin + 51 * 10**9},
+    ]
+    captures: dict[str, Any] = {"primary": {"apdus": []}}
+    for i, station in enumerate(config.background.simulation.protocol.stations, 1):
+        captures[f"diagnostic_rtu{i}"] = {"apdus": []}
+        for reverse in (False, True):
+            for phase, seconds in enumerate((5, 30, 80)):
+                packet: dict[str, Any] = {
+                    "src_ip": station.address if reverse else "master",
+                    "dst_ip": "master" if reverse else station.address,
+                    "src_port": 2404 if reverse else 12345,
+                    "dst_port": 12345 if reverse else 2404,
+                    "connection_generation": 1,
+                    "data_hex": f"synthetic_only_{i}_{reverse}_{phase}",
+                    "type_id": 13,
+                    "available_at": origin + seconds * 10**9,
+                    "packet_index": phase + 1,
+                }
+                delay = 210_000_000 if i == 1 and not reverse and phase == 1 else 10_000_000
+                delivery = {**packet, "available_at": packet["available_at"] + delay}
+                source, dest = (
+                    (f"diagnostic_rtu{i}", "primary")
+                    if reverse
+                    else ("primary", f"diagnostic_rtu{i}")
+                )
+                captures[source]["apdus"].append(packet)
+                captures[dest]["apdus"].append(delivery)
+    manifest = {"scene_clock": {"start_utc_ns": origin}}
+    assert measure_delays(config, manifest, events, captures)["passed"]
+    damaged = copy.deepcopy(captures)
+    # Removing the actual affected delivery must not produce a planned 200ms value.
+    damaged["diagnostic_rtu1"]["apdus"].pop(1)
+    report = measure_delays(config, manifest, events, damaged)
+    assert not report["passed"]
+    row = next(r for r in report["directions"] if r["targeted"])
+    assert row["distributions"]["active"]["median_ms"] is None
+    assert row["unmatched"]
+    damaged = copy.deepcopy(captures)
+    damaged["primary"]["apdus"][-2]["available_at"] += 500_000_000
+    assert not measure_delays(config, manifest, events, damaged)["passed"]

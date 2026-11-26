@@ -14,6 +14,7 @@ from pvcomm.config.fault_scenes import a02_scenario
 from pvcomm.config.faults import (
     FaultScope,
     GlobalScope,
+    LinkDelay,
     RegionScope,
     StationScope,
     instantiate_fault,
@@ -32,21 +33,23 @@ def require_lab() -> None:
 
 
 @pytest.mark.lab
-def test_netem_change_preserves_queued_datagrams(tmp_path: Path) -> None:
+@pytest.mark.parametrize("direction", ("master_to_rtu", "rtu_to_master"))
+def test_netem_change_preserves_queued_datagrams(tmp_path: Path, direction: str) -> None:
     require_lab()
-    config = a02_scenario(
-        StationScope(kind="station", station_ids=("PV01",)), 1000, "master_to_rtu"
-    )
-    network = RegionalNetwork(config.background.simulation)
+    config = a02_scenario(StationScope(kind="station", station_ids=("PV01",)), 1000, direction)
+    assert isinstance(config.fault, LinkDelay)
+    network = RegionalNetwork(config.background.simulation, delay_fault=config.fault)
     before = subprocess.check_output(["ip", "netns", "list"], text=True)
     receiver = sender = None
     snapshots = []
     try:
         network.create()
-        port = network.delay_ports(config.fault.scope, "master_to_rtu")[0]
+        port = network.delay_ports(config.fault.scope, direction)[0]
+        reverse = direction == "rtu_to_master"
+        destination = "10.204.1.1" if reverse else "10.204.1.2"
         receiver_code = (
             "import socket,json,time,pathlib; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);"
-            "s.bind(('10.204.1.2',18002)); s.settimeout(8);"
+            f"s.bind(('{destination}',18002)); s.settimeout(8);"
             "pathlib.Path(__import__('sys').argv[1]).write_text('ready'); rows=[]\n"
             "for i in range(60):\n"
             " data=s.recv(1024); rows.append([json.loads(data),time.time_ns()])\n"
@@ -54,7 +57,7 @@ def test_netem_change_preserves_queued_datagrams(tmp_path: Path) -> None:
         )
         receiver = subprocess.Popen(
             [
-                *network.prefix(network.rtus[0]),
+                *network.prefix(network.master if reverse else network.rtus[0]),
                 sys.executable,
                 "-c",
                 receiver_code,
@@ -71,11 +74,16 @@ def test_netem_change_preserves_queued_datagrams(tmp_path: Path) -> None:
         sender_code = (
             "import socket,json,time; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)\n"
             "for i in range(60):\n"
-            " s.sendto(json.dumps([i,time.time_ns()]).encode(),('10.204.1.2',18002));"
+            f" s.sendto(json.dumps([i,time.time_ns()]).encode(),('{destination}',18002));"
             " time.sleep(.03)"
         )
         sender = subprocess.Popen(
-            [*network.prefix(network.master), sys.executable, "-c", sender_code]
+            [
+                *network.prefix(network.rtus[0] if reverse else network.master),
+                sys.executable,
+                "-c",
+                sender_code,
+            ]
         )
         time.sleep(0.35)
         snapshots.append(network.delay_evidence(*port))

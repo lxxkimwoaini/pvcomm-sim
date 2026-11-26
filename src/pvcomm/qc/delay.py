@@ -21,7 +21,7 @@ from pvcomm.qc.pcap import read_apdus
 from pvcomm.qc.schedule import audit_schedule, normal_transport_quality
 from pvcomm.storage.parquet import read_jsonl
 
-VERSION = "v04-a02-mechanism-v1"
+VERSION = "v04-a02-mechanism-v2"
 
 
 def audit_delay_operations(
@@ -52,6 +52,37 @@ def audit_delay_operations(
                     else (network["master"], f"p0_{i}")
                 )
                 expected[key] = region.uplink
+    segments = network.get("delay_segments", [])
+    interior_ok = True
+    if segments:
+        mapped = {}
+        original_key = "reverse_original" if reverse else "forward_original"
+        interface_key = "reverse_interface" if reverse else "forward_interface"
+        for segment in segments:
+            original_port = tuple(segment[original_key])
+            if original_port not in expected or original_port in mapped:
+                interior_ok = False
+                continue
+            links = {r["ifname"]: r for r in segment["links"]}
+            interior_ok &= (
+                segment["basis"] == "A02_internal_queue_between_P0_P1"
+                and segment["bridge"] == "transit"
+                and all(
+                    p in links and links[p].get("master") == "transit" and "UP" in links[p]["flags"]
+                    for p in ("left", "right")
+                )
+            )
+            mapped[original_port] = (
+                (segment["namespace"], segment[interface_key]),
+                expected[original_port],
+            )
+        interior_ok &= mapped.keys() == expected.keys() and len(segments) == len(expected)
+        expected = {port: link for port, link in mapped.values()}
+    else:
+        # Source-endpoint qdiscs fall outside AF_PACKET's timestamp interval.
+        interior_ok = all(
+            ns != network["master"] and ns not in network["rtus"] for ns, _ in expected
+        )
     origin, scene = manifest["clock_origin"], manifest["scene_clock"]
     identity = bool(events) and len({r["event_id"] for r in events}) == len(events)
     identity &= all(
@@ -162,6 +193,7 @@ def audit_delay_operations(
     return {
         "passed": bool(
             identity
+            and interior_ok
             and phases
             and unchanged
             and drain_ok
@@ -171,6 +203,7 @@ def audit_delay_operations(
             and len(events) == len(expected) * 4 + 3
         ),
         "identity_and_time": bool(identity),
+        "capture_boundaries_valid": bool(interior_ok),
         "phases_valid": bool(phases),
         "baseline_and_restoration": bool(unchanged),
         "queue_drain": bool(drain_ok),

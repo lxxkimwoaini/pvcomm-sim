@@ -102,3 +102,5 @@ v04-fault.schema.json新增0.4-fault.2与LinkDelay（A02）：start_s、duration
 复用truth/fault及manifest哈希，A02操作before/after保存namespace/interface和完整tc JSON actual（options/handle/qlen/drops/backlog等）。queue_drained保留恢复参数后真实排空读回；取消的fault_finished含recovery_censored=true，不当作成功恢复。诊断证据不进入原六表的观测白名单。
 
 qc/v04-a02-mechanism-v1分别给出configuration/operations、原experiment_quality、无未解释双端丢失、双向三阶段实测分布及逐APDU双端帧索引/available_at、恢复GI、物理持续更新和label_quality=not_evaluated。重复内容无法唯一归属时列ambiguous，缺失列unmatched，不填0；每端TCP重组去重重传，时延含TCP有序交付等待，不能当作独立单包传播时延或正式业务标签。evaluation_code_version/dirty从加载模块仓库查询，dirty不能通过。
+
+A02 v2另记录manifest.network.delay_segments（配置端点、内部namespace/双向出口、透明桥及实际ip link读回）。原链路双向基线只迁移一次，不叠加；A01与默认正常网络不启用该内部段。v04-a02-mechanism-v2拒绝将源端AF_PACKET时间之后的qdisc视为双端可测时延，原v1报告保留。

@@ -48,3 +48,69 @@ def test_unimplemented_fails(command: str, tmp_path: Path) -> None:
     assert result.returncode == 3
     assert "not implemented" in result.stderr
     assert not (tmp_path / "outputs").exists()
+
+
+@pytest.mark.parametrize(
+    "parameters",
+    [
+        ["--duration", "5"],
+        ["--fault-type", "A02", "--delay-ms", "200", "--direction", "master_to_rtu"],
+    ],
+)
+def test_fault_config_generator_and_cli_validation(tmp_path: Path, parameters: list[str]) -> None:
+    output = tmp_path / "fault.json"
+    command = [
+        sys.executable,
+        "scripts/make_fault_scenario.py",
+        "--scope",
+        "station",
+        "--stations",
+        "PV01",
+        *parameters,
+        "--output",
+        str(output),
+    ]
+    result = subprocess.run(command, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+    assert invoke("validate-fault-scenario", "--config", str(output)).returncode == 0
+    original = output.read_bytes()
+    assert subprocess.run(command, capture_output=True).returncode != 0
+    assert output.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    "parameters",
+    [
+        ["--fault-type", "A02", "--delay-ms", "200"],
+        [
+            "--fault-type",
+            "A02",
+            "--duration",
+            "5",
+            "--delay-ms",
+            "200",
+            "--direction",
+            "master_to_rtu",
+        ],
+        ["--duration", "5", "--delay-ms", "200"],
+    ],
+)
+def test_fault_generator_rejects_mixed_or_incomplete_mechanisms(
+    tmp_path: Path, parameters: list[str]
+) -> None:
+    output = tmp_path / "must_not_exist.json"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/make_fault_scenario.py",
+            "--scope",
+            "station",
+            "--stations",
+            "PV01",
+            *parameters,
+            "--output",
+            str(output),
+        ],
+        capture_output=True,
+    )
+    assert result.returncode == 2 and not output.exists()

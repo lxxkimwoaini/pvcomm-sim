@@ -19,7 +19,12 @@ from typing import Any, TextIO
 
 from pvcomm.capture.tcpdump import TcpdumpCapture
 from pvcomm.clock import ClockOrigin, SceneClock
-from pvcomm.config.faults import FaultScenarioConfig, instantiate_fault, load_fault_scenario
+from pvcomm.config.faults import (
+    FaultScenarioConfig,
+    LinkDelay,
+    instantiate_fault,
+    load_fault_scenario,
+)
 from pvcomm.config.lab import V01Config, v01_config_sha256
 from pvcomm.config.multisite import V03Config
 from pvcomm.config.power import V02Config
@@ -87,7 +92,16 @@ def run_isolated(
             fault.model_dump_json(indent=2), encoding="utf-8"
         )
     (root / "effective_config.json").write_text(config.model_dump_json(indent=2), encoding="utf-8")
-    network = RegionalNetwork(power) if isinstance(power, V03Config) else IsolatedNetwork()
+    network = (
+        RegionalNetwork(
+            power,
+            delay_fault=fault.fault
+            if fault is not None and isinstance(fault.fault, LinkDelay)
+            else None,
+        )
+        if isinstance(power, V03Config)
+        else IsolatedNetwork()
+    )
     origin = ClockOrigin.capture()
     metadata = {"clock_origin": asdict(origin), "addresses": network.addresses}
     (root / "runtime.json").write_text(json.dumps(metadata), encoding="utf-8")
@@ -213,7 +227,6 @@ def run_isolated(
             ).hexdigest()
         network.create()
         if fault is not None and isinstance(network, RegionalNetwork):
-            from pvcomm.config.faults import LinkDelay
             from pvcomm.scenario.delay_fault import DelayFaultController
             from pvcomm.scenario.link_fault import LinkFaultController
 
@@ -223,6 +236,8 @@ def run_isolated(
             fault_controller = controller_type(root, fault, network, origin)
         if isinstance(network, RegionalNetwork):
             manifest["network"]["netem_initial"] = network.shaping_evidence()
+            if network.delay_segments:
+                manifest["network"]["delay_segments"] = network.delay_segments
             save_manifest()
         capture_specs = [
             ("primary", network.master, "any"),

@@ -4,13 +4,13 @@ import json
 import sys
 from typing import Any
 
-from pvcomm.config.faults import FaultScope, RegionScope, StationScope
+from pvcomm.config.faults import FaultScope, LinkDelay, RegionScope, StationScope
 from pvcomm.config.multisite import NormalLink, V03Config
 from pvcomm.network.isolated import IsolatedNetwork
 
 
 class RegionalNetwork(IsolatedNetwork):
-    def __init__(self, config: V03Config) -> None:
+    def __init__(self, config: V03Config, *, delay_fault: LinkDelay | None = None) -> None:
         super().__init__()
         self.config = config
         prefix = self.master.removesuffix("-master")
@@ -18,11 +18,14 @@ class RegionalNetwork(IsolatedNetwork):
         self.regions = {r.region_id: f"{prefix}-reg{i}" for i, r in enumerate(config.regions, 1)}
         self.addresses = tuple(s.address for s in config.protocol.stations)
         self.shaped: list[tuple[str, str, NormalLink, bool]] = []
+        self.delay_fault = delay_fault
+        self.delay_segments: list[dict[str, Any]] = []
+        self._relocated: set[tuple[str, str]] = set()
 
     def _shape(
         self, namespace: str, interface: str, link: NormalLink | None, reverse: bool
     ) -> None:
-        if link is None:
+        if link is None or (namespace, interface) in self._relocated:
             return
         self.prefix(namespace)  # Ownership check before any resource operation.
         self._run(
@@ -45,6 +48,89 @@ class RegionalNetwork(IsolatedNetwork):
             str(link.seed + int(reverse)),
         )
         self.shaped.append((namespace, interface, link, reverse))
+
+    def _connect(
+        self,
+        left: tuple[str, str],
+        right: tuple[str, str],
+        link: NormalLink | None,
+        kind: str,
+        identity: str,
+    ) -> None:
+        fault = self.delay_fault
+        selected = False
+        if fault is not None:
+            scope = fault.scope
+            selected = (
+                kind == "station"
+                and isinstance(scope, StationScope)
+                and identity in scope.station_ids
+            ) or (
+                kind == "region"
+                and not isinstance(scope, StationScope)
+                and (scope.kind == "global" or identity == scope.region_id)
+            )
+        if not selected:
+            self._run(
+                "-n",
+                left[0],
+                "link",
+                "add",
+                left[1],
+                "type",
+                "veth",
+                "peer",
+                "name",
+                right[1],
+                "netns",
+                right[0],
+            )
+            return
+        if link is None:
+            raise ValueError("A02 interior segment requires explicit baseline")
+        # AF_PACKET egress timestamps follow the source qdisc. Move the selected
+        # link's existing bidirectional baseline into a transparent internal
+        # segment, so both directional queues are strictly between P0 and P1.
+        namespace = f"{self.master.removesuffix('-master')}-delay{len(self.delay_segments) + 1}"
+        self._run("netns", "add", namespace)
+        self._owned.append(namespace)
+        self._run("-n", namespace, "link", "set", "lo", "up")
+        self._run("-n", namespace, "link", "add", "transit", "type", "bridge", "stp_state", "0")
+        self._run("-n", namespace, "link", "set", "transit", "up")
+        for endpoint, interior in ((left, "left"), (right, "right")):
+            self._run(
+                "-n",
+                endpoint[0],
+                "link",
+                "add",
+                endpoint[1],
+                "type",
+                "veth",
+                "peer",
+                "name",
+                interior,
+                "netns",
+                namespace,
+            )
+            self._run("-n", namespace, "link", "set", interior, "master", "transit")
+            self._run("-n", namespace, "link", "set", interior, "up")
+        self._shape(namespace, "right", link, False)
+        self._shape(namespace, "left", link, True)
+        self._relocated.update((left, right))
+        self.delay_segments.append(
+            {
+                "kind": kind,
+                "identity": identity,
+                "namespace": namespace,
+                "forward_original": left,
+                "reverse_original": right,
+                "forward_interface": "right",
+                "reverse_interface": "left",
+                "bridge": "transit",
+                "basis": "A02_internal_queue_between_P0_P1",
+                "links": json.loads(self._run("-n", namespace, "-j", "link", "show")),
+            }
+        )
 
     def shaping_evidence(self) -> list[dict[str, Any]]:
         rows = []
@@ -98,19 +184,12 @@ class RegionalNetwork(IsolatedNetwork):
                     "-n", namespace, "link", "add", "aggregate", "type", "bridge", "stp_state", "0"
                 )
                 self._run("-n", namespace, "link", "set", "aggregate", "up")
-                self._run(
-                    "-n",
-                    self.master,
-                    "link",
-                    "add",
-                    f"p0_{i}",
-                    "type",
-                    "veth",
-                    "peer",
-                    "name",
-                    "uplink",
-                    "netns",
-                    namespace,
+                self._connect(
+                    (self.master, f"p0_{i}"),
+                    (namespace, "uplink"),
+                    region.uplink,
+                    "region",
+                    region.region_id,
                 )
                 self._run("-n", self.master, "addr", "add", f"10.204.{i}.1/24", "dev", f"p0_{i}")
                 self._run("-n", self.master, "link", "set", f"p0_{i}", "up")
@@ -122,19 +201,12 @@ class RegionalNetwork(IsolatedNetwork):
                 zip(self.config.protocol.stations, self.rtus, strict=True), 1
             ):
                 region_ns = self.regions[station.region_id]
-                self._run(
-                    "-n",
-                    region_ns,
-                    "link",
-                    "add",
-                    f"access{i}",
-                    "type",
-                    "veth",
-                    "peer",
-                    "name",
-                    "p1",
-                    "netns",
-                    namespace,
+                self._connect(
+                    (region_ns, f"access{i}"),
+                    (namespace, "p1"),
+                    station.access_link,
+                    "station",
+                    station.station_id,
                 )
                 self._run("-n", region_ns, "link", "set", f"access{i}", "master", "aggregate")
                 self._run("-n", region_ns, "link", "set", f"access{i}", "up")
@@ -220,6 +292,13 @@ class RegionalNetwork(IsolatedNetwork):
         if direction not in ("master_to_rtu", "rtu_to_master"):
             raise ValueError("unknown delay direction")
         reverse = direction == "rtu_to_master"
+        if self.delay_fault is not None:
+            if scope != self.delay_fault.scope or direction != self.delay_fault.direction:
+                raise ValueError("delay scope/direction differs from owned segment configuration")
+            return tuple(
+                (s["namespace"], s["reverse_interface" if reverse else "forward_interface"])
+                for s in self.delay_segments
+            )
         if isinstance(scope, StationScope):
             return tuple(
                 (self.rtus[i - 1], "p1") if reverse else (self.regions[s.region_id], f"access{i}")
