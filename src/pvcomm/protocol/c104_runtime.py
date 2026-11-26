@@ -518,25 +518,12 @@ class C104Master:
                 quality = point.info.quality
                 value = float(point.value)
                 valid = quality is not None and quality.is_good() and math.isfinite(value)
-                with self._observation_lock:
-                    key = (station_config.station_id, point.io_address)
-                    if valid:
-                        self._invalid_observations.discard(key)
-                    else:
-                        self._invalid_observations.add(key)
-                    self._observations[(station_config.station_id, point.io_address)] = (
-                        value,
-                        time.monotonic(),
-                    )
-                self._record_event(
-                    "master_observed_point",
-                    {
-                        "station_id": station_config.station_id,
-                        "ioa": point.io_address,
-                        "value": point.value if math.isfinite(value) else None,
-                        "cot": message.cot.name,
-                        "quality_valid": bool(valid),
-                    },
+                self._publish_observation(
+                    station_config.station_id,
+                    point.io_address,
+                    value,
+                    bool(valid),
+                    message.cot.name,
                 )
                 return c104.ResponseState.SUCCESS
 
@@ -782,6 +769,29 @@ class C104Master:
         return CommandResult(
             task_id, station_config.station_id, outcome, positive, stack_result, epoch
         )
+
+    def _publish_observation(
+        self, station_id: str, ioa: int, value: float, valid: bool, cot: str
+    ) -> None:
+        # A concurrent allocator must not consume a point before its available_at
+        # evidence has been published. Writer failure leaves the old cache intact.
+        with self._observation_lock:
+            self._record_event(
+                "master_observed_point",
+                {
+                    "station_id": station_id,
+                    "ioa": ioa,
+                    "value": value if math.isfinite(value) else None,
+                    "cot": cot,
+                    "quality_valid": valid,
+                },
+            )
+            key = (station_id, ioa)
+            if valid:
+                self._invalid_observations.discard(key)
+            else:
+                self._invalid_observations.add(key)
+            self._observations[key] = (value, time.monotonic())
 
     def available_power(self, station_config: V01StationConfig) -> float:
         with self._observation_lock:

@@ -13,6 +13,7 @@ from pvcomm.config.normal_scenes import SCENE_CODES, normal_scenario
 from pvcomm.config.presets import configuration
 from pvcomm.config.scenes import ScenarioConfig, canonical_hash, instantiate_scenario, load_scenario
 from pvcomm.domain.command import CommandResult, ObservationUnavailable
+from pvcomm.protocol.c104_runtime import C104Master
 from pvcomm.qc.schedule import audit_schedule
 from pvcomm.web.observation_index import ObservationIndex
 
@@ -377,3 +378,51 @@ def test_gi_audit_never_reuses_startup_or_pre_request_data() -> None:
     for row in wire:
         row["available_at"] -= 100
     assert not audit_schedule(scene, master, [], wire, {}, [])["passed"]
+
+
+def test_allocator_cannot_consume_observation_before_evidence_is_published() -> None:
+    master = object.__new__(C104Master)
+    master._observation_lock = threading.Lock()
+    master._observations = {}
+    master._invalid_observations = set()
+    publishing = threading.Event()
+    release = threading.Event()
+    committed: list[dict[str, object]] = []
+
+    def record(kind: str, payload: dict[str, object]) -> None:
+        publishing.set()
+        assert release.wait(2)
+        committed.append(payload)
+
+    master._record_event = record
+    writer = threading.Thread(
+        target=master._publish_observation, args=("PV01", 1008, 12.0, True, "PERIODIC")
+    )
+    writer.start()
+    try:
+        assert publishing.wait(2)
+        assert not master._observations
+        assert not master._observation_lock.acquire(blocking=False)
+    finally:
+        release.set()
+        writer.join(2)
+    assert not writer.is_alive()
+    assert (
+        committed
+        and master.available_power(normal_scenario("N01").simulation.protocol.stations[0]) == 12
+    )
+
+
+def test_failed_observation_publication_does_not_publish_an_unrecorded_value() -> None:
+    master = object.__new__(C104Master)
+    master._observation_lock = threading.Lock()
+    master._observations = {}
+    master._invalid_observations = set()
+
+    def fail(kind: str, payload: dict[str, object]) -> None:
+        raise OSError("synthetic full disk fixture")
+
+    master._record_event = fail
+    with pytest.raises(OSError):
+        master._publish_observation("PV01", 1008, 12.0, True, "PERIODIC")
+    assert not master._observations

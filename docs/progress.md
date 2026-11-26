@@ -320,3 +320,5 @@ README旧“V0.4尚未开展”及开发指南过期QC版本已修正，新增�
 当前16项新增调度/因果/证据负测试通过，普通全量先前176 passed/14 deselected（随后新增3项单元及21项lab待最终总检），mypy98文件与Ruff通过。已实际以归档输入/pvlib核对日出日落候选：2024-06-23日出21:12:31 UTC，2024-06-24日落11:42:03 UTC，取120秒场景跨越该模型几何边界；小时背景不冒称秒级实测。下一步冻结clean候选、三站逐类两变体真实运行、原始证据保留、解析/Arrow/独立QC；任何失败停止后续批次。V0.4b当前未验收，六类异常/正式标签/配对/UI队列未开展，本次不生成720h或训练。
 
 候选最终普通总检 `uv run --frozen python scripts/dev.py check` 实际退出0：179 passed/35 deselected，mypy98文件，Ruff/format/schema/前端生成类型、ESLint/Prettier/vue-tsc/Vitest3/build通过。保留既有2条HTML缩进warning和817.61kB包提示。真实21项正常场景尚未运行，普通通过不替代实际验收。
+
+首轮冻结dfa09aa已push，push CI45748744637实际success；WSL科学/Arrow186 passed/28 deselected、11.62s。原生源码/var/lib/pvcomm/sources/v04b_s1，证据/var/lib/pvcomm/runs/v04b_s1。代码复核发现缓存先于available_at记录发布的并发因果窗口，故主动SIGINT终止首轮真实批次；pytest退出2、130.82s、no tests ran（没有完整通过用例），原始部分运行保留，不当作验收。修正为同一观测锁内先记录再发布缓存，写入失败不暴露未记录值；新增并发及I/O失败负测试，39项相关测试通过、mypy98通过。下一轮将冻结新提交完整重跑。
