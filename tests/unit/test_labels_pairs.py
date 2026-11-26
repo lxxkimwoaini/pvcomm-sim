@@ -203,7 +203,10 @@ def test_label_business_results_are_independently_audited(
         assert finding.start_utc_ns == (23 if mode == "timeout" else 30) * 10**9
 
 
-@pytest.mark.parametrize("mutation", ["deadline", "cross_run", "hash", "missing", "tier"])
+@pytest.mark.parametrize(
+    "mutation",
+    ["deadline", "cross_run", "hash", "missing", "tier", "no_finding_evidence", "no_qc_evidence"],
+)
 def test_independent_label_qc_rejects_corrupt_evidence(tmp_path: Path, mutation: str) -> None:
     inputs = fixture_inputs(tmp_path, "timeout")
     rows = build_labels(inputs)
@@ -217,6 +220,10 @@ def test_independent_label_qc_rejects_corrupt_evidence(tmp_path: Path, mutation:
         raw["findings"][0]["evidence"][0]["sha256"] = "0" * 64
     elif mutation == "tier":
         raw["findings"][0]["evidence"][0]["tier"] = "M1"
+    elif mutation == "no_finding_evidence":
+        raw["findings"][0]["evidence"] = []
+    elif mutation == "no_qc_evidence":
+        raw["evidence"] = []
     else:
         raw["findings"] = []
         raw["service_violation"] = raw["observable_anomaly"] = False

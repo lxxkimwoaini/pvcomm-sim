@@ -126,6 +126,6 @@ evidence包含run相对路径、SHA256、原event_id或apdu_id:object_index、ti
 
 ### 标签0.4-label.2增量
 
-当前label入口写labels/v04-label-v2，独立核验写qc/v04-label-qc-v2。历史v1输出继续通过其冻结代码复核，两个版本不互相覆盖。A06故障区间从实际feedback_hold起算。communication_impact及其start/end为Oracle机制证据覆盖的通信影响诊断区间，不能代替业务违约起点。A05使用真实延后处理事件的等待区间，A01/A02使用既有双端核验区间。transport_impact在缺乏传输层证明时保留null。
+当前label入口写labels/v04-label-v2，独立核验写qc/v04-label-qc-v3。v2原核验报告继续保留。历史v1输出继续通过其冻结代码复核，两个版本不互相覆盖。A06故障区间从实际feedback_hold起算。communication_impact及其start/end为Oracle机制证据覆盖的通信影响诊断区间，不能代替业务违约起点。A05使用真实延后处理事件的等待区间，A01/A02使用既有双端核验区间。transport_impact在缺乏传输层证明时保留null。
 
 recovery_complete_utc_ns为撤销后新GI成功结束且包含1001/1002/1003/1006/1008/2001实际测量对象的完成时间。缺少完整证据时为null并保留recovery_censored=true。正常成员未施加故障时该恢复字段不适用，也为空。业务findings仍独立记录各约束的恢复与截尾。所有增量仅供Oracle标签核验。

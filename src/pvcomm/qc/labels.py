@@ -15,7 +15,7 @@ from pvcomm.domain.labels import EventLabel, ServiceFinding
 from pvcomm.pipeline.labels import VERSION as LABEL_VERSION
 from pvcomm.pipeline.labels import LabelInputs, file_sha256, load_label_inputs
 
-VERSION = "v04-label-qc-v2"
+VERSION = "v04-label-qc-v3"
 
 
 def audit_diagnostic_layers(inputs: LabelInputs, label: EventLabel) -> bool:
@@ -349,10 +349,16 @@ def audit_label_records(inputs: LabelInputs, labels: list[EventLabel]) -> dict[s
     )
     references, causal, commands, freshness, layers = True, True, True, True, True
     diagnostics = True
+    evidence_coverage = True
     for label in labels:
         if label.station_id not in sites:
             continue
         diagnostics &= audit_diagnostic_layers(inputs, label)
+        evidence_coverage &= any(
+            ref.path == inputs.report_path.relative_to(inputs.root).as_posix()
+            and ref.role == "retrospective"
+            for ref in label.evidence
+        )
         for ref in (*label.evidence, *(r for f in label.findings for r in f.evidence)):
             path = (inputs.root / ref.path).resolve()
             references &= path.is_relative_to(inputs.root.resolve()) and path.is_file()
@@ -371,6 +377,40 @@ def audit_label_records(inputs: LabelInputs, labels: list[EventLabel]) -> dict[s
             )
             references &= ref.tier == expected_tier
         for finding in label.findings:
+            online = [
+                inputs.records[ref.record_id][1]
+                for ref in finding.evidence
+                if ref.role == "online" and ref.record_id in inputs.records
+            ]
+            evidence_coverage &= len(
+                {(r.path, r.record_id, r.role) for r in finding.evidence}
+            ) == len(finding.evidence)
+            if finding.kind == "command":
+                evidence_coverage &= any(
+                    r["event_type"] == "master_command_sent"
+                    and r.get("station_id") == finding.station_id
+                    and r.get("task_id") == finding.task_id
+                    for r in online
+                    if "event_type" in r
+                )
+                if finding.label_status == "valid":
+                    evidence_coverage &= any(
+                        ref.path.startswith("parsed/") and ref.record_id in inputs.records
+                        for ref in finding.evidence
+                    )
+            else:
+                evidence_coverage &= any(
+                    r["event_type"] == "master_business_started"
+                    or (
+                        r["event_type"] == "master_observed_point"
+                        and r.get("station_id") == finding.station_id
+                        and r.get("ioa") == finding.ioa
+                        and r.get("quality_valid") is True
+                        and r.get("value") is not None
+                    )
+                    for r in online
+                    if "event_type" in r
+                )
             if finding.service_violation:
                 causal &= finding.observable_at_utc_ns is not None
                 causal &= all(
@@ -415,6 +455,7 @@ def audit_label_records(inputs: LabelInputs, labels: list[EventLabel]) -> dict[s
     checks = dict(
         identity_and_coverage=bool(identities),
         evidence_references=bool(references),
+        required_evidence_coverage=bool(evidence_coverage),
         online_causality=bool(causal),
         command_deadlines_and_evidence=bool(commands),
         freshness_and_maintenance=bool(freshness),
