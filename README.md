@@ -227,3 +227,5 @@ PVCOMM_ALLOW_LAB=1 PYTHONPATH=src .venv-wsl/bin/python scripts/run_v04_batch.py 
 批量Web管理、30站异常与正式重复覆盖、全流程临时峰值及并发吞吐仍待实现或验收。
 
 六表Arrow现按4096行转换及逐行回读比较；标签使用临时磁盘索引按站点访问原始证据，标签schema与判据保持v3。可在保留运行上比较列表与索引路径，原标签/QC不覆盖：`uv run --frozen --group data python scripts/profile_v04_evidence.py --run-dir <运行目录> --mode indexed --output <新报告目录>`；`--mode list`提供同一代码下的兼容比较。该测量的Python分配峰值不等于进程RSS或全流程峰值。
+
+Linux队列支持`--measurements <独立新目录>`采样控制器及其子进程CPU/RSS/IO、活动任务的PDML/解析及标签索引临时字节；1秒采样的峰值为观测下界。完整小运行归档验证入口为`uv run --frozen python scripts/profile_v04_archive.py --run-dir <已完成运行> --output <独立新归档目录>`，逐文件解压校验并保留所有来源。上述入口不授权删除来源或生成720小时数据。
