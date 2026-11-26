@@ -490,6 +490,81 @@
       "title": "InterruptionConfig",
       "type": "object"
     },
+    "LinkDelay": {
+      "additionalProperties": false,
+      "properties": {
+        "additional_delay_ms": {
+          "enum": [
+            200,
+            1000,
+            3000
+          ],
+          "title": "Additional Delay Ms",
+          "type": "integer"
+        },
+        "direction": {
+          "enum": [
+            "master_to_rtu",
+            "rtu_to_master"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "duration_s": {
+          "minimum": 10,
+          "title": "Duration S",
+          "type": "integer"
+        },
+        "event_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "fault_type": {
+          "const": "A02",
+          "title": "Fault Type",
+          "type": "string"
+        },
+        "scope": {
+          "discriminator": {
+            "mapping": {
+              "global": "#/$defs/GlobalScope",
+              "region": "#/$defs/RegionScope",
+              "station": "#/$defs/StationScope"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/StationScope"
+            },
+            {
+              "$ref": "#/$defs/RegionScope"
+            },
+            {
+              "$ref": "#/$defs/GlobalScope"
+            }
+          ],
+          "title": "Scope"
+        },
+        "start_s": {
+          "minimum": 1,
+          "title": "Start S",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "event_id",
+        "fault_type",
+        "start_s",
+        "duration_s",
+        "additional_delay_ms",
+        "direction",
+        "scope"
+      ],
+      "title": "LinkDelay",
+      "type": "object"
+    },
     "LinkInterruption": {
       "additionalProperties": false,
       "properties": {
@@ -1306,7 +1381,22 @@
       "$ref": "#/$defs/ScenarioConfig"
     },
     "fault": {
-      "$ref": "#/$defs/LinkInterruption"
+      "discriminator": {
+        "mapping": {
+          "A01": "#/$defs/LinkInterruption",
+          "A02": "#/$defs/LinkDelay"
+        },
+        "propertyName": "fault_type"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/LinkInterruption"
+        },
+        {
+          "$ref": "#/$defs/LinkDelay"
+        }
+      ],
+      "title": "Fault"
     },
     "purpose": {
       "const": "single_fault_development",
@@ -1314,7 +1404,10 @@
       "type": "string"
     },
     "schema_version": {
-      "const": "0.4-fault.1",
+      "enum": [
+        "0.4-fault.1",
+        "0.4-fault.2"
+      ],
       "title": "Schema Version",
       "type": "string"
     }

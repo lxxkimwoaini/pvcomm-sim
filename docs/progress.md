@@ -1,6 +1,6 @@
 # PVComm 开发进度
 
-日期：2026-11-26（Asia/Shanghai）。当前阶段：**V0.0–V0.3开发验收通过；V0.4a实施与验证中，V0.4尚未验收**。下文按时间追加，早期“未实现/下一任务”描述保留为当时记录，当前结论见末尾及各阶段验收报告。初始只有 AGENTS.md 和 V1.2/V1.3 方案；无既有实验。本文件只记录实际执行，不将计划标为完成。
+日期：2026-11-26（Asia/Shanghai）。当前阶段：**V0.0–V0.3、V0.4a、V0.4b及A01三站开发切片已验收；正在实施A02真实单向时延，整体V0.4尚未验收**。本段为当前状态；下文按时间追加的早期“未实现/下一任务/运行中”仅为历史记录。后续按A02→A04→A05→A06→A08→V0.4d配对与分层标签推进。本文件只记录实际执行，不将计划标为完成。
 
 ## 已执行
 
@@ -413,3 +413,9 @@ S5冻结b240eac960699204468a479018da196650464c34的批次实际全部结束：�
 完整证据、失败清单、限制和复现已写docs/reports/2026-11-26-v04c-a01-acceptance.md，README、总计划及单故障计划同步；新增下一切片docs/plans/2026-11-26-v04c-a02-delay.md，仅设计尚未实现。当前仅A01开发门禁通过：A02/A04/A05/A06/A08、配对/正式标签、工作台、多站与30站复验、40次/类正式覆盖仍未完成，label_quality=not_evaluated。没有生成720小时或训练模型。
 
 40f3299已实际push，push CI45764024273及PR CI45764029573均completed/success。远程https://github.com/lxxkimwoaini/pvcomm-sim、lxxkimwoaini、PUBLIC、默认main不变；PR #1→#2→#3→#4→#5正确堆叠且OPEN，#3–#5 draft，未合并。后续验收文档交付SHA/push/CI另以实际远程查询和outputs/v04c-delivery.json为准，不借用前一提交CI。
+
+## V0.4c A02开发启动
+
+A01已验收，本轮仅兼容回归，不再重新设计。直接实施既有A02设计：LinkDelay/0.4-fault.2、真实单向qdisc change、完整内核读回、逐出口撤销/异步排空及独立P0/P1时延QC。未修改旧正常门禁、3秒业务确认期限或正式标签；M2不取得故障计划。ADR0018记录实施细节。
+
+开发探针001在调度配置校验拒绝（未创建网络）；002实际读回不符失败；003在WSL内核6.6.87.2、iproute2-6.19.0上1 passed/2.54s，60条UDP全部交付、排队中撤销、0 qdisc drops及基线恢复一致。证据/var/lib/pvcomm/runs/v04c_a02_probe_003；不作为IEC104实验。Windows普通总检outputs/v04c-a02-check-001.log退出0：232 passed/49 deselected，Ruff/format、mypy113、schema/TS及前端检查通过。后续小增补将另作相关检查后冻结，顺序运行内核探针/取消/单站低档，再扩展强度和范围；当前A02尚未验收。

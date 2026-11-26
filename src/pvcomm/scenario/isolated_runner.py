@@ -213,9 +213,14 @@ def run_isolated(
             ).hexdigest()
         network.create()
         if fault is not None and isinstance(network, RegionalNetwork):
+            from pvcomm.config.faults import LinkDelay
+            from pvcomm.scenario.delay_fault import DelayFaultController
             from pvcomm.scenario.link_fault import LinkFaultController
 
-            fault_controller = LinkFaultController(root, fault, network, origin)
+            controller_type = (
+                DelayFaultController if isinstance(fault.fault, LinkDelay) else LinkFaultController
+            )
+            fault_controller = controller_type(root, fault, network, origin)
         if isinstance(network, RegionalNetwork):
             manifest["network"]["netem_initial"] = network.shaping_evidence()
             save_manifest()

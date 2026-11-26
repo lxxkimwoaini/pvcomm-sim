@@ -94,3 +94,11 @@ qc/v04-normal-schedule-v2仅为Oracle正常场景验收；command_assessments保
 socket_audit文件项另保留`trace_exit_code`；completed仅表示跟踪有完整退出记录，不能代替worker成功。显式取消时现有主站可能以InterruptedError退出1，该退出码如实保存；completed正常运行的QC仍要求每条退出记录及元数据均为0，取消/部分运行不进入parse或正式质量通过计数。
 
 `v04-a01-mechanism-v4`保持v3核验规则，从实际加载模块的仓库记录`evaluation_code_version/evaluation_code_dirty`，而非调用者工作目录；dirty核验不能通过。`run_code_version`继续取原始manifest，两者可以不同。旧v1/v2/v3报告不可覆盖。A01开发验收另保留`a01-background-schedule.json`，复用正常调度的逐事务证据核验恢复后总召唤及未受影响站业务；它是Oracle诊断报告，不是正式恢复或业务异常标签。
+
+## V0.4c A02增量契约
+
+v04-fault.schema.json新增0.4-fault.2与LinkDelay（A02）：start_s、duration_s（开发作用时长）、additional_delay_ms严格取200/1000/3000、direction=master_to_rtu/rtu_to_master及原scope。旧0.4-fault.1 A01保持有效；A04/A05/A06/A08尚不可执行。每个选定方向必须有显式NormalLink基线。
+
+复用truth/fault及manifest哈希，A02操作before/after保存namespace/interface和完整tc JSON actual（options/handle/qlen/drops/backlog等）。queue_drained保留恢复参数后真实排空读回；取消的fault_finished含recovery_censored=true，不当作成功恢复。诊断证据不进入原六表的观测白名单。
+
+qc/v04-a02-mechanism-v1分别给出configuration/operations、原experiment_quality、无未解释双端丢失、双向三阶段实测分布及逐APDU双端帧索引/available_at、恢复GI、物理持续更新和label_quality=not_evaluated。重复内容无法唯一归属时列ambiguous，缺失列unmatched，不填0；每端TCP重组去重重传，时延含TCP有序交付等待，不能当作独立单包传播时延或正式业务标签。evaluation_code_version/dirty从加载模块仓库查询，dirty不能通过。

@@ -43,11 +43,28 @@ class LinkInterruption(V01Contract):
         return value
 
 
+class LinkDelay(V01Contract):
+    event_id: Identifier
+    fault_type: Literal["A02"]
+    start_s: Annotated[int, Field(strict=True, ge=1)]
+    duration_s: Annotated[int, Field(strict=True, ge=10)]
+    additional_delay_ms: Literal[200, 1000, 3000]
+    direction: Literal["master_to_rtu", "rtu_to_master"]
+    scope: FaultScope
+
+    @field_validator("additional_delay_ms", mode="before")
+    @classmethod
+    def strict_candidate(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("A02 delay must be an integer candidate in milliseconds")
+        return value
+
+
 class FaultScenarioConfig(V01Contract):
-    schema_version: Literal["0.4-fault.1"]
+    schema_version: Literal["0.4-fault.1", "0.4-fault.2"]
     purpose: Literal["single_fault_development"]
     background: ScenarioConfig
-    fault: LinkInterruption
+    fault: Annotated[LinkInterruption | LinkDelay, Field(discriminator="fault_type")]
 
     def target_stations(self) -> tuple[str, ...]:
         stations = self.background.simulation.protocol.stations
@@ -62,7 +79,23 @@ class FaultScenarioConfig(V01Contract):
     def references_and_recovery(self) -> Self:
         protocol = self.background.simulation.protocol
         if protocol.interruption is not None:
-            raise ValueError("A01 cannot contain a second maintenance/interruption event")
+            raise ValueError("single fault cannot contain a second maintenance/interruption event")
+        if isinstance(self.fault, LinkDelay):
+            if self.schema_version != "0.4-fault.2":
+                raise ValueError("A02 requires fault contract 0.4-fault.2")
+            simulation = self.background.simulation
+            links = (
+                [s.access_link for s in protocol.stations if s.station_id in self.target_stations()]
+                if isinstance(self.fault.scope, StationScope)
+                else [
+                    r.uplink
+                    for r in simulation.regions
+                    if self.fault.scope.kind == "global"
+                    or r.region_id == self.fault.scope.region_id
+                ]
+            )
+            if not links or any(link is None for link in links):
+                raise ValueError("A02 requires explicit NetEm baseline on every selected link")
         scope = self.fault.scope
         if isinstance(scope, StationScope) and (
             len(set(scope.station_ids)) != len(scope.station_ids)

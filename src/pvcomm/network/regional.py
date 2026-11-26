@@ -215,3 +215,91 @@ class RegionalNetwork(IsolatedNetwork):
         if namespace not in self._owned:
             raise RuntimeError("site is not owned")
         self._run("-n", namespace, "link", "set", "p1", "up" if up else "down")
+
+    def delay_ports(self, scope: FaultScope, direction: str) -> tuple[tuple[str, str], ...]:
+        if direction not in ("master_to_rtu", "rtu_to_master"):
+            raise ValueError("unknown delay direction")
+        reverse = direction == "rtu_to_master"
+        if isinstance(scope, StationScope):
+            return tuple(
+                (self.rtus[i - 1], "p1") if reverse else (self.regions[s.region_id], f"access{i}")
+                for i, s in enumerate(self.config.protocol.stations, 1)
+                if s.station_id in scope.station_ids
+            )
+        return tuple(
+            (self.regions[r.region_id], "uplink") if reverse else (self.master, f"p0_{i}")
+            for i, r in enumerate(self.config.regions, 1)
+            if not isinstance(scope, RegionScope) or r.region_id == scope.region_id
+        )
+
+    def delay_evidence(self, namespace: str, interface: str) -> dict[str, Any]:
+        self.prefix(namespace)
+        owned = [(n, d) for n, d, _, _ in self.shaped]
+        if (namespace, interface) not in owned:
+            raise ValueError("delay requires a configured owned NetEm egress")
+        actual = json.loads(
+            self._run(
+                "netns",
+                "exec",
+                namespace,
+                "tc",
+                "-j",
+                "-s",
+                "-d",
+                "qdisc",
+                "show",
+                "dev",
+                interface,
+            )
+        )
+        if len(actual) != 1 or actual[0]["kind"] != "netem":
+            raise RuntimeError("expected one root NetEm qdisc")
+        return {"namespace": namespace, "interface": interface, "actual": actual[0]}
+
+    def change_delay(self, namespace: str, interface: str, additional_ms: int) -> dict[str, Any]:
+        if type(additional_ms) is not int or additional_ms not in (0, 200, 1000, 3000):
+            raise ValueError("unsupported A02 additional delay")
+        before = self.delay_evidence(namespace, interface)
+        _, _, link, reverse = next(r for r in self.shaped if r[:2] == (namespace, interface))
+        options = before["actual"]["options"]
+        if (
+            options["limit"] != 10000
+            or options["seed"] != link.seed + int(reverse)
+            or abs(options["delay"]["jitter"] * 1000 - link.jitter_ms) > 1e-6
+        ):
+            raise RuntimeError("NetEm baseline parameters changed unexpectedly")
+        # change preserves the qdisc and queued packets; never replace/delete it.
+        self._run(
+            "netns",
+            "exec",
+            namespace,
+            "tc",
+            "qdisc",
+            "change",
+            "dev",
+            interface,
+            "root",
+            "netem",
+            "limit",
+            str(options["limit"]),
+            "delay",
+            f"{link.delay_ms + additional_ms}ms",
+            f"{link.jitter_ms}ms",
+            "seed",
+            str(options["seed"]),
+        )
+        after = self.delay_evidence(namespace, interface)
+        expected = {
+            **options,
+            "delay": {
+                **options["delay"],
+                "delay": (link.delay_ms + additional_ms) / 1000,
+            },
+        }
+        if after["actual"]["options"] != expected or any(
+            after["actual"].get(k) != before["actual"].get(k) for k in ("handle", "parent", "root")
+        ):
+            raise RuntimeError(
+                f"kernel NetEm readback mismatch: expected={expected}, actual={after}"
+            )
+        return after

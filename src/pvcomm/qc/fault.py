@@ -333,10 +333,20 @@ def evaluate_fault(root: Path) -> dict[str, Any]:
 
 
 def qc_fault(root: Path) -> dict[str, Any]:
-    destination = root / "qc" / VERSION
+    config = FaultScenarioConfig.model_validate_json(
+        (root / "truth/fault/effective.json").read_bytes()
+    )
+    if config.fault.fault_type == "A02":
+        from pvcomm.qc.delay import VERSION as DELAY_VERSION
+        from pvcomm.qc.delay import evaluate_delay
+
+        version, evaluate = DELAY_VERSION, evaluate_delay
+    else:
+        version, evaluate = VERSION, evaluate_fault
+    destination = root / "qc" / version
     if destination.exists():
         raise FileExistsError(f"fault QC exists: {destination}")
-    report = evaluate_fault(root)
+    report = evaluate(root)
     destination.parent.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".fault-qc-", dir=destination.parent) as temp:
         stage = Path(temp) / "report"
