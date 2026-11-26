@@ -19,12 +19,12 @@ from pvcomm.storage.parquet import read_jsonl
 from pvcomm.storage.power_parquet import verify_power_parquet
 from pvcomm.weather import HistoricalWeather, station_weather
 
-VERSION = "v02-power-v6"
-MULTISITE_VERSION = "v03-power-v4"
+VERSION = "v02-power-v7"
+MULTISITE_VERSION = "v03-power-v5"
 TOLERANCE = 1e-6
 
 
-def evaluate_power(root: Path) -> dict[str, Any]:
+def evaluate_power(root: Path, *, require_normal_business: bool = True) -> dict[str, Any]:
     config = power_document(root / "power_config.json")
     manifest = json.loads((root / "manifest.json").read_text())
     rows = [
@@ -206,10 +206,9 @@ def evaluate_power(root: Path) -> dict[str, Any]:
     )
     accepted = [r for r in terminal if r["event_type"] == "terminal_command_accepted"]
     model_accepts = [r for r in terminal if r["event_type"] == "terminal_model_target_accepted"]
-    causal &= (
-        len(accepted)
-        == len(model_accepts)
-        == (
+    causal &= len(accepted) == len(model_accepts)
+    if require_normal_business:
+        causal &= len(accepted) == (
             sum(
                 sum(s.region_id in t.region_ids for s in config.protocol.stations)
                 for t in config.dispatch_tasks
@@ -217,7 +216,7 @@ def evaluate_power(root: Path) -> dict[str, Any]:
             if isinstance(config, V03Config) and config.dispatch_tasks
             else len(config.devices) * (2 + int(config.repeat_command_after_s is not None))
         )
-    )
+    used_model_accepts: set[str] = set()
     for acceptance in accepted:
         matches = [
             e
@@ -226,7 +225,9 @@ def evaluate_power(root: Path) -> dict[str, Any]:
             and e["target_kw"] == acceptance["target_kw"]
             and 0 <= acceptance["ts_mono_ns"] - e["ts_mono_ns"] < 100_000_000
         ]
-        causal &= len(matches) == 1
+        causal &= len(matches) == 1 and matches[0]["event_id"] not in used_model_accepts
+        if len(matches) == 1:
+            used_model_accepts.add(matches[0]["event_id"])
     check(
         "accepted_commands_only",
         causal,

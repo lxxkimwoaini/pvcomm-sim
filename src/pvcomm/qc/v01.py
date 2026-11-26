@@ -22,7 +22,7 @@ from pvcomm.qc.commands import audit_commands
 from pvcomm.qc.pcap import read_apdus
 from pvcomm.storage.parquet import read_jsonl, verify_parquet
 
-QC_VERSION = "v01-evidence-v4"
+QC_VERSION = "v01-evidence-v5"
 SIGNATURE = (
     "src_ip",
     "dst_ip",

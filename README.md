@@ -2,7 +2,7 @@
 
 分布式光伏电力—通信联合仿真平台。研究依据为 [V1.3 方案](docs/分布式光伏电力—通信联合仿真数据集构建方案_V1.3.md) 和 [AGENTS.md](AGENTS.md)。
 
-当前版本为 0.3.0.dev0，**V0.3 多站点开发门禁已通过**：完成3→10→20→30站逐级实跑，以及30站、3通信区域、3600秒电力—通信联合仿真和关闭Web/实时监测/历史回放资源验收。保留已验收的V0.0基础、V0.1真实协议和V0.2三站物理复现能力；当前提供配置驱动多站点、真实c104、pvlib/pandapower、独立P0/P1、Arrow、独立QC及M2只读工作台。未发布正式科研数据集或异常检测结果。实测、适用边界和复现方式见 [V0.3验收报告](docs/reports/2026-11-25-v03-acceptance.md) 及 [进度](docs/progress.md)。
+当前版本为 0.4.0.dev0，正在开发 V0.4a 前置修复，**V0.4 尚未验收**。V0.3 多站点开发门禁已通过：完成3→10→20→30站逐级实跑，以及30站、3通信区域、3600秒电力—通信联合仿真和关闭Web/实时监测/历史回放资源验收。保留已验收的V0.0基础、V0.1真实协议和V0.2三站物理复现能力；当前提供配置驱动多站点、真实c104、pvlib/pandapower、独立P0/P1、Arrow、独立QC及M2只读工作台。未发布正式科研数据集或异常检测结果。实测、适用边界和复现方式见 [V0.3验收报告](docs/reports/2026-11-25-v03-acceptance.md) 及 [进度](docs/progress.md)。
 
 ## 安装与复现
 
@@ -115,3 +115,16 @@ uv run --frozen python scripts/dev.py power-test
 Web继续只读实际M2，新增区域覆盖率、配置双拓扑、空间遥测、区域任务、原始回调计数、联合游标事件分页及曲线min/max降采样；原始Arrow/科学数据不降采样。资源诊断位于独立 `/api/diagnostics/runs/{key}/resources`，不进入M2输入。主站图中缺测不读取truth补齐，累计回调数不冒称独立解析APDU数。
 
 本机完整证据备份为`outputs/v03_hour_s8_backup`（Git忽略，非仓库下载内容），设置PVCOMM_RUN_ROOT为该父目录即可只读查看。720小时按当前实测及1.5余量估算约1.494TB，备份另计；现场校准、正式数据参数冻结、并发吞吐验证及V0.4均未开展。
+
+## V0.4a 开发入口
+
+实施边界与分阶段门禁见 [V0.4计划](docs/plans/2026-11-26-v04.md)。正常验收仍使用默认 `qc --profile normal`。独立实验质量入口 `qc --profile experiment` 仅评估运行完整性和数据质量，并保留正常业务失败结果；其通过不代表故障施加、业务标签或整个V0.4验收通过。
+
+```sh
+.venv-wsl/bin/python -m pvcomm.cli qc --profile experiment --run-dir <new_parsed_run>
+uv run pvcomm storage-audit --run-dir <existing_run> --policy configs/retention-development.json
+uv run pvcomm archive-lossless --source <retained_file> --destination <new_archive_directory>
+uv run pvcomm validate-weather-source --config <historical_source_descriptor.json>
+```
+
+存储审计只读，归档保留原件并核验解压SHA256，禁止删除源文件。新气象描述符支持显式日期、位置和产品版本，当前仅实现离线NASA POWER小时数据适配；旧0.2/0.3配置及哈希保持可复现。新来源必须具备完整原始数据、许可/引用快照与哈希。未接入独立M3来源。N01–N10、P0故障、配对标签与任务队列尚待后续切片实现；`label`仍返回3。

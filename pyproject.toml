@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pvcomm-sim"
-version = "0.3.0.dev0"
+version = "0.4.0.dev0"
 description = "Research infrastructure for photovoltaic and IEC 104 co-simulation"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"

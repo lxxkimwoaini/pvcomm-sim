@@ -123,3 +123,31 @@ def configuration(count: int, duration: int, *, interruption: bool = False) -> d
     if interruption:
         lab["interruption"] = dict(station_id="PV01", start_s=65, duration_s=20, planned=True)
     return V03Config.model_validate(data).model_dump(mode="json")
+
+
+def v04a_prerequisite_configuration() -> dict[str, Any]:
+    """Small real regression, not a complete V0.4 scene or final label claim."""
+    raw = configuration(3, 210)
+    raw["protocol"].update(
+        run_id="v04a_03_degradation_001",
+        release_after_s=25,
+        interruption=dict(station_id="PV01", start_s=40, duration_s=20, planned=True),
+    )
+    raw["repeat_command_after_s"] = None
+    raw["device_operations"] = [
+        dict(station_id="PV02", at_s=45, enabled=False),
+        dict(station_id="PV02", at_s=75, enabled=True),
+    ]
+    raw["dispatch_tasks"] = [
+        dict(
+            dispatch_id=f"prerequisite_{index}",
+            at_s=at,
+            region_ids=["R1", "R2", "R3"],
+            total_kw=100.0,
+            allocation="observed_available",
+            batch_size=3,
+            batch_interval_s=1.0,
+        )
+        for index, at in enumerate((50, 130), 1)
+    ]
+    return V03Config.model_validate(raw).model_dump(mode="json")

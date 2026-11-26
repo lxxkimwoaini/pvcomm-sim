@@ -70,3 +70,45 @@ def test_export_rejects_overwrite_and_qc_detects_tampering(tmp_path: Path) -> No
     manifest["tables"]["packets"]["rows"] = 1
     manifest_path.write_text(json.dumps(manifest))
     assert not verify_parquet(tmp_path)["passed"]
+
+
+@pytest.mark.data
+def test_value_changes_fail_even_if_schema_row_count_and_rehashed_manifest_match(
+    tmp_path: Path,
+) -> None:
+    from pvcomm.pipeline.iec104_parser import PARSER_VERSION
+
+    parsed = tmp_path / "parsed" / PARSER_VERSION
+    parsed.mkdir(parents=True)
+    (tmp_path / "observed").mkdir()
+    (tmp_path / "truth").mkdir()
+    (tmp_path / "manifest.json").write_text('{"status":"completed"}')
+    for name in ("packets", "iec104_apdu", "iec104_objects"):
+        (parsed / f"{name}.jsonl").write_text("")
+    event = dict(
+        run_id="synthetic-unit-only",
+        station_id="PV01",
+        event_id="unit-1",
+        event_type="master_command_sent",
+        ts_event_utc_ns=1,
+        ts_mono_ns=1,
+        sim_elapsed_ms=1,
+        target_kw=10.0,
+    )
+    (tmp_path / "observed/master_events.jsonl").write_text(json.dumps(event) + "\n")
+    export_parquet(tmp_path)
+    assert verify_parquet(tmp_path)["passed"]
+    pq = importlib.import_module("pyarrow.parquet")
+    pa = importlib.import_module("pyarrow")
+    table_path = tmp_path / "parsed/parquet-v01/master_events.parquet"
+    table = pq.read_table(table_path)
+    records = table.to_pylist()
+    records[0]["payload_json"] = records[0]["payload_json"].replace("10.0", "11.0")
+    pq.write_table(pa.Table.from_pylist(records, schema=table.schema), table_path)
+    manifest_path = table_path.parent / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["tables"]["master_events"]["sha256"] = hashlib.sha256(
+        table_path.read_bytes()
+    ).hexdigest()
+    manifest_path.write_text(json.dumps(manifest))
+    assert not verify_parquet(tmp_path)["passed"]

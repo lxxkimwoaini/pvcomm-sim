@@ -98,6 +98,20 @@ def read_jsonl(paths: list[Path]) -> list[dict[str, Any]]:
     ]
 
 
+def event_projection(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            **{key: row.get(key) for key in EVENT_FIELDS if key != "payload_json"},
+            "payload_json": json.dumps(
+                {k: v for k, v in row.items() if k not in EVENT_FIELDS},
+                allow_nan=False,
+                sort_keys=True,
+            ),
+        }
+        for row in records
+    ]
+
+
 def arrow_schema(fields: dict[str, str], scope: str) -> Any:
     pa = importlib.import_module("pyarrow")
     types = {
@@ -147,17 +161,7 @@ def export_parquet(run_dir: Path) -> dict[str, Any]:
     ):
         sources.extend(paths)
         records = read_jsonl(paths)
-        rows = [
-            {
-                **{key: row.get(key) for key in EVENT_FIELDS if key != "payload_json"},
-                "payload_json": json.dumps(
-                    {k: v for k, v in row.items() if k not in EVENT_FIELDS},
-                    allow_nan=False,
-                    sort_keys=True,
-                ),
-            }
-            for row in records
-        ]
+        rows = event_projection(records)
         tables[name] = (rows, EVENT_FIELDS, scope)
     summary: dict[str, Any] = {
         "schema_version": "0.1-protocol-evidence",
@@ -179,9 +183,7 @@ def export_parquet(run_dir: Path) -> dict[str, Any]:
             path = stage / f"{name}.parquet"
             pq.write_table(table, path, version="2.6", compression="zstd")
             restored = pq.read_table(path)
-            if restored.num_rows != len(rows) or not restored.schema.equals(
-                schema, check_metadata=True
-            ):
+            if not restored.equals(table, check_metadata=True):
                 raise ValueError(f"Parquet round trip failed: {name}")
             summary["tables"][name] = {
                 "rows": len(rows),
@@ -195,6 +197,7 @@ def export_parquet(run_dir: Path) -> dict[str, Any]:
 
 def verify_parquet(run_dir: Path) -> dict[str, Any]:
     """Recheck all six typed tables and immutable source hashes, not just existence."""
+    pa = importlib.import_module("pyarrow")
     pq = importlib.import_module("pyarrow.parquet")
     destination = run_dir / "parsed" / VERSION
     manifest_path = destination / "manifest.json"
@@ -231,11 +234,14 @@ def verify_parquet(run_dir: Path) -> dict[str, Any]:
         else:
             folder = "observed" if name == "master_events" else "truth"
             table_sources = list((run_dir / folder).glob(f"{name}*.jsonl"))
-        source_rows = len(read_jsonl(table_sources))
+        original_rows = read_jsonl(table_sources)
+        if fields == EVENT_FIELDS:
+            original_rows = event_projection(original_rows)
+        original = pa.Table.from_pylist(original_rows, schema=schema)
         passed = (
             entry.get("sha256") == hashlib.sha256(path.read_bytes()).hexdigest()
             and entry.get("rows") == table.num_rows
-            and table.num_rows == source_rows
+            and table.equals(original, check_metadata=True)
             and entry.get("scope") == scope
             and table.schema.equals(schema, check_metadata=True)
             and all(table[c.name].null_count == 0 for c in schema if not c.nullable)

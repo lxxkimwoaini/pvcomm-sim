@@ -116,10 +116,25 @@ export interface components {
             allocated_kw: number;
             /** Available At */
             available_at: string;
+            /**
+             * Confirmation Timeouts
+             * @default 0
+             */
+            confirmation_timeouts: number;
             /** Dispatch Id */
             dispatch_id: string;
+            /**
+             * Excluded Stations
+             * @default 0
+             */
+            excluded_stations: number;
             /** Failed Transmissions */
             failed_transmissions: number;
+            /**
+             * Negative Confirmations
+             * @default 0
+             */
+            negative_confirmations: number;
             /** Positive Confirmations */
             positive_confirmations: number;
             /** Regions */
@@ -130,6 +145,11 @@ export interface components {
             stations: number;
             /** Unallocated Kw */
             unallocated_kw: number;
+            /**
+             * Unavailable Commands
+             * @default 0
+             */
+            unavailable_commands: number;
         };
         /** EventView */
         EventView: {
@@ -143,8 +163,12 @@ export interface components {
             event_type: string;
             /** Ioa */
             ioa?: number | null;
+            /** Outcome */
+            outcome?: string | null;
             /** Positive Confirmation */
             positive_confirmation?: boolean | null;
+            /** Quality Valid */
+            quality_valid?: boolean | null;
             /** State */
             state?: string | null;
             /** Station Id */
@@ -182,10 +206,10 @@ export interface components {
             simulation_available: true;
             /**
              * Stage
-             * @default V0.3-development
+             * @default V0.4-development
              * @constant
              */
-            stage: "V0.3-development";
+            stage: "V0.4-development";
             /**
              * Status
              * @default ok

@@ -29,11 +29,22 @@ def main(argv: list[str] | None = None) -> int:
         "validate-power-config", help="validate V0.2/V0.3 power YAML"
     )
     validate_power.add_argument("--config", type=Path, required=True)
+    validate_weather = commands.add_parser(
+        "validate-weather-source", help="validate a versioned offline historical source descriptor"
+    )
+    validate_weather.add_argument("--config", type=Path, required=True)
     parse = commands.add_parser("parse", help="parse retained PCAP with TShark")
     parse.add_argument("--run-dir", type=Path, required=True)
     parse.add_argument("--parquet", action="store_true", help="also export versioned Arrow tables")
     qc = commands.add_parser("qc", help="independent protocol and physical verification")
     qc.add_argument("--run-dir", type=Path, required=True)
+    qc.add_argument("--profile", choices=("normal", "experiment"), default="normal")
+    storage = commands.add_parser("storage-audit", help="read-only inventory and capacity budget")
+    storage.add_argument("--run-dir", type=Path, required=True)
+    storage.add_argument("--policy", type=Path, required=True)
+    archive = commands.add_parser("archive-lossless", help="verify gzip archive; retain source")
+    archive.add_argument("--source", type=Path, required=True)
+    archive.add_argument("--destination", type=Path, required=True)
     run = commands.add_parser("run", help="run configured real IEC 104 isolated/local lab")
     run.add_argument("--config", type=Path, required=True)
     run.add_argument("--output-root", type=Path, required=True)
@@ -42,6 +53,52 @@ def main(argv: list[str] | None = None) -> int:
         reserved = commands.add_parser(name, help="not implemented in this development version")
         reserved.add_argument("arguments", nargs=argparse.REMAINDER)
     args, unknown = parser.parse_known_args(argv)
+    if args.command == "validate-weather-source":
+        if unknown:
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}")
+        from pvcomm.config.weather import HistoricalInput
+        from pvcomm.weather import open_historical_input
+
+        try:
+            weather_source = HistoricalInput.model_validate_json(args.config.read_bytes())
+            open_historical_input(weather_source).sample(0)
+        except (OSError, ValueError, KeyError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        print(
+            json.dumps(
+                {
+                    "valid": True,
+                    "source_id": weather_source.source_id,
+                    "adapter": weather_source.adapter,
+                    "sha256": weather_source.sha256,
+                }
+            )
+        )
+        return 0
+    if args.command in ("storage-audit", "archive-lossless"):
+        if unknown:
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}")
+        from pvcomm.storage.retention import (
+            RetentionPolicy,
+            archive_lossless,
+            inventory,
+            storage_budget,
+        )
+
+        try:
+            if args.command == "storage-audit":
+                if not args.run_dir.is_dir():
+                    raise ValueError("run directory does not exist")
+                policy = RetentionPolicy.model_validate_json(args.policy.read_bytes())
+                result = {"inventory": inventory(args.run_dir), "budget": storage_budget(policy)}
+            else:
+                result = archive_lossless(args.source, args.destination)
+        except (OSError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(json.dumps(result, sort_keys=True))
+        return 0
     if args.command == "validate-power-config":
         if unknown:
             parser.error(f"unrecognized arguments: {' '.join(unknown)}")
@@ -136,7 +193,11 @@ def main(argv: list[str] | None = None) -> int:
         from pvcomm.qc.v01 import qc_run
 
         try:
-            if (args.run_dir / "power_config.json").exists():
+            if args.profile == "experiment":
+                from pvcomm.qc.experiment import qc_experiment
+
+                report = qc_experiment(args.run_dir)
+            elif (args.run_dir / "power_config.json").exists():
                 from pvcomm.qc.power import qc_power
 
                 report = qc_power(args.run_dir)

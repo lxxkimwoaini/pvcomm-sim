@@ -8,8 +8,10 @@ from pvcomm.config import FoundationConfig
 from pvcomm.config.lab import V01Config
 from pvcomm.config.multisite import V03Config
 from pvcomm.config.power import V02Config
+from pvcomm.config.weather import HistoricalInput
 from pvcomm.storage.parquet import APDU_FIELDS, EVENT_FIELDS, OBJECT_FIELDS, PACKET_FIELDS, REQUIRED
 from pvcomm.storage.power_parquet import TABLES as POWER_TABLES
+from pvcomm.storage.retention import RetentionPolicy
 from pvcomm.web.app import create_app
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +26,8 @@ def main() -> int:
         "v01-lab.schema.json": V01Config.model_json_schema(),
         "v02-power.schema.json": V02Config.model_json_schema(),
         "v03-multisite.schema.json": V03Config.model_json_schema(),
+        "v04-weather-source.schema.json": HistoricalInput.model_json_schema(),
+        "v04-retention.schema.json": RetentionPolicy.model_json_schema(),
         "openapi.json": create_app().openapi(),
         "v02-power-parquet.contract.json": {
             "schema_version": "0.2-power-evidence.2",

@@ -171,7 +171,9 @@ def main() -> None:
                     endpoint.send_setpoint(station, station.initial_setpoint_kw, "release")
             if interruption is not None:
                 wait_until(interruption.start_s + interruption.duration_s + 1)
-                endpoint.recover(interruption.station_id)
+                endpoint.recover(
+                    interruption.station_id, raise_on_failure=not isinstance(power, V03Config)
+                )
             wait_until(config.duration_s)
             recorder.record_event("master_business_finished", {})
     finally:

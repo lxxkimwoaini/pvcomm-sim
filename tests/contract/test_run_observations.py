@@ -199,3 +199,34 @@ def test_device_status_is_received_independently_of_connection_and_respects_curs
     assert current["stations"][0]["device_running"] is False
     assert current["stations"][0]["connection_state"] is None
     assert current["stations"][1]["device_running"] is None
+
+
+def test_invalid_quality_does_not_fall_back_to_past_power_or_oracle(tmp_path: Path) -> None:
+    run = fixture_run(tmp_path)
+    path = run / "observed/master_events_master.jsonl"
+    template = json.loads(path.read_text().splitlines()[-1])
+    stamp = template["available_at"] + 10
+    with path.open("a") as stream:
+        for ioa in (1001, 2001):
+            stream.write(
+                json.dumps(
+                    {
+                        **template,
+                        "event_id": f"invalid{ioa}",
+                        "available_at": stamp,
+                        "ts_event_utc_ns": stamp,
+                        "ioa": ioa,
+                        "quality_valid": False,
+                        "value": 1234,
+                    }
+                )
+                + "\n"
+            )
+    client = TestClient(create_app(tmp_path))
+    key = client.get("/api/runs").json()["runs"][0]["run_key"]
+    before = client.get(f"/api/runs/{key}/snapshot?at_ns={stamp - 1}").json()["stations"][0]
+    assert before["latest_power_kw"] == 60
+    current = client.get(f"/api/runs/{key}/snapshot?at_ns={stamp}").json()["stations"][0]
+    assert current["latest_power_kw"] is None and not current["power_fresh"]
+    assert current["device_running"] is None
+    assert all(p["value"] != 1234 for p in current["power"])

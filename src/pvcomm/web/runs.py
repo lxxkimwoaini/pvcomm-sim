@@ -27,6 +27,16 @@ def curve_points(rows: list[dict[str, Any]], period_s: int, budget: int) -> list
     Preserve endpoints and source gaps. This is a UI projection, never an
     export or scientific feature. No future point contributes to a cursor.
     """
+    if any(r.get("quality_valid") is False for r in rows):
+        valid_rows = []
+        missing = False
+        for row in rows:
+            if row.get("quality_valid") is False:
+                missing = True
+            else:
+                valid_rows.append({**row, "quality_gap_before": missing})
+                missing = False
+        rows = valid_rows
     selected = set(range(len(rows)))
     if len(rows) > budget:
         selected = {0, len(rows) - 1}
@@ -39,7 +49,8 @@ def curve_points(rows: list[dict[str, Any]], period_s: int, budget: int) -> list
     for index in sorted(selected):
         row = rows[index]
         gap = any(
-            rows[i]["sim_elapsed_ms"] - rows[i - 1]["sim_elapsed_ms"] > period_s * 1500
+            rows[i].get("quality_gap_before", False)
+            or rows[i]["sim_elapsed_ms"] - rows[i - 1]["sim_elapsed_ms"] > period_s * 1500
             for i in range(previous + 1, index + 1)
         )
         result.append(
@@ -114,6 +125,10 @@ class DispatchView(Contract):
     stations: int
     positive_confirmations: int
     failed_transmissions: int
+    negative_confirmations: int = 0
+    confirmation_timeouts: int = 0
+    unavailable_commands: int = 0
+    excluded_stations: int = 0
 
 
 class EventView(Contract):
@@ -127,6 +142,8 @@ class EventView(Contract):
     action: str | None = None
     target_kw: float | None = None
     positive_confirmation: bool | None = None
+    outcome: str | None = None
+    quality_valid: bool | None = None
 
 
 class ProtocolView(Contract):
@@ -333,15 +350,20 @@ class RunRepository:
                     y_m=getattr(station, "y_m", None),
                     power_fresh=bool(
                         power
+                        and power[-1].get("quality_valid") is not False
                         and cursor - power[-1]["available_at"]
                         <= (2 * station.telemetry_period_s + 1) * 1_000_000_000
                         and state
                         and state[-1] == "OPEN"
                     ),
                     connection_state=state[-1] if state else None,
-                    latest_power_kw=power[-1]["value"] if power else None,
+                    latest_power_kw=power[-1]["value"]
+                    if power and power[-1].get("quality_valid") is not False
+                    else None,
                     power_available_at=power[-1]["available_at"] if power else None,
-                    device_running=bool(device_status[-1]["value"]) if device_status else None,
+                    device_running=bool(device_status[-1]["value"])
+                    if device_status and device_status[-1].get("quality_valid") is not False
+                    else None,
                     device_status_available_at=(
                         device_status[-1]["available_at"] if device_status else None
                     ),
@@ -412,9 +434,29 @@ class RunRepository:
                 ),
                 failed_transmissions=sum(
                     e.get("dispatch_id") == r["dispatch_id"]
+                    and (
+                        e.get("outcome") not in (None, "accepted")
+                        or e.get("positive_confirmation") is False
+                    )
+                    for e in responses
+                ),
+                negative_confirmations=sum(
+                    e.get("dispatch_id") == r["dispatch_id"]
                     and e.get("positive_confirmation") is False
                     for e in responses
                 ),
+                confirmation_timeouts=sum(
+                    e.get("dispatch_id") == r["dispatch_id"]
+                    and e.get("outcome") == "confirmation_timeout"
+                    for e in responses
+                ),
+                unavailable_commands=sum(
+                    e.get("dispatch_id") == r["dispatch_id"]
+                    and e.get("outcome")
+                    in ("connection_unavailable", "connection_lost", "session_quarantined")
+                    for e in responses
+                ),
+                excluded_stations=len(r.get("excluded_observations", {})),
             )
             for r in index.rows(cursor, kind="master_dispatch_allocated", limit=30)
         ]

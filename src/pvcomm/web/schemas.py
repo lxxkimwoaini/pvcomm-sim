@@ -9,7 +9,7 @@ from pvcomm.config.models import Contract
 
 class Health(Contract):
     status: Literal["ok"] = "ok"
-    stage: Literal["V0.3-development"] = "V0.3-development"
+    stage: Literal["V0.4-development"] = "V0.4-development"
     simulation_available: Literal[True] = True
     web_run_submission_available: Literal[False] = False
 

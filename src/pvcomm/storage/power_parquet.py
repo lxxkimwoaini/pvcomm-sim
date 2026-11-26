@@ -76,6 +76,21 @@ def schema(fields: dict[str, str]) -> Any:
     )
 
 
+def source_rows(root: Path) -> dict[str, list[dict[str, Any]]]:
+    return {
+        "electrical_state": [
+            r
+            for r in read_jsonl(sorted((root / "truth").glob("electrical_state*.jsonl")))
+            if r.get("source") == "pvlib_pvwatts_inverter_v02"
+        ],
+        "powerflow": [
+            r
+            for r in read_jsonl(sorted((root / "truth").glob("terminal_events*.jsonl")))
+            if r["event_type"] == "terminal_powerflow_solved"
+        ],
+    }
+
+
 def export_power_parquet(root: Path) -> dict[str, Any]:
     pa = importlib.import_module("pyarrow")
     pq = importlib.import_module("pyarrow.parquet")
@@ -91,18 +106,7 @@ def export_power_parquet(root: Path) -> dict[str, Any]:
         *sorted((root / "truth/weather").glob("*/weather.json")),
         *sorted((root / "truth/weather").glob("*/source.json")),
     ]
-    rows = {
-        "electrical_state": [
-            r
-            for r in read_jsonl(sorted((root / "truth").glob("electrical_state*.jsonl")))
-            if r.get("source") == "pvlib_pvwatts_inverter_v02"
-        ],
-        "powerflow": [
-            r
-            for r in read_jsonl(sorted((root / "truth").glob("terminal_events*.jsonl")))
-            if r["event_type"] == "terminal_powerflow_solved"
-        ],
-    }
+    rows = source_rows(root)
     manifest: dict[str, Any] = {
         "version": VERSION,
         "scope": "Oracle",
@@ -121,8 +125,8 @@ def export_power_parquet(root: Path) -> dict[str, Any]:
             if not table.num_rows or any(table[c].null_count for c in fields):
                 raise ValueError(f"empty or incomplete {name} power table")
             path = stage / f"{name}.parquet"
-            pq.write_table(table, path)
-            if not pq.read_schema(path).equals(schema(fields), check_metadata=True):
+            pq.write_table(table, path, compression="zstd")
+            if not pq.read_table(path).equals(table, check_metadata=True):
                 raise ValueError("power Arrow schema roundtrip mismatch")
             manifest["tables"][name] = {
                 "rows": table.num_rows,
@@ -134,6 +138,7 @@ def export_power_parquet(root: Path) -> dict[str, Any]:
 
 
 def verify_power_parquet(root: Path) -> bool:
+    pa = importlib.import_module("pyarrow")
     pq = importlib.import_module("pyarrow.parquet")
     destination = root / "parsed" / VERSION
     manifest = json.loads((destination / "manifest.json").read_text(encoding="utf-8"))
@@ -145,6 +150,7 @@ def verify_power_parquet(root: Path) -> bool:
             raise ValueError("power source escapes run directory")
         if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
             return False
+    rows = source_rows(root)
     for name, fields in TABLES.items():
         path = destination / f"{name}.parquet"
         table = pq.read_table(path)
@@ -155,6 +161,9 @@ def verify_power_parquet(root: Path) -> bool:
             or table.num_rows == 0
             or any(table[c].null_count for c in fields)
             or hashlib.sha256(path.read_bytes()).hexdigest() != record["sha256"]
+            or not table.equals(
+                pa.Table.from_pylist(rows[name], schema=schema(fields)), check_metadata=True
+            )
         ):
             return False
     return True

@@ -3,9 +3,27 @@
 import math
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from typing import Protocol
 
+from pvcomm.config.lab import V01StationConfig
 from pvcomm.config.multisite import V03Config
-from pvcomm.protocol.c104_runtime import C104Master, RecordEvent
+from pvcomm.domain.command import CommandResult, ObservationUnavailable
+from pvcomm.protocol.c104_runtime import RecordEvent
+
+
+class DispatchMaster(Protocol):
+    def available_power(self, station_config: V01StationConfig, /) -> float: ...
+
+    def send_setpoint(
+        self,
+        station_config: V01StationConfig,
+        /,
+        target_kw: float,
+        action: str,
+        *,
+        dispatch_id: str | None = None,
+        raise_on_failure: bool = True,
+    ) -> CommandResult: ...
 
 
 def allocate(
@@ -33,18 +51,29 @@ def allocate(
 
 
 def execute_dispatches(
-    config: V03Config, master: C104Master, wait_until: Callable[[float], None], record: RecordEvent
+    config: V03Config,
+    master: DispatchMaster,
+    wait_until: Callable[[float], None],
+    record: RecordEvent,
 ) -> None:
     for task in config.dispatch_tasks:
         wait_until(task.at_s)
         stations = [s for s in config.protocol.stations if s.region_id in task.region_ids]
-        availability = (
-            {s.station_id: master.available_power(s) for s in stations}
-            if task.allocation == "observed_available"
-            else None
-        )
-        targets, unallocated = allocate(
-            task.total_kw, {s.station_id: s.capacity_kw for s in stations}, availability
+        requested_count = len(stations)
+        excluded: dict[str, str] = {}
+        availability = None
+        if task.allocation == "observed_available":
+            availability = {}
+            for station in stations:
+                try:
+                    availability[station.station_id] = master.available_power(station)
+                except ObservationUnavailable as exc:
+                    excluded[station.station_id] = exc.reason
+            stations = [s for s in stations if s.station_id not in excluded]
+        targets, unallocated = (
+            allocate(task.total_kw, {s.station_id: s.capacity_kw for s in stations}, availability)
+            if stations
+            else ({}, task.total_kw)
         )
         record(
             "master_dispatch_allocated",
@@ -56,6 +85,10 @@ def execute_dispatches(
                 "unallocated_kw": unallocated,
                 "allocation": task.allocation,
                 "targets_kw": targets,
+                "requested_station_count": requested_count,
+                "eligible_station_count": len(stations),
+                "excluded_observations": excluded,
+                "degradation_policy": "exclude_unavailable_observations_continue_eligible",
             },
         )
         with ThreadPoolExecutor(max_workers=task.batch_size) as pool:
@@ -69,19 +102,20 @@ def execute_dispatches(
                         targets[s.station_id],
                         "dispatch",
                         dispatch_id=task.dispatch_id,
+                        raise_on_failure=False,
                     )
                     for s in batch
                 }
                 for station_id, future in futures.items():
-                    try:
-                        future.result()
-                    except RuntimeError as exc:
-                        record(
-                            "master_dispatch_station_failed",
-                            {
-                                "dispatch_id": task.dispatch_id,
-                                "station_id": station_id,
-                                "error": str(exc),
-                            },
-                        )
+                    result = future.result()
+                    record(
+                        "master_dispatch_station_result",
+                        {
+                            "dispatch_id": task.dispatch_id,
+                            "station_id": station_id,
+                            "task_id": result.task_id,
+                            "outcome": result.outcome,
+                            "positive_confirmation": result.positive_confirmation,
+                        },
+                    )
         record("master_dispatch_transmissions_finished", {"dispatch_id": task.dispatch_id})

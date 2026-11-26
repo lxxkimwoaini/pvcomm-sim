@@ -12,12 +12,27 @@
             "title": "Available At",
             "type": "string"
           },
+          "confirmation_timeouts": {
+            "default": 0,
+            "title": "Confirmation Timeouts",
+            "type": "integer"
+          },
           "dispatch_id": {
             "title": "Dispatch Id",
             "type": "string"
           },
+          "excluded_stations": {
+            "default": 0,
+            "title": "Excluded Stations",
+            "type": "integer"
+          },
           "failed_transmissions": {
             "title": "Failed Transmissions",
+            "type": "integer"
+          },
+          "negative_confirmations": {
+            "default": 0,
+            "title": "Negative Confirmations",
             "type": "integer"
           },
           "positive_confirmations": {
@@ -42,6 +57,11 @@
           "unallocated_kw": {
             "title": "Unallocated Kw",
             "type": "number"
+          },
+          "unavailable_commands": {
+            "default": 0,
+            "title": "Unavailable Commands",
+            "type": "integer"
           }
         },
         "required": [
@@ -95,6 +115,17 @@
             ],
             "title": "Ioa"
           },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
           "positive_confirmation": {
             "anyOf": [
               {
@@ -105,6 +136,17 @@
               }
             ],
             "title": "Positive Confirmation"
+          },
+          "quality_valid": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Valid"
           },
           "state": {
             "anyOf": [
@@ -237,8 +279,8 @@
             "type": "boolean"
           },
           "stage": {
-            "const": "V0.3-development",
-            "default": "V0.3-development",
+            "const": "V0.4-development",
+            "default": "V0.4-development",
             "title": "Stage",
             "type": "string"
           },
@@ -918,7 +960,7 @@
   },
   "info": {
     "title": "PVComm foundation API",
-    "version": "0.3.0.dev0"
+    "version": "0.4.0.dev0"
   },
   "openapi": "3.1.0",
   "paths": {

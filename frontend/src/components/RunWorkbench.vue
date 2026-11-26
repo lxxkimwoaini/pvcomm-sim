@@ -566,7 +566,8 @@ onBeforeUnmount(() => {
               <th>分配 / 请求 kW</th>
               <th>资源缺口 kW</th>
               <th>确认 / 站点</th>
-              <th>传输失败</th>
+              <th>否定确认 / 确认超时 / 连接不可用</th>
+              <th>缺测排除</th>
             </tr>
           </thead>
           <tbody>
@@ -582,12 +583,19 @@ onBeforeUnmount(() => {
               </td>
               <td>{{ task.unallocated_kw.toFixed(1) }}</td>
               <td>{{ task.positive_confirmations }} / {{ task.stations }}</td>
-              <td>{{ task.failed_transmissions }}</td>
+              <td>
+                {{ task.negative_confirmations ?? 0 }} /
+                {{ task.confirmation_timeouts ?? 0 }} /
+                {{ task.unavailable_commands ?? 0 }}
+              </td>
+              <td>{{ task.excluded_stations ?? 0 }}</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p>确认是主站收到的协议响应；不据此冒充电气执行完成。</p>
+      <p>
+        确认来自实际协议响应；否定确认需另核合法条件，超时不等于拒绝，确认不代表电气执行完成。
+      </p>
       <ElButton @click="loadResources">读取实验资源诊断</ElButton>
       <p v-if="resources">
         独立基础设施诊断（最新时刻，不随 M2 游标回放）：CPU

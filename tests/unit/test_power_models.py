@@ -79,6 +79,124 @@ def test_weather_hourly_hold_and_exclusive_source_interval(tmp_path: Path) -> No
         weather.sample(7200)
 
 
+def test_new_historical_descriptor_supports_other_dates_coordinates_and_pinned_versions(
+    tmp_path: Path,
+) -> None:
+    from pvcomm.config.weather import HistoricalInput
+
+    path, _ = weather_fixture(tmp_path)
+    raw = json.loads(path.read_bytes())
+    raw["geometry"]["coordinates"] = [114.0, 36.0, 400.0]
+    raw["header"]["api"]["version"] = "explicit-unit-fixture-version"
+    for values in raw["properties"]["parameter"].values():
+        values["2025010100"] = values.pop("2024060103")
+        values["2025010101"] = values.pop("2024060104")
+    path.write_text(json.dumps(raw))
+    descriptor = dict(
+        schema_version="0.4-weather-source.1",
+        source_id="synthetic_unit_fixture_only",
+        adapter="nasa_power_hourly_v1",
+        product_version="explicit-unit-fixture-version",
+        source_kind="historical_satellite_reanalysis_not_field_measurement",
+        usage_basis="Synthetic unit fixture only, never formal weather input",
+        policy_url="https://example.org/unit-test-policy",
+        product_url="https://example.org/unit-test",
+        retrieved_at="2026-11-26T00:00:00Z",
+        directory=str(tmp_path),
+        sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+        source_start="2025-01-01T00:30:00Z",
+        coverage_start="2025-01-01T00:00:00Z",
+        coverage_end_exclusive="2025-01-01T02:00:00Z",
+        latitude=36.0,
+        longitude=114.0,
+        altitude_m=400.0,
+        sampling="hourly_mean_zero_order_hold",
+    )
+    cfg = HistoricalInput.model_validate(descriptor)
+    weather = HistoricalWeather(path, cfg)
+    assert weather.sample(0).ghi_w_m2 == 1
+    assert weather.sample(1800).ghi_w_m2 == 2
+    for key, value in (
+        ("coverage_end_exclusive", "2025-01-01T03:00:00Z"),
+        ("product_version", "wrong"),
+        ("longitude", 113.8),
+    ):
+        with pytest.raises(ValueError):
+            HistoricalWeather(path, HistoricalInput.model_validate({**descriptor, key: value}))
+    with pytest.raises(ValueError):
+        HistoricalInput.model_validate({**descriptor, "adapter": "unimplemented_source"})
+    with pytest.raises(ValueError):
+        HistoricalInput.model_validate({**descriptor, "source_start": "2025-01-01T02:00:00Z"})
+
+
+@pytest.mark.parametrize("defect", [None, "missing_policy", "policy_url", "changed_raw", "hash"])
+def test_historical_adapter_requires_complete_retained_provenance(
+    tmp_path: Path, defect: str | None
+) -> None:
+    from pvcomm.config.weather import HistoricalInput
+    from pvcomm.weather import open_historical_input
+
+    path, legacy = weather_fixture(tmp_path)
+    raw = json.loads(path.read_bytes())
+    canonical = json.dumps(raw, sort_keys=True, separators=(",", ":")).encode()
+    (tmp_path / "weather.json").write_bytes(canonical)
+    (tmp_path / "raw.json").write_bytes(canonical)
+    for name in ("api.html", "referencing.html", "policy.html"):
+        (tmp_path / name).write_text("Synthetic unit test attribution snapshot only")
+    files = {
+        name: {
+            "url": f"https://example.org/{name}",
+            "sha256": hashlib.sha256((tmp_path / name).read_bytes()).hexdigest(),
+        }
+        for name in ("raw.json", "api.html", "referencing.html", "policy.html")
+    }
+    metadata = dict(
+        source_id="unit_fixture_only",
+        canonical_sha256=hashlib.sha256(canonical).hexdigest(),
+        source_kind="historical_satellite_reanalysis_not_field_measurement",
+        usage_basis="Synthetic unit fixture only; not a real historical product",
+        retrieved_at="2026-11-26T00:00:00Z",
+        files=files,
+    )
+    config = HistoricalInput.model_validate(
+        dict(
+            **{k: v for k, v in metadata.items() if k not in ("files", "canonical_sha256")},
+            schema_version="0.4-weather-source.1",
+            sha256=metadata["canonical_sha256"],
+            directory=str(tmp_path),
+            policy_url=files["policy.html"]["url"],
+            product_url=files["api.html"]["url"],
+            adapter="nasa_power_hourly_v1",
+            product_version="v2.10.5",
+            source_start=legacy.source_start,
+            coverage_start="2024-06-01T03:00:00Z",
+            coverage_end_exclusive="2024-06-01T05:00:00Z",
+            longitude=legacy.longitude,
+            latitude=legacy.latitude,
+            altitude_m=legacy.altitude_m,
+            sampling="hourly_mean_zero_order_hold",
+        )
+    )
+    if defect == "missing_policy":
+        del files["policy.html"]
+    elif defect == "policy_url":
+        files["policy.html"]["url"] = "https://example.org/different"
+    elif defect == "changed_raw":
+        changed = {**raw, "unverified": True}
+        (tmp_path / "raw.json").write_text(json.dumps(changed))
+        files["raw.json"]["sha256"] = hashlib.sha256(
+            (tmp_path / "raw.json").read_bytes()
+        ).hexdigest()
+    elif defect == "hash":
+        (tmp_path / "policy.html").write_text("corrupt")
+    (tmp_path / "source.json").write_text(json.dumps(metadata))
+    if defect:
+        with pytest.raises(ValueError):
+            open_historical_input(config)
+    else:
+        assert open_historical_input(config).sample(0).ghi_w_m2 == 1
+
+
 @pytest.mark.parametrize("mutation", ["unit", "missing", "gap", "hash"])
 def test_invalid_weather_is_not_filled_or_zeroed(tmp_path: Path, mutation: str) -> None:
     path, cfg = weather_fixture(tmp_path)

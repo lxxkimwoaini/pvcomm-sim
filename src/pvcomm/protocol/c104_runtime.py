@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from pvcomm.config.lab import V01StationConfig
+from pvcomm.domain.command import CommandResult, ObservationUnavailable
+from pvcomm.protocol.confirmation import ConfirmationTracker, confirmations
 
 RecordEvent = Callable[[str, dict[str, object]], None]
 RecordRaw = Callable[[str, str, bytes], None]
@@ -368,7 +370,9 @@ class C104Master:
         self._station_locks = {s.station_id: threading.Lock() for s in stations}
         self._command_sequence = 0
         self._observations: dict[tuple[str, int], tuple[float, float]] = {}
+        self._invalid_observations: set[tuple[str, int]] = set()
         self._observation_lock = threading.Lock()
+        self._confirmations = ConfirmationTracker()
 
     def _install_connection_callbacks(
         self, station_config: V01StationConfig, connection: Any
@@ -376,6 +380,7 @@ class C104Master:
         c104 = self._c104
 
         def on_state_change(connection: Any, state: Any) -> None:
+            self._confirmations.state(station_config.station_id, state.name)
             self._record_event(
                 "master_connection_state",
                 {"station_id": station_config.station_id, "state": state.name},
@@ -391,7 +396,27 @@ class C104Master:
         connection.on_state_change(on_state_change)
 
         def on_receive_raw(connection: Any, data: bytes) -> None:
+            received_ns = time.monotonic_ns()
             self._record_raw("master_receive", station_config.station_id, data)
+            for item in confirmations(data):
+                task_id = self._confirmations.observe(station_config.station_id, item, received_ns)
+                self._record_event(
+                    "master_command_confirmation",
+                    {
+                        "station_id": station_config.station_id,
+                        "task_id": task_id,
+                        "common_address": item.common_address,
+                        "ioa": item.ioa,
+                        "target_kw": item.target_kw,
+                        "positive_confirmation": item.positive,
+                        "matched": task_id is not None,
+                        "received_mono_ns": received_ns,
+                        "data_hex": item.data_hex,
+                        "connection_epoch": self._confirmations.epochs.get(
+                            station_config.station_id, 0
+                        ),
+                    },
+                )
 
         _set_callback_annotations(
             on_receive_raw,
@@ -490,7 +515,16 @@ class C104Master:
                 previous_info: Any,
                 message: Any,
             ) -> Any:
+                quality = point.info.quality
+                valid = (
+                    quality is not None and quality.is_good() and math.isfinite(float(point.value))
+                )
                 with self._observation_lock:
+                    key = (station_config.station_id, point.io_address)
+                    if valid:
+                        self._invalid_observations.discard(key)
+                    else:
+                        self._invalid_observations.add(key)
                     self._observations[(station_config.station_id, point.io_address)] = (
                         float(point.value),
                         time.monotonic(),
@@ -502,6 +536,7 @@ class C104Master:
                         "ioa": point.io_address,
                         "value": point.value,
                         "cot": message.cot.name,
+                        "quality_valid": bool(valid),
                     },
                 )
                 return c104.ResponseState.SUCCESS
@@ -556,12 +591,18 @@ class C104Master:
             if not result:
                 raise RuntimeError(f"interrogation failed for {station_config.station_id}")
 
-    def recover(self, station_id: str) -> None:
+    def recover(self, station_id: str, *, raise_on_failure: bool = True) -> bool:
         connection = self._connections[station_id]
         deadline = time.monotonic() + 15
         while connection.state != self._c104.ConnectionState.OPEN:
             if time.monotonic() >= deadline:
-                raise TimeoutError(f"station did not recover: {station_id}")
+                self._record_event(
+                    "master_recovery_connection_result",
+                    {"station_id": station_id, "outcome": "connection_timeout", "success": False},
+                )
+                if raise_on_failure:
+                    raise TimeoutError(f"station did not recover: {station_id}")
+                return False
             time.sleep(0.05)
         station = next(s for s in self._stations if s.station_id == station_id)
         result = connection.interrogation(
@@ -576,8 +617,9 @@ class C104Master:
                 "success": result,
             },
         )
-        if not result:
+        if not result and raise_on_failure:
             raise RuntimeError("recovery interrogation failed")
+        return bool(result)
 
     def send_setpoint(
         self,
@@ -586,11 +628,15 @@ class C104Master:
         action: str,
         *,
         dispatch_id: str | None = None,
-    ) -> None:
+        raise_on_failure: bool = True,
+    ) -> CommandResult:
         # IEC 104 does not carry task_id. Serialize local callers, including
         # repeated values/actions, until the protocol confirmation returns.
         with self._station_locks[station_config.station_id]:
-            self._send_setpoint(station_config, target_kw, action, dispatch_id=dispatch_id)
+            result = self._send_setpoint(station_config, target_kw, action, dispatch_id=dispatch_id)
+            if raise_on_failure and result.outcome != "accepted":
+                raise RuntimeError(f"command {result.outcome} for {station_config.station_id}")
+            return result
 
     def _send_setpoint(
         self,
@@ -599,18 +645,33 @@ class C104Master:
         action: str,
         *,
         dispatch_id: str | None = None,
-    ) -> None:
+    ) -> CommandResult:
+        if not math.isfinite(target_kw) or target_kw < 0:
+            raise ValueError("setpoint must be finite and nonnegative")
         station = self._remote_stations[station_config.station_id]
         point = station.get_point(io_address=3001)
         if point is None:
             raise RuntimeError(f"command point missing for {station_config.station_id}")
-        observed_power = station.get_point(io_address=1001)
-        current_kw = float(observed_power.value) if observed_power is not None else 0.0
+        with self._observation_lock:
+            sample = self._observations.get((station_config.station_id, 1001))
+            valid = (station_config.station_id, 1001) not in self._invalid_observations
+        current_kw = (
+            sample[0]
+            if sample is not None
+            and valid
+            and 0 <= time.monotonic() - sample[1] <= station_config.telemetry_period_s * 2 + 1
+            else None
+        )
+        distance_kw = (
+            abs(target_kw - current_kw)
+            if current_kw is not None
+            else max(target_kw, abs(station_config.capacity_kw - target_kw))
+        )
         execution_s = max(
             10.0,
             min(
                 60.0,
-                abs(target_kw - current_kw) / station_config.ramp_kw_per_s
+                distance_kw / station_config.ramp_kw_per_s
                 + 2 * station_config.telemetry_period_s
                 + 1,
             ),
@@ -619,8 +680,18 @@ class C104Master:
         with self._command_lock:
             self._command_sequence += 1
             task_id = f"{station_config.station_id}-{self._command_sequence:09d}-{action}"
+        sent_ns, sent_utc_ns = time.monotonic_ns(), time.time_ns()
+        outcome = self._confirmations.begin(
+            station_config.station_id,
+            task_id,
+            station_config.common_address,
+            target_kw,
+            sent_ns,
+            sent_ns + 3_000_000_000,
+        )
+        epoch = self._confirmations.epochs.get(station_config.station_id, 0)
         self._record_event(
-            "master_command_sent",
+            "master_command_sent" if outcome is None else "master_command_not_sent",
             {
                 "station_id": station_config.station_id,
                 "ioa": 3001,
@@ -630,9 +701,20 @@ class C104Master:
                 "dispatch_id": dispatch_id,
                 "deadline_ms": 3000,
                 "execution_deadline_ms": math.ceil(execution_s * 1000),
+                "sent_mono_ns": sent_ns if outcome is None else None,
+                "sent_utc_ns": sent_utc_ns if outcome is None else None,
+                "connection_epoch": epoch,
+                "current_power_kw": current_kw,
+                "execution_basis": "fresh_observed_power"
+                if current_kw is not None
+                else "configured_capacity_bound",
             },
         )
-        result = point.transmit(cause=self._c104.Cot.ACTIVATION)
+        stack_result = None
+        positive = None
+        if outcome is None:
+            stack_result = bool(point.transmit(cause=self._c104.Cot.ACTIVATION))
+            outcome, positive = self._confirmations.finish(station_config.station_id)
         self._record_event(
             "master_command_response",
             {
@@ -640,24 +722,29 @@ class C104Master:
                 "task_id": task_id,
                 "ioa": 3001,
                 "target_kw": target_kw,
-                "positive_confirmation": result,
+                "positive_confirmation": positive,
+                "stack_result": stack_result,
+                "outcome": outcome,
+                "connection_epoch": epoch,
                 "dispatch_id": dispatch_id,
                 "execution_reached": None,
             },
         )
-        if not result:
-            raise RuntimeError(f"command was not accepted for {station_config.station_id}")
+        return CommandResult(
+            task_id, station_config.station_id, outcome, positive, stack_result, epoch
+        )
 
     def available_power(self, station_config: V01StationConfig) -> float:
         with self._observation_lock:
             sample = self._observations.get((station_config.station_id, 1008))
-        if (
-            sample is None
-            or time.monotonic() - sample[1] > station_config.telemetry_period_s * 2 + 1
-        ):
-            raise RuntimeError(
-                f"missing/stale observed availability for {station_config.station_id}"
-            )
+            invalid = (station_config.station_id, 1008) in self._invalid_observations
+        if sample is None:
+            raise ObservationUnavailable(station_config.station_id, "missing")
+        if invalid or not math.isfinite(sample[0]) or sample[0] < 0:
+            raise ObservationUnavailable(station_config.station_id, "invalid")
+        age = time.monotonic() - sample[1]
+        if age < 0 or age > station_config.telemetry_period_s * 2 + 1:
+            raise ObservationUnavailable(station_config.station_id, "stale")
         return sample[0]
 
     def stop(self) -> None:

@@ -1,6 +1,6 @@
 # PVComm 开发进度
 
-日期：2026-11-25（Asia/Shanghai）。当前阶段：**V0.0、V0.1及V0.2三站开发验收通过（2026-11-25）；未推进V0.3**。两个 30 分钟回环稳定性运行已完成，但不等同于独立 P0/P1 的正式验收。初始只有 AGENTS.md 和 V1.2/V1.3 方案；无既有实验。本文件只记录实际执行，不将计划标为完成。
+日期：2026-11-26（Asia/Shanghai）。当前阶段：**V0.0–V0.3开发验收通过；V0.4a实施与验证中，V0.4尚未验收**。下文按时间追加，早期“未实现/下一任务”描述保留为当时记录，当前结论见末尾及各阶段验收报告。初始只有 AGENTS.md 和 V1.2/V1.3 方案；无既有实验。本文件只记录实际执行，不将计划标为完成。
 
 ## 已执行
 
@@ -266,3 +266,16 @@ V0.3开发门禁通过，详见docs/reports/2026-11-25-v03-acceptance.md；READM
 验收文档提交8bc6489b6060ed1576710feb61702088a846bfc6已推送，git ls-remote与本地SHA一致；push CI45638703911及pull_request CI45638866871均实际success，Ubuntu/Windows Python、Arrow、Physical models、Frontend/browser五job全部成功。草稿PR #4：https://github.com/lxxkimwoaini/pvcomm-sim/pull/4 ，OPEN/isDraft=true，base=feat/v02-power-cosimulation，head=feat/v03-multisite。22:55北京时间复核#1→#2→#3→#4仍全OPEN，#3/#4 draft，未自动合并或改写历史；远程仍为lxxkimwoaini/pvcomm-sim、PUBLIC、默认main。
 
 交付检查：29份Markdown的22个本地文件链接无断链，CLI实际版本0.3.0.dev0、30站配置校验退出0，diff检查通过，变更路径无data/outputs/PCAP/Parquet，非忽略项目文件未发现高风险凭据模式。本机8000/5173无监听；WSL实验namespace列表为空，宿主两个Docker网桥veth不属于本次资源，已保留。所有复制证据原件仍在，最终成功UI证据另存outputs/v03-final-ui-passed-003。此补记仅文档，不把8bc6489的CI结果混称为补记本身CI；最终分支CI以远程实际状态及交付回复为准。
+
+
+## V0.4a 前置修复（2026-11-26，验证中）
+
+基线5c406666e31e6edb3268e2be041ec9aa881ed26d，当前feat/v04-scenarios。已阅读AGENTS、V1.3、V0.3报告和ADR，新增分阶段计划2026-11-26-v04及ADR0011/0012。gh账号lxxkimwoaini，PUBLIC、main保留既有授权；PR #1 main←fix/v01-evidence-integrity，#2 ←feat/v01-acceptance，#3 ←feat/v02-power-cosimulation，#4 ←feat/v03-multisite，均OPEN，#3/#4 draft，未合并。
+
+实现候选：实验完整性/质量与默认正常QC分离；真实ACT_CON与transmit结果分离、超时会话隔离；缺测/过期/品质无效按站排除且后续任务继续；旧气象契约冻结，新离线来源描述符校验日期/位置/产品/许可快照/哈希；逐值Arrow读回与原JSONL比对；保留原件的无损gzip及只读预算；M2品质与真实结果显示。包/Health/生成契约同步0.4开发状态，不声称完成场景库或标签。
+
+初次普通总检148 passed/12 deselected，Ruff/mypy88/schema通过，前端Prettier失败，已修正当前Vue文件。WSL科学/数据全量155 passed/5 deselected、26.89s。新增来源完整性、全缺测、无效品质等回归后首次156项检查出现4失败：两项新fixture误读空调度、schema未重新生成、旧timeout fixture实际仍有有效线上ACK。已修正fixture并新增“有ACK但缺回调为证据不完整”负测试，未放宽业务门槛。最终静态/普通/Web检查及真实冻结实验结果将在后文追加。
+
+新三站210s真实配置v0.4a-prerequisite.yaml将验证PV01维护缺测排除、PV02正常停机后合法拒绝、PV03和后续任务继续；独立协议fixture将实测不回复、超时隔离及其他站成功。当前均未执行，未标记通过。六类P0正式异常、故障核验、自动标签、配对/覆盖报告、场景表单队列仍未完成。原始历史输入与既有运行证据未删除，未生成720h或训练模型。
+
+冻结候选前最终检查：完整`uv run --frozen python scripts/dev.py check`退出0，158 passed/13 deselected，mypy88文件，Ruff/format/schema/TS/ESLint/Prettier/vue-tsc/Vitest3/build通过；保留既有2条HTML缩进warning及817.61kB构建提示。WSL `pytest -q -m "not lab"`为165 passed/6 deselected、14.90s，含科学/Arrow。真实本机API的Playwright为2 passed/1 skipped、4.4s，跳过需实际运行数据的回放项，不能算实验验收。准备以本次候选提交创建原生Linux干净源码worktree，使用新持久输出执行lab；未与其他namespace运行并行。

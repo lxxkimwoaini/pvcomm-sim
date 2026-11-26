@@ -8,13 +8,14 @@ import math
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from pvcomm.config.multisite import V03Config
     from pvcomm.config.power import V02Config
 
 from pvcomm.config.power import WeatherConfig
+from pvcomm.config.weather import HistoricalInput
 
 PARAMETERS = {
     "ALLSKY_SFC_SW_DWN": ("ghi_w_m2", "Wh/m^2", 0, 1500),
@@ -67,15 +68,68 @@ class WeatherSample:
     optical_transmittance: float = 1.0
 
 
+class WeatherProvider(Protocol):
+    """Offline physical driver; independent observed M3 weather is not implied."""
+
+    def sample(self, elapsed_s: float) -> WeatherSample: ...
+
+
+def open_historical_input(config: HistoricalInput) -> WeatherProvider:
+    """Validate offline provenance before exposing a new source to a model.
+
+    Policy URLs and usage basis are retained attribution, not automatic legal
+    approval. Only an explicitly implemented/versioned adapter is accepted.
+    """
+    root = Path(config.directory)
+    if (root / "source.json").is_symlink():
+        raise ValueError("historical provenance must be a retained regular file")
+    metadata = json.loads((root / "source.json").read_bytes())
+    if (
+        metadata["source_id"] != config.source_id
+        or metadata["canonical_sha256"] != config.sha256
+        or metadata["source_kind"] != config.source_kind
+        or metadata["usage_basis"] != config.usage_basis
+        or datetime.fromisoformat(metadata["retrieved_at"]) != config.retrieved_at
+    ):
+        raise ValueError("historical source provenance descriptor mismatch")
+    files = metadata["files"]
+    if not {"raw.json", "api.html", "referencing.html", "policy.html"} <= set(files):
+        raise ValueError("historical provenance is missing required source or policy snapshots")
+    if files["api.html"]["url"] != str(config.product_url) or files["policy.html"]["url"] != str(
+        config.policy_url
+    ):
+        raise ValueError("historical policy/product URL differs from retained snapshot")
+    for name, entry in metadata["files"].items():
+        if Path(name).name != name or name in (".", "..") or "\\" in name:
+            raise ValueError("unsafe historical source manifest path")
+        if (root / name).is_symlink() or not (root / name).is_file():
+            raise ValueError("historical source manifest requires retained regular files")
+        with (root / name).open("rb") as stream:
+            if hashlib.file_digest(stream, "sha256").hexdigest() != entry["sha256"]:
+                raise ValueError("historical source file hash mismatch")
+    raw = json.loads((root / "raw.json").read_bytes())
+    canonical = json.dumps(
+        {k: v for k, v in raw.items() if k != "times"}, sort_keys=True, separators=(",", ":")
+    ).encode()
+    if hashlib.sha256(canonical).hexdigest() != config.sha256:
+        raise ValueError("historical normalized source differs from retained original")
+    if (root / "weather.json").is_symlink():
+        raise ValueError("normalized historical source must be a retained regular file")
+    return HistoricalWeather(root / "weather.json", config)
+
+
 class HistoricalWeather:
-    def __init__(self, path: Path, config: WeatherConfig) -> None:
+    def __init__(self, path: Path, config: WeatherConfig | HistoricalInput) -> None:
         content = path.read_bytes()
         if hashlib.sha256(content).hexdigest() != config.sha256:
             raise ValueError("historical weather SHA256 mismatch")
         raw = json.loads(content)
         if raw["header"]["time_standard"] != "UTC":
             raise ValueError("weather must use UTC")
-        if raw["header"]["api"]["version"] != "v2.10.5":
+        expected_version = (
+            config.product_version if isinstance(config, HistoricalInput) else "v2.10.5"
+        )
+        if raw["header"]["api"]["version"] != expected_version:
             raise ValueError("unverified weather API version")
         if raw["geometry"]["coordinates"] != [config.longitude, config.latitude, config.altitude_m]:
             raise ValueError("weather coordinate mismatch")
@@ -100,6 +154,11 @@ class HistoricalWeather:
             b - a != timedelta(hours=1) for a, b in zip(ordered, ordered[1:], strict=False)
         ):
             raise ValueError("weather is empty or discontinuous")
+        if isinstance(config, HistoricalInput) and (
+            ordered[0] != config.coverage_start
+            or ordered[-1] + timedelta(hours=1) != config.coverage_end_exclusive
+        ):
+            raise ValueError("declared historical coverage does not match retained source")
         self.header: dict[str, Any] = raw["header"]
         self.config = config
 

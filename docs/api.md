@@ -1,11 +1,11 @@
-# API 与 CLI（0.3.0.dev0）
+# API 与 CLI（0.4.0.dev0）
 
 启动：`uv run uvicorn pvcomm.web.app:create_app --factory --host 127.0.0.1 --port 8000`。
 OpenAPI 位于 `/openapi.json`，交互文档 `/docs`。服务仅用于本机工程开发，无运行控制接口；只读运行根由服务端指定。
 
 | 接口 | 输入 | 实际响应 |
 |---|---|---|
-| GET /api/health | 无 | status=ok、stage=V0.3-development、simulation_available=true、web_run_submission_available=false |
+| GET /api/health | 无 | status=ok、stage=V0.4-development、simulation_available=true、web_run_submission_available=false |
 | POST /api/scenarios/validate | JSON 对象 `{ "yaml_text": "..." }` | valid、schema_version、config_sha256、station_count；非法配置 HTTP 422 |
 
 校验接口只支持 schema 0.0 工程契约，没有故障注入或完整场景执行能力。CLI 与 API 调用同一 config.service；配置例子为 configs/foundation.yaml。输入 UTF-8 大小、深度、展开节点均受限；输入不写磁盘。当前 API 不返回真值、标签或场景配置，保留 V0.0 配置校验契约；V0.1 新增下述运行查询/回放接口，尚无 WS；隔离实验仅由 CLI 执行。
@@ -33,3 +33,13 @@ snapshot增加regions、dispatches、protocol_statistics，以及站点馈线/�
 `GET /api/runs/{run_key}/events?at_ns=<ns>&limit=100&mode=M2`提供历史分页。后续页同时传before_ns和before_id，按时间/ID联合游标严格排除边界，limit为1–100；只传其中一个返回422。索引按新增observed字节摄入，原始文件截断或重复ID返回409。
 
 `GET /api/diagnostics/runs/{run_key}/resources`仅提供独立基础设施诊断，scope=infrastructure_only_not_M2_features，包含时间、单核口径CPU、RSS、磁盘IO及UTC映射漂移；不进入M2快照或特征。没有资源记录时字段为null，不伪造零值。Web仍不能操作命名空间、执行命令、启动仿真或读Oracle。完整机器契约见schemas/openapi.json。
+
+## V0.4a 前置契约
+
+包版本0.4.0.dev0、Health.stage=V0.4-development表示当前开发能力，V0.4未验收。`qc --profile normal`为默认严格正常回归；显式`--profile experiment`写入`qc/v04-experiment-quality-v1/report.json`，独立报告run_integrity、data_quality、normal_regression、transport_observations、command_assessments。fault_verification和label_quality当前为not_evaluated，不能用本报告代替标签验收。同版报告拒绝覆盖。
+
+主站命令结果区分accepted、negative_confirmation、confirmation_timeout、connection_unavailable、connection_lost、session_quarantined和ambiguous_confirmation。positive_confirmation仅实际确认时为布尔值，未观察为null；stack_result为c104 transmit返回事实。超时站点隔离到真实TCP重连，避免迟到同值确认污染下一任务。available_power按missing/stale/invalid抛出预期业务不可用；区域任务排除该站并记录未分配功率，其余站和后续任务继续。设备/程序错误仍传播。
+
+M2 EventView追加quality_valid/outcome，DispatchView追加negative_confirmations/confirmation_timeouts/unavailable_commands/excluded_stations；failed_transmissions旧字段保留兼容。无效品质最新遥测显示未知，曲线保留缺口，不能用过去或truth补值。所有结果仍按available_at截断。
+
+`validate-weather-source --config JSON`验证0.4-weather-source.1离线描述符与来源文件；`storage-audit --run-dir PATH --policy JSON`只读清单与预算；`archive-lossless --source PATH --destination NEW_DIR`生成gzip及逐字节哈希manifest，保留原件，不覆盖已有目录。后两者不是批量数据集发布或自动清理入口。

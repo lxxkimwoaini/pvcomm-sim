@@ -36,7 +36,17 @@ def test_real_three_process_endpoints_and_owned_cleanup(tmp_path: Path) -> None:
         for row in (run_dir / "observed/master_events_master.jsonl").read_text().splitlines()
     ]
     assert len([row for row in master if row["event_type"] == "master_command_sent"]) == 6
-    assert len([row for row in master if row.get("positive_confirmation") is True]) == 6
+    assert (
+        len(
+            [
+                row
+                for row in master
+                if row["event_type"] == "master_command_response"
+                and row.get("positive_confirmation") is True
+            ]
+        )
+        == 6
+    )
     for index in range(1, 4):
         terminal = [
             json.loads(row)

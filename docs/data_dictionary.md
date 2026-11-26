@@ -56,3 +56,14 @@ pvcomm-v03继承既有点表，新增M_ME_NC_1 IOA1009=站点入线loading_perce
 兼容性标识pandapower_three_site_v02及历史QC项three_station_business_loop保留名称，0.3实际站数和馈线成员由配置确定。Health.stage=V0.3-development是API软件能力元数据，不是实验标签或数据发布版本；一小时冻结29aa7e0仍保存其运行时历史Health字符串，不篡改旧证据。正式验收结论见对应报告。
 
 当前独立核验输出为qc/v03-power-v4（V0.3）、qc/v02-power-v6（V0.2）；内部协议版本v01-evidence-v4。旧版本目录与失败证据不改写。TCP后序完整APDU在前序缺口填补后才可交付，source_frame_refs包含该依赖帧，available_at不早于其时间；packet_index仍参与与TShark的严格对账，详ADR0009。
+
+
+## V0.4a 开发兼容性
+
+当前Health.stage=V0.4-development、包0.4.0.dev0，未重标历史运行。六张协议Arrow和0.2-power-evidence.2保持字段及版本；新写出电力Parquet采用zstd，读回逐值/元数据核验，与原JSONL投影比对可发现等行数且重算产物哈希的篡改。
+
+协议QC更新为v01-evidence-v5，电力QC为v02-power-v7/v03-power-v5，新目录保留旧报告。命令审计拒绝期限前超时、无效品质反馈及重复证据；实际确认与应用回调矛盾时保留incomplete_or_ambiguous。新实验质量报告v04-experiment-quality-v1不要求正常业务全部成功，但不豁免工具丢包、解析、对齐、来源或物理计算失败；不是正式分层标签schema。
+
+master_command_sent追加sent_mono_ns/sent_utc_ns/connection_epoch；master_command_confirmation保存实际raw ACT_CON、接收单调时刻、匹配结果及task_id。master_command_response的positive_confirmation可空，outcome与stack_result分离。master_command_not_sent用于连接不可用/隔离，不能伪造为已发命令。终端接受事件仍仅由实际协议回调产生。master_dispatch_allocated增加排除原因、eligible_station_count和degradation_policy，排除不代表可用功率为0。
+
+schemas/v04-weather-source.schema.json为独立来源契约；旧WeatherConfig不改变。schemas/v04-retention.schema.json提供full_evidence/verified_archive/derived_rebuildable保留等级，delete_sources固定false。预算采用V0.3实测1,383,250,188 B/h，720h×1.5=1,493,910,203,040 B；备份另计，已知单PDML 11,275,084,964 B仅为临时空间下界，未替代峰值和并发测试。
