@@ -7,7 +7,8 @@ import importlib
 import json
 import subprocess
 import tempfile
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -15,7 +16,8 @@ from pvcomm.config.faults import FaultScenarioConfig
 from pvcomm.config.power import power_document
 from pvcomm.domain.labels import EventLabel, EvidenceRef, ServiceFinding
 from pvcomm.pipeline.iec104_parser import PARSER_VERSION
-from pvcomm.storage.parquet import read_jsonl
+from pvcomm.storage.evidence_index import EvidenceIndex, EvidenceRecords, EvidenceRows
+from pvcomm.storage.parquet import iter_jsonl, read_jsonl
 
 VERSION = "v04-label-v3"
 
@@ -36,14 +38,36 @@ def record_identity(row: dict[str, Any]) -> str:
 class LabelInputs:
     root: Path
     manifest: dict[str, Any]
-    master: list[dict[str, Any]]
-    terminal: list[dict[str, Any]]
-    states: list[dict[str, Any]]
-    objects: list[dict[str, Any]]
+    master: Sequence[dict[str, Any]]
+    terminal: Sequence[dict[str, Any]]
+    states: Sequence[dict[str, Any]]
+    objects: Sequence[dict[str, Any]]
     report: dict[str, Any]
     report_path: Path
     hashes: dict[str, str]
-    records: dict[str, tuple[str, dict[str, Any]]]
+    records: Mapping[str, tuple[str, dict[str, Any]]]
+    index: EvidenceIndex | None = None
+
+    def __enter__(self) -> LabelInputs:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.close()
+
+    def close(self) -> None:
+        if self.index is not None:
+            self.index.close()
+
+    def for_station(self, station: str) -> LabelInputs:
+        if self.index is None:
+            return self  # Mutable synthetic fixtures retain the legacy list behavior.
+        return replace(
+            self,
+            master=EvidenceRows(self.index, 0, station),
+            terminal=EvidenceRows(self.index, 1, station),
+            states=EvidenceRows(self.index, 2, station),
+            objects=EvidenceRows(self.index, 3, station),
+        )
 
     def ref(self, row: dict[str, Any], *, online: bool = False) -> EvidenceRef:
         identity = record_identity(row)
@@ -73,7 +97,8 @@ class LabelInputs:
         )
 
 
-def load_label_inputs(root: Path) -> LabelInputs:
+def load_label_inputs(root: Path, *, indexed: bool = True) -> LabelInputs:
+    """Caller owns the temporary index; use a with block or explicit close()."""
     manifest = json.loads((root / "manifest.json").read_bytes())
     fault = root / "truth/fault/effective.json"
     if fault.exists():
@@ -107,32 +132,75 @@ def load_label_inputs(root: Path) -> LabelInputs:
         list((root / "truth").glob("electrical_state*.jsonl")),
         [root / "parsed" / PARSER_VERSION / "iec104_objects.jsonl"],
     )
-    hashes = {}
+    hashes: dict[str, str] = {}
     records: dict[str, tuple[str, dict[str, Any]]] = {}
-    rows = []
-    for paths in groups:
-        group = []
-        for path in paths:
-            relative = path.relative_to(root).as_posix()
-            hashes[relative] = file_sha256(path)
-            for row in read_jsonl([path]):
-                if row.get("run_id") != manifest["run_id"]:
-                    raise ValueError("cross-run source evidence")
-                identity = record_identity(row)
-                if identity in records:
-                    raise ValueError("duplicate source record identity")
-                records[identity] = relative, row
-                group.append(row)
-        rows.append(group)
-    files = [root / "manifest.json", root / "power_config.json", report_path]
-    files += [root / c["path"] for c in manifest["captures"]]
-    files += list((root / "truth/scenario").glob("*.json"))
-    files += list((root / "truth/fault").glob("*.json*"))
-    files += list((root / "truth/fault").glob("*.yaml"))
-    for path in files:
-        hashes[path.relative_to(root).as_posix()] = file_sha256(path)
+    rows: list[Sequence[dict[str, Any]]] = []
+    index = EvidenceIndex(root) if indexed else None
+    try:
+        addresses = {
+            s.common_address: (s.station_id, address)
+            for s, address in zip(
+                power_document(root / "power_config.json").protocol.stations,
+                manifest["network"]["addresses"],
+                strict=True,
+            )
+        }
+        for number, paths in enumerate(groups):
+            group = []
+            for path in sorted(paths):
+                relative = path.relative_to(root).as_posix()
+                hashes[relative] = file_sha256(path)
+                for row in iter_jsonl([path]):
+                    if row.get("run_id") != manifest["run_id"]:
+                        raise ValueError("cross-run source evidence")
+                    identity = record_identity(row)
+                    if index is None:
+                        if identity in records:
+                            raise ValueError("duplicate source record identity")
+                        records[identity] = relative, row
+                        group.append(row)
+                    else:
+                        station = row.get("station_id")
+                        if number == 3:
+                            endpoint = addresses.get(row.get("ca", -1))
+                            station = (
+                                endpoint[0]
+                                if endpoint
+                                and endpoint[1] in (row.get("src_ip"), row.get("dst_ip"))
+                                else None
+                            )
+                        index.add(identity, relative, number, station, row)
+            rows.append(EvidenceRows(index, number) if index else group)
+        if index:
+            index.freeze()
+    except BaseException:
+        if index:
+            index.close()
+        raise
+    try:
+        files = [root / "manifest.json", root / "power_config.json", report_path]
+        files += [root / c["path"] for c in manifest["captures"]]
+        files += list((root / "truth/scenario").glob("*.json"))
+        files += list((root / "truth/fault").glob("*.json*"))
+        files += list((root / "truth/fault").glob("*.yaml"))
+        for path in files:
+            hashes[path.relative_to(root).as_posix()] = file_sha256(path)
+    except BaseException:
+        if index:
+            index.close()
+        raise
     return LabelInputs(
-        root, manifest, rows[0], rows[1], rows[2], rows[3], report, report_path, hashes, records
+        root,
+        manifest,
+        rows[0],
+        rows[1],
+        rows[2],
+        rows[3],
+        report,
+        report_path,
+        hashes,
+        EvidenceRecords(index) if index else records,
+        index,
     )
 
 
@@ -537,7 +605,9 @@ def build_labels(inputs: LabelInputs) -> list[EventLabel]:
     quality_ok = bool(quality.get("passed"))
     rows: list[EventLabel] = []
     journal = read_jsonl([inputs.root / "truth/fault/events.jsonl"]) if fault else []
+    all_inputs = inputs
     for station in config.protocol.stations:
+        inputs = all_inputs.for_station(station.station_id)
         target = fault is not None and station.station_id in fault.target_stations()
         findings = command_findings(inputs, station.station_id)
         findings.extend(reception_findings(inputs, station.station_id, station.telemetry_period_s))
@@ -686,7 +756,12 @@ def label_run(root: Path) -> dict[str, Any]:
     destination = root / "labels" / VERSION
     if destination.exists():
         raise FileExistsError(f"labels already exist: {destination}")
-    inputs = load_label_inputs(root)
+    with load_label_inputs(root) as inputs:
+        return write_labels(root, inputs)
+
+
+def write_labels(root: Path, inputs: LabelInputs) -> dict[str, Any]:
+    destination = root / "labels" / VERSION
     rows = build_labels(inputs)
     pa, pq = importlib.import_module("pyarrow"), importlib.import_module("pyarrow.parquet")
     repository = Path(__file__).resolve().parents[3]

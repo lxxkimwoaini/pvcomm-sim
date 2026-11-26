@@ -225,3 +225,5 @@ PVCOMM_ALLOW_LAB=1 PYTHONPATH=src .venv-wsl/bin/python scripts/run_v04_batch.py 
 ```
 
 批量Web管理、30站异常与正式重复覆盖、全流程临时峰值及并发吞吐仍待实现或验收。
+
+六表Arrow现按4096行转换及逐行回读比较；标签使用临时磁盘索引按站点访问原始证据，标签schema与判据保持v3。可在保留运行上比较列表与索引路径，原标签/QC不覆盖：`uv run --frozen --group data python scripts/profile_v04_evidence.py --run-dir <运行目录> --mode indexed --output <新报告目录>`；`--mode list`提供同一代码下的兼容比较。该测量的Python分配峰值不等于进程RSS或全流程峰值。

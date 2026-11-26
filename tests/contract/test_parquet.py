@@ -112,3 +112,62 @@ def test_value_changes_fail_even_if_schema_row_count_and_rehashed_manifest_match
     ).hexdigest()
     manifest_path.write_text(json.dumps(manifest))
     assert not verify_parquet(tmp_path)["passed"]
+
+
+@pytest.mark.data
+def test_large_evidence_is_streamed_and_last_batch_tampering_is_detected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from pvcomm.pipeline.iec104_parser import PARSER_VERSION
+
+    parsed = tmp_path / "parsed" / PARSER_VERSION
+    parsed.mkdir(parents=True)
+    (tmp_path / "observed").mkdir()
+    (tmp_path / "truth").mkdir()
+    (tmp_path / "manifest.json").write_text('{"status":"completed"}')
+    for name in ("iec104_apdu", "iec104_objects"):
+        (parsed / f"{name}.jsonl").write_text("")
+    with (parsed / "packets.jsonl").open("w") as stream:
+        for index in range(10_003):
+            stream.write(
+                json.dumps(
+                    dict(
+                        run_id="synthetic-unit-only",
+                        capture_id="primary",
+                        packet_index=index,
+                        ts_capture_utc_ns=1795590000000000009 + index,
+                    )
+                )
+                + "\n"
+            )
+    original_text, original_bytes = Path.read_text, Path.read_bytes
+
+    def text_read(path: Path, *args: object, **kwargs: object) -> str:
+        assert path.suffix != ".jsonl", "whole JSONL read is forbidden"
+        return original_text(path, *args, **kwargs)  # type: ignore[arg-type]
+
+    def bytes_read(path: Path) -> bytes:
+        assert path.suffix not in (".jsonl", ".parquet"), "whole evidence read is forbidden"
+        return original_bytes(path)
+
+    pq = importlib.import_module("pyarrow.parquet")
+    with monkeypatch.context() as bounded:
+        bounded.setattr(Path, "read_text", text_read)
+        bounded.setattr(Path, "read_bytes", bytes_read)
+        bounded.setattr(pq, "read_table", lambda *_args, **_kwargs: pytest.fail("full Arrow read"))
+        summary = export_parquet(tmp_path)
+        assert summary["tables"]["packets"]["rows"] == 10_003
+        assert verify_parquet(tmp_path)["passed"]
+    path = tmp_path / "parsed/parquet-v01/packets.parquet"
+    table = pq.read_table(path)
+    assert table["ts_capture_utc_ns"][-1].as_py() == 1795590000000010011
+    # An adversary changing both the last row and manifest hash must still fail.
+    pa = importlib.import_module("pyarrow")
+    rows = table.to_pylist()
+    rows[-1]["packet_index"] += 1
+    pq.write_table(pa.Table.from_pylist(rows, schema=table.schema), path, row_group_size=3000)
+    metadata_path = path.parent / "manifest.json"
+    metadata = json.loads(metadata_path.read_bytes())
+    metadata["tables"]["packets"]["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    metadata_path.write_text(json.dumps(metadata))
+    assert not verify_parquet(tmp_path)["passed"]

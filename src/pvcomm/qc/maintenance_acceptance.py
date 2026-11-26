@@ -71,8 +71,8 @@ def qc_grouped_recovery(root: Path) -> dict[str, Any]:
     label_manifest_path = label_path.parent / "manifest.json"
     metadata = json.loads(label_manifest_path.read_bytes())
     labels = [EventLabel.model_validate_json(line) for line in label_path.read_text().splitlines()]
-    inputs = load_label_inputs(root)
-    audit = audit_label_records(inputs, labels)
+    with load_label_inputs(root) as inputs:
+        audit = audit_label_records(inputs, labels)
     integrity = bool(
         metadata["source_hashes"] == inputs.hashes
         and previous["label_sha256"] == metadata["label_sha256"] == file_sha256(label_path)

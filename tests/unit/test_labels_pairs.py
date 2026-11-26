@@ -181,7 +181,58 @@ def fixture_inputs(root: Path, mode: str = "complete", gap: bool = False) -> Any
         ),
         encoding="utf-8",
     )
-    return load_label_inputs(root)
+    return load_label_inputs(root, indexed=False)
+
+
+@pytest.mark.parametrize("mode", ("complete", "reject", "timeout", "missing_feedback"))
+def test_disk_index_preserves_labels_evidence_and_independent_audit(
+    tmp_path: Path, mode: str
+) -> None:
+    legacy = fixture_inputs(tmp_path, mode, gap=True)
+    expected = build_labels(legacy)
+    with load_label_inputs(tmp_path) as indexed:
+        assert not isinstance(indexed.master, list)
+        actual = build_labels(indexed)
+        assert actual == expected
+        assert audit_label_records(indexed, actual) == audit_label_records(legacy, expected)
+        assert indexed.hashes == legacy.hashes
+        station = indexed.for_station("PV01")
+        assert {r.get("station_id") for r in station.master}.issubset({None, "PV01"})
+        assert {r.get("station_id") for r in station.states}.issubset({None, "PV01"})
+        assert len(indexed.records) == len(legacy.records)
+        assert dict(indexed.records) == legacy.records
+        assert len(indexed.master) == len(legacy.master)
+        assert indexed.master[-1] == legacy.master[-1]
+        assert indexed.master[:2] == legacy.master[:2]
+        with pytest.raises(IndexError):
+            _ = indexed.master[len(indexed.master)]
+        with pytest.raises(KeyError):
+            _ = indexed.records["not-a-record"]
+    indexed.close()  # Repeated close is safe on Windows and Linux.
+    assert not list(tmp_path.glob(".label-index-*"))
+
+
+@pytest.mark.parametrize("corrupt", ("cross_run", "duplicate"))
+def test_disk_index_rejects_corrupt_sources_and_removes_owned_temp(
+    tmp_path: Path, corrupt: str
+) -> None:
+    fixture_inputs(tmp_path)
+    source = next((tmp_path / "observed").glob("*.jsonl"))
+    first = json.loads(source.read_text().splitlines()[0])
+    if corrupt == "cross_run":
+        first["run_id"] = "foreign"
+    with source.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(first) + "\n")
+    with pytest.raises(ValueError, match="cross-run" if corrupt == "cross_run" else "duplicate"):
+        load_label_inputs(tmp_path)
+    assert not list(tmp_path.glob(".label-index-*"))
+
+
+def test_disk_index_closes_when_evaluation_raises(tmp_path: Path) -> None:
+    fixture_inputs(tmp_path)
+    with pytest.raises(RuntimeError, match="synthetic evaluator"), load_label_inputs(tmp_path):
+        raise RuntimeError("synthetic evaluator")
+    assert not list(tmp_path.glob(".label-index-*"))
 
 
 @pytest.mark.parametrize(

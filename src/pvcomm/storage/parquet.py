@@ -10,6 +10,8 @@ import hashlib
 import importlib
 import json
 import tempfile
+from collections.abc import Iterator
+from itertools import islice
 from pathlib import Path
 from typing import Any
 
@@ -89,13 +91,61 @@ EVENT_FIELDS = {
 }
 
 
+BATCH_ROWS = 4096
+
+
+def iter_jsonl(paths: list[Path]) -> Iterator[dict[str, Any]]:
+    """One decoded record at a time; preserve the legacy sorted-file ordering."""
+    for path in sorted(paths):
+        with path.open(encoding="utf-8") as stream:
+            for number, line in enumerate(stream, 1):
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                if not isinstance(row, dict):
+                    raise ValueError(f"JSONL record must be an object: {path}:{number}")
+                yield row
+
+
 def read_jsonl(paths: list[Path]) -> list[dict[str, Any]]:
-    return [
-        json.loads(line)
-        for path in sorted(paths)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    """Compatibility list API; large consumers should use iter_jsonl instead."""
+    return list(iter_jsonl(paths))
+
+
+def source_hash(path: Path) -> str:
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def projected_batches(paths: list[Path], fields: dict[str, str]) -> Iterator[list[dict[str, Any]]]:
+    records = iter_jsonl(paths)
+    while rows := list(islice(records, BATCH_ROWS)):
+        yield event_projection(rows) if fields == EVENT_FIELDS else rows
+
+
+def verify_table(
+    path: Path, paths: list[Path], fields: dict[str, str], scope: str
+) -> dict[str, Any]:
+    """Compare every original row and nullable field with bounded Arrow batches."""
+    pa = importlib.import_module("pyarrow")
+    pq = importlib.import_module("pyarrow.parquet")
+    schema = arrow_schema(fields, scope)
+    parquet = pq.ParquetFile(path)
+    count = parquet.metadata.num_rows
+    if not parquet.schema_arrow.equals(schema, check_metadata=True):
+        return dict(passed=False, rows=count)
+    records = iter_jsonl(paths)
+    for batch in parquet.iter_batches(batch_size=BATCH_ROWS):
+        rows = list(islice(records, batch.num_rows))
+        if fields == EVENT_FIELDS:
+            rows = event_projection(rows)
+        expected = pa.Table.from_pylist(rows, schema=schema)
+        actual = pa.Table.from_batches([batch], schema=schema)
+        if not actual.equals(expected, check_metadata=True) or any(
+            actual[field.name].null_count for field in schema if not field.nullable
+        ):
+            return dict(passed=False, rows=count)
+    return dict(passed=next(records, None) is None, rows=count)
 
 
 def event_projection(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -145,8 +195,8 @@ def export_parquet(run_dir: Path) -> dict[str, Any]:
         raise FileExistsError(f"Parquet export exists: {destination}")
     if json.loads((run_dir / "manifest.json").read_text())["status"] != "completed":
         raise ValueError("export requires completed evidence")
-    tables: dict[str, tuple[list[dict[str, Any]], dict[str, str], str]] = {
-        name: (read_jsonl([parsed / f"{name}.jsonl"]), fields, "M1_primary")
+    tables: dict[str, tuple[list[Path], dict[str, str], str]] = {
+        name: ([parsed / f"{name}.jsonl"], fields, "M1_primary")
         for name, fields in (
             ("packets", PACKET_FIELDS),
             ("iec104_apdu", APDU_FIELDS),
@@ -160,36 +210,40 @@ def export_parquet(run_dir: Path) -> dict[str, Any]:
         ("electrical_state", list((run_dir / "truth").glob("electrical_state*.jsonl")), "Oracle"),
     ):
         sources.extend(paths)
-        records = read_jsonl(paths)
-        rows = event_projection(records)
-        tables[name] = (rows, EVENT_FIELDS, scope)
+        tables[name] = (paths, EVENT_FIELDS, scope)
     summary: dict[str, Any] = {
         "schema_version": "0.1-protocol-evidence",
         "tables": {},
-        "source_sha256": {
-            p.relative_to(run_dir).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in sources
-        },
+        "source_sha256": {p.relative_to(run_dir).as_posix(): source_hash(p) for p in sources},
     }
     with tempfile.TemporaryDirectory(prefix=".parquet-", dir=destination.parent) as temp:
         stage = Path(temp) / "tables"
         stage.mkdir()
-        for name, (rows, fields, scope) in tables.items():
+        for name, (paths, fields, scope) in tables.items():
             schema = arrow_schema(fields, scope)
-            table = pa.Table.from_pylist(rows, schema=schema)
-            for column in schema:
-                if not column.nullable and table[column.name].null_count:
-                    raise ValueError(f"required Parquet field missing: {name}.{column.name}")
             path = stage / f"{name}.parquet"
-            pq.write_table(table, path, version="2.6", compression="zstd")
-            restored = pq.read_table(path)
-            if not restored.equals(table, check_metadata=True):
+            count = 0
+            with pq.ParquetWriter(path, schema, version="2.6", compression="zstd") as writer:
+                for rows in projected_batches(paths, fields):
+                    table = pa.Table.from_pylist(rows, schema=schema)
+                    for column in schema:
+                        if not column.nullable and table[column.name].null_count:
+                            raise ValueError(
+                                f"required Parquet field missing: {name}.{column.name}"
+                            )
+                    writer.write_table(table)
+                    count += len(rows)
+            if not verify_table(path, paths, fields, scope)["passed"]:
                 raise ValueError(f"Parquet round trip failed: {name}")
             summary["tables"][name] = {
-                "rows": len(rows),
+                "rows": count,
                 "scope": scope,
-                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "sha256": source_hash(path),
             }
+        if summary["source_sha256"] != {
+            p.relative_to(run_dir).as_posix(): source_hash(p) for p in sources
+        }:
+            raise ValueError("source evidence changed during Parquet export")
         (stage / "manifest.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
         stage.rename(destination)
     return summary
@@ -197,8 +251,6 @@ def export_parquet(run_dir: Path) -> dict[str, Any]:
 
 def verify_parquet(run_dir: Path) -> dict[str, Any]:
     """Recheck all six typed tables and immutable source hashes, not just existence."""
-    pa = importlib.import_module("pyarrow")
-    pq = importlib.import_module("pyarrow.parquet")
     destination = run_dir / "parsed" / VERSION
     manifest_path = destination / "manifest.json"
     if not manifest_path.is_file():
@@ -216,9 +268,7 @@ def verify_parquet(run_dir: Path) -> dict[str, Any]:
     paths += list((run_dir / "observed").glob("master_events*.jsonl"))
     paths += list((run_dir / "truth").glob("terminal_events*.jsonl"))
     paths += list((run_dir / "truth").glob("electrical_state*.jsonl"))
-    sources = {
-        p.relative_to(run_dir).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths
-    }
+    sources = {p.relative_to(run_dir).as_posix(): source_hash(p) for p in paths}
     source_match = manifest.get("source_sha256") == sources
     tables = {}
     for name, (fields, scope) in contracts.items():
@@ -227,26 +277,19 @@ def verify_parquet(run_dir: Path) -> dict[str, Any]:
         if not path.is_file():
             tables[name] = {"passed": False, "reason": "missing table"}
             continue
-        table = pq.read_table(path)
-        schema = arrow_schema(fields, scope)
         if name in ("packets", "iec104_apdu", "iec104_objects"):
             table_sources = [run_dir / "parsed" / PARSER_VERSION / f"{name}.jsonl"]
         else:
             folder = "observed" if name == "master_events" else "truth"
             table_sources = list((run_dir / folder).glob(f"{name}*.jsonl"))
-        original_rows = read_jsonl(table_sources)
-        if fields == EVENT_FIELDS:
-            original_rows = event_projection(original_rows)
-        original = pa.Table.from_pylist(original_rows, schema=schema)
+        verified = verify_table(path, table_sources, fields, scope)
         passed = (
-            entry.get("sha256") == hashlib.sha256(path.read_bytes()).hexdigest()
-            and entry.get("rows") == table.num_rows
-            and table.equals(original, check_metadata=True)
+            entry.get("sha256") == source_hash(path)
+            and entry.get("rows") == verified["rows"]
+            and verified["passed"]
             and entry.get("scope") == scope
-            and table.schema.equals(schema, check_metadata=True)
-            and all(table[c.name].null_count == 0 for c in schema if not c.nullable)
         )
-        tables[name] = {"passed": passed, "rows": table.num_rows}
+        tables[name] = {"passed": passed, "rows": verified["rows"]}
     return {
         "passed": source_match
         and manifest.get("schema_version") == "0.1-protocol-evidence"

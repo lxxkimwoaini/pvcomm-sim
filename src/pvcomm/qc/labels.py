@@ -467,9 +467,11 @@ def audit_label_records(inputs: LabelInputs, labels: list[EventLabel]) -> dict[s
     references, causal, commands, freshness, layers = True, True, True, True, True
     diagnostics = True
     evidence_coverage = True
+    all_inputs = inputs
     for label in labels:
         if label.station_id not in sites:
             continue
+        inputs = all_inputs.for_station(label.station_id)
         diagnostics &= audit_diagnostic_layers(inputs, label)
         evidence_coverage &= any(
             ref.path == inputs.report_path.relative_to(inputs.root).as_posix()
@@ -497,7 +499,9 @@ def audit_label_records(inputs: LabelInputs, labels: list[EventLabel]) -> dict[s
             online = [
                 inputs.records[ref.record_id][1]
                 for ref in finding.evidence
-                if ref.role == "online" and ref.record_id in inputs.records
+                if ref.role == "online"
+                and ref.record_id is not None
+                and ref.record_id in inputs.records
             ]
             evidence_coverage &= len(
                 {(r.path, r.record_id, r.role) for r in finding.evidence}
@@ -599,7 +603,12 @@ def qc_labels(root: Path) -> dict[str, Any]:
     destination = root / "qc" / VERSION
     if destination.exists():
         raise FileExistsError(f"label QC already exists: {destination}")
-    inputs = load_label_inputs(root)
+    with load_label_inputs(root) as inputs:
+        return audit_label_files(root, inputs)
+
+
+def audit_label_files(root: Path, inputs: LabelInputs) -> dict[str, Any]:
+    destination = root / "qc" / VERSION
     folder = root / "labels" / LABEL_VERSION
     metadata = json.loads((folder / "manifest.json").read_bytes())
     labels = [
