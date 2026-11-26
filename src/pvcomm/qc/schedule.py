@@ -21,9 +21,15 @@ from pvcomm.config.scenes import (
 )
 from pvcomm.pipeline.iec104_parser import PARSER_VERSION
 from pvcomm.qc.experiment import evaluate_experiment
+from pvcomm.qc.maintenance import audit_maintenance
 from pvcomm.storage.parquet import read_jsonl
 
 VERSION = "v04-normal-schedule-v2"
+GROUP_VERSION = "v04-normal-schedule-v3"
+
+
+def version_for(scenario: ScenarioConfig) -> str:
+    return GROUP_VERSION if scenario.maintenance_windows else VERSION
 
 
 def normal_transport_quality(experiment: dict[str, Any]) -> dict[str, Any]:
@@ -261,11 +267,12 @@ def audit_schedule(
 
 
 def qc_schedule(root: Path) -> dict[str, Any]:
-    destination = root / "qc" / VERSION
-    if destination.exists():
-        raise FileExistsError(f"schedule QC exists: {destination}")
     folder = root / "truth/scenario"
     scenario = ScenarioConfig.model_validate_json((folder / "effective.json").read_bytes())
+    version = version_for(scenario)
+    destination = root / "qc" / version
+    if destination.exists():
+        raise FileExistsError(f"schedule QC exists: {destination}")
     manifest = json.loads((root / "manifest.json").read_bytes())
     metadata = manifest["scenario_contract"]
     plan = json.loads((folder / "expanded-plan.json").read_bytes())
@@ -299,6 +306,11 @@ def qc_schedule(root: Path) -> dict[str, Any]:
     business = audit_schedule(
         scenario, master, terminal, objects, experiment["command_assessments"], states
     )
+    maintenance: dict[str, Any] = (
+        audit_maintenance(scenario, manifest, master, terminal, objects, states)
+        if scenario.maintenance_windows
+        else {"passed": True, "stations": {}}
+    )
     telemetry = {}
     for station in scenario.simulation.protocol.stations:
         seen = {
@@ -324,7 +336,7 @@ def qc_schedule(root: Path) -> dict[str, Any]:
     normal = experiment["normal_regression"]["checks"]
     context = {k: v for k, v in normal.items() if k != "three_station_business_loop"}
     report = {
-        "qc_version": VERSION,
+        "qc_version": version,
         "run_id": manifest["run_id"],
         "run_code_version": manifest["code_version"],
         "evaluation_code_version": evaluator,
@@ -333,6 +345,7 @@ def qc_schedule(root: Path) -> dict[str, Any]:
         "configuration_integrity": integrity,
         "experiment_quality": experiment,
         "scheduled_business": business,
+        "authorized_maintenance": maintenance,
         "telemetry_and_initial_interrogation": telemetry,
         "normal_context": context,
         "normal_transport": transport,
@@ -341,6 +354,8 @@ def qc_schedule(root: Path) -> dict[str, Any]:
         and experiment["passed"]
         and transport["passed"]
         and business["passed"]
+        and maintenance["passed"]
+        and all(r["business_recovered_within_deadline"] for r in maintenance["stations"].values())
         and all(v["passed"] for v in telemetry.values())
         and all(v["passed"] for v in context.values()),
     }

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from pvcomm.clock import ClockOrigin, SceneClock
 from pvcomm.config.lab import load_v01_config
+from pvcomm.config.maintenance import StationMaintenance, legacy_maintenance
 from pvcomm.protocol.c104_runtime import C104Master, C104StationEndpoint
 from pvcomm.storage.events import RunRecorder
 
@@ -67,7 +68,7 @@ def main() -> None:
         signal.signal(signal.SIGUSR1, lambda *_args: paused.set())
         signal.signal(signal.SIGUSR2, lambda *_args: paused.clear())
     endpoint: C104StationEndpoint | C104Master | None = None
-    maintenance: threading.Thread | None = None
+    maintenance: list[threading.Thread] = []
     maintenance_errors: list[Exception] = []
     terminal_fault = None
     try:
@@ -142,6 +143,19 @@ def main() -> None:
                         "terminal_resumed", {"station_id": config.stations[index].station_id}
                     )
         else:
+            scenario = None
+            if explicit_scenario:
+                from pvcomm.config.scenes import ScenarioConfig, canonical_hash
+
+                scenario = ScenarioConfig.model_validate_json(
+                    (root / "truth/scenario/effective.json").read_bytes()
+                )
+                if (
+                    scenario.simulation != power
+                    or canonical_hash(scenario.model_dump(mode="json"))
+                    != scenario_metadata["scenario_contract"]["effective_sha256"]
+                ):
+                    raise ValueError("scenario effective contract mismatch")
             endpoint = C104Master(
                 config.host,
                 config.stations,
@@ -164,23 +178,31 @@ def main() -> None:
                 while not (root / "scene.json").exists():
                     if stop.wait(0.05):
                         raise InterruptedError("scene startup cancelled")
-                start = json.loads((root / "scene.json").read_text())["start_mono_ns"] / 1e9
+                start_ns = json.loads((root / "scene.json").read_text())["start_mono_ns"]
+                start = start_ns / 1e9
                 if stop.wait(max(0, start - time.monotonic())):
                     raise InterruptedError("scene startup cancelled")
             else:
-                start = time.monotonic()
+                start_ns = time.monotonic_ns()
+                start = start_ns / 1e9
             interruption = config.interruption
-            if interruption is not None and interruption.planned:
+            maintenance_events = (
+                scenario.expanded_maintenance()
+                if scenario is not None
+                else legacy_maintenance(config)
+            )
+            for event in maintenance_events:
+                if not event.planned:
+                    continue
                 recorder.record_event(
                     "master_maintenance_plan",
                     {
-                        "station_id": interruption.station_id,
-                        "window_start_utc_ns": origin.ts_utc_ns
-                        + int((start + interruption.start_s) * 1e9)
-                        - origin.ts_mono_ns,
-                        "window_end_utc_ns": origin.ts_utc_ns
-                        + int((start + interruption.start_s + interruption.duration_s) * 1e9)
-                        - origin.ts_mono_ns,
+                        "station_id": event.station_id,
+                        "maintenance_id": event.maintenance_id,
+                        "window_start_utc_ns": origin.utc_ns(start_ns + event.start_s * 10**9),
+                        "window_end_utc_ns": origin.utc_ns(
+                            start_ns + (event.start_s + event.duration_s) * 10**9
+                        ),
                         "recovery_deadline_s": 15,
                     },
                 )
@@ -195,15 +217,14 @@ def main() -> None:
                         "planned maintenance handshake failed"
                     ) from maintenance_errors[0]
 
-            if isinstance(power, V03Config) and interruption is not None and interruption.planned:
+            if isinstance(power, V03Config):
                 master_endpoint = endpoint
-                maintenance_event = interruption
 
-                def planned_maintenance() -> None:
+                def planned_maintenance(maintenance_event: StationMaintenance) -> None:
                     try:
                         wait_until(maintenance_event.start_s)
                         master_endpoint.suspend_for_maintenance(maintenance_event.station_id)
-                        (root / "master.maintenance-closed").touch(exist_ok=False)
+                        (root / maintenance_event.ready_file).touch(exist_ok=False)
                         wait_until(maintenance_event.start_s + maintenance_event.duration_s)
                         master_endpoint.resume_connection(maintenance_event.station_id)
                         if explicit_scenario:
@@ -215,24 +236,20 @@ def main() -> None:
                         maintenance_errors.append(exc)
                         stop.set()
 
-                maintenance = threading.Thread(
-                    target=planned_maintenance, name="planned-maintenance"
-                )
-                maintenance.start()
+                for event in maintenance_events:
+                    if event.planned:
+                        thread = threading.Thread(
+                            target=planned_maintenance,
+                            args=(event,),
+                            name=f"maintenance-{event.station_id}",
+                        )
+                        maintenance.append(thread)
+                        thread.start()
 
             if explicit_scenario:
                 from pvcomm.business.schedule import execute_schedule
-                from pvcomm.config.scenes import ScenarioConfig, canonical_hash
 
-                scenario = ScenarioConfig.model_validate_json(
-                    (root / "truth/scenario/effective.json").read_bytes()
-                )
-                if (
-                    scenario.simulation != power
-                    or canonical_hash(scenario.model_dump(mode="json"))
-                    != scenario_metadata["scenario_contract"]["effective_sha256"]
-                ):
-                    raise ValueError("scenario effective contract mismatch")
+                assert scenario is not None
                 execute_schedule(scenario, endpoint, wait_until, recorder.record_event)
             elif isinstance(power, V03Config) and power.dispatch_tasks:
                 from pvcomm.business.dispatch import execute_dispatches
@@ -259,9 +276,9 @@ def main() -> None:
     finally:
         stop.set()
         try:
-            if maintenance is not None:
-                maintenance.join(timeout=8)
-                if maintenance.is_alive():
+            for thread in maintenance:
+                thread.join(timeout=8)
+                if thread.is_alive():
                     raise RuntimeError("planned maintenance worker did not stop")
         finally:
             try:

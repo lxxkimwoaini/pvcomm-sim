@@ -27,6 +27,7 @@ from pvcomm.config.faults import (
     load_fault_scenario,
 )
 from pvcomm.config.lab import V01Config, v01_config_sha256
+from pvcomm.config.maintenance import legacy_maintenance
 from pvcomm.config.multisite import V03Config
 from pvcomm.config.power import V02Config
 from pvcomm.config.scenes import ScenarioConfig, canonical_hash, instantiate_scenario, load_scenario
@@ -286,8 +287,11 @@ def run_isolated(
         save_manifest()
         master = launch("master", network.master)
         deadline = time.monotonic() + config.duration_s + 30
-        interrupted = False
-        resumed = False
+        maintenance_events = (
+            scenario.expanded_maintenance() if scenario is not None else legacy_maintenance(config)
+        )
+        interrupted: set[str] = set()
+        resumed: set[str] = set()
         while master.poll() is None:
             if fault_controller is not None:
                 fault_controller.step()
@@ -322,9 +326,8 @@ def run_isolated(
                 stage.rename(root / "scene.json")
                 manifest["scene_clock"] = scene
                 save_manifest()
-            event = config.interruption
             ready = root / "master.ready"
-            if event is not None and ready.exists():
+            for event in maintenance_events if ready.exists() else ():
                 elapsed = time.monotonic() - float(ready.read_text(encoding="ascii"))
                 index = next(
                     i for i, s in enumerate(config.stations) if s.station_id == event.station_id
@@ -333,21 +336,34 @@ def run_isolated(
                 maintenance_ready = (
                     not isinstance(power, V03Config)
                     or not event.planned
-                    or (root / "master.maintenance-closed").exists()
+                    or (root / event.ready_file).exists()
                 )
-                if elapsed >= event.start_s and not interrupted and maintenance_ready:
+                if (
+                    elapsed >= event.start_s
+                    and event.station_id not in interrupted
+                    and maintenance_ready
+                ):
                     worker.send_signal(signal.SIGUSR1)
                     controller.record_event(
                         "terminal_interruption_requested",
-                        {"station_id": event.station_id, "planned": event.planned},
+                        {
+                            "station_id": event.station_id,
+                            "planned": event.planned,
+                            "maintenance_id": event.maintenance_id,
+                        },
                     )
-                    interrupted = True
-                if elapsed >= event.start_s + event.duration_s and interrupted and not resumed:
+                    interrupted.add(event.station_id)
+                if (
+                    elapsed >= event.start_s + event.duration_s
+                    and event.station_id in interrupted
+                    and event.station_id not in resumed
+                ):
                     worker.send_signal(signal.SIGUSR2)
                     controller.record_event(
-                        "terminal_recovery_requested", {"station_id": event.station_id}
+                        "terminal_recovery_requested",
+                        {"station_id": event.station_id, "maintenance_id": event.maintenance_id},
                     )
-                    resumed = True
+                    resumed.add(event.station_id)
             time.sleep(0.1)
         if master.returncode:
             raise RuntimeError(f"master returned {master.returncode}; see master.stderr.log")

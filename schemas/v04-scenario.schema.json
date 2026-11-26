@@ -475,6 +475,67 @@
       "title": "InterruptionConfig",
       "type": "object"
     },
+    "MaintenanceWindow": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_s": {
+          "maximum": 3600,
+          "minimum": 5,
+          "title": "Duration S",
+          "type": "integer"
+        },
+        "maintenance_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Maintenance Id",
+          "type": "string"
+        },
+        "region_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Region Id"
+        },
+        "scope": {
+          "enum": [
+            "stations",
+            "region"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "start_s": {
+          "minimum": 1,
+          "title": "Start S",
+          "type": "integer"
+        },
+        "station_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 120,
+          "minItems": 1,
+          "title": "Station Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "maintenance_id",
+        "scope",
+        "station_ids",
+        "start_s",
+        "duration_s"
+      ],
+      "title": "MaintenanceWindow",
+      "type": "object"
+    },
     "MultisiteProtocol": {
       "additionalProperties": false,
       "properties": {
@@ -1118,6 +1179,15 @@
       "title": "Business Schedule",
       "type": "array"
     },
+    "maintenance_windows": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/MaintenanceWindow"
+      },
+      "maxItems": 120,
+      "title": "Maintenance Windows",
+      "type": "array"
+    },
     "normal_scene": {
       "enum": [
         "N01",
@@ -1153,7 +1223,10 @@
       "type": "string"
     },
     "schema_version": {
-      "const": "0.4-scenario.1",
+      "enum": [
+        "0.4-scenario.1",
+        "0.4-scenario.2"
+      ],
       "title": "Schema Version",
       "type": "string"
     },

@@ -15,11 +15,17 @@ from pvcomm.config.faults import (
 from pvcomm.config.scenes import ScenarioConfig, canonical_hash
 from pvcomm.pipeline.iec104_parser import PARSER_VERSION
 from pvcomm.qc.experiment import evaluate_experiment
+from pvcomm.qc.maintenance import audit_maintenance
 from pvcomm.qc.pcap import read_apdus
 from pvcomm.qc.schedule import audit_schedule, normal_transport_quality
 from pvcomm.storage.parquet import read_jsonl
 
 VERSION = "v04-terminal-mechanism-v2"
+GROUP_VERSION = "v04-terminal-mechanism-v3"
+
+
+def version_for(config: FaultScenarioConfig) -> str:
+    return GROUP_VERSION if config.background.maintenance_windows else VERSION
 
 
 def measurement_ioas(row: dict[str, Any]) -> set[int]:
@@ -275,6 +281,11 @@ def evaluate_terminal(root: Path) -> dict[str, Any]:
     )
     recovery["passed"] &= bool(raw["business_schedule"])
     states = read_jsonl(list((root / "truth").glob("electrical_state*.jsonl")))
+    maintenance = (
+        audit_maintenance(config.background, manifest, master, terminal, objects, states)
+        if config.background.maintenance_windows
+        else {"passed": True, "stations": {}}
+    )
     continuity = {}
     for station, effect in effects["stations"].items():
         times = sorted(
@@ -303,7 +314,7 @@ def evaluate_terminal(root: Path) -> dict[str, Any]:
         subprocess.check_output(["git", "-C", str(repository), "status", "--porcelain"], text=True)
     )
     return dict(
-        qc_version=VERSION,
+        qc_version=version_for(config),
         run_id=manifest["run_id"],
         run_code_version=manifest["code_version"],
         evaluation_code_version=sha,
@@ -318,6 +329,7 @@ def evaluate_terminal(root: Path) -> dict[str, Any]:
         },
         recovery=recovery,
         physical_continuity=continuity,
+        authorized_maintenance=maintenance,
         label_quality={"status": "not_evaluated"},
         passed=bool(
             configuration
@@ -326,6 +338,7 @@ def evaluate_terminal(root: Path) -> dict[str, Any]:
             and transport["passed"]
             and effects["passed"]
             and recovery["passed"]
+            and maintenance["passed"]
             and all(r["passed"] for r in continuity.values())
             and not dirty
         ),

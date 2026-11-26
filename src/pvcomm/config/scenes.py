@@ -6,12 +6,13 @@ import hashlib
 import json
 import random
 from pathlib import Path
-from typing import Annotated, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
 import yaml
-from pydantic import Field, model_validator
+from pydantic import Field, SerializerFunctionWrapHandler, model_serializer, model_validator
 
 from pvcomm.config.lab import Identifier, V01Contract
+from pvcomm.config.maintenance import MaintenanceWindow, StationMaintenance, legacy_maintenance
 from pvcomm.config.multisite import V03Config
 from pvcomm.config.service import MAX_CONFIG_BYTES, UniqueKeyLoader, check_yaml_tree
 
@@ -51,7 +52,7 @@ def canonical_hash(value: object) -> str:
 
 
 class ScenarioConfig(V01Contract):
-    schema_version: Literal["0.4-scenario.1"]
+    schema_version: Literal["0.4-scenario.1", "0.4-scenario.2"]
     purpose: Literal["normal_scenario_development"]
     source_group_id: Identifier
     pair_id: Identifier | None = None
@@ -59,6 +60,21 @@ class ScenarioConfig(V01Contract):
     simulation: V03Config
     # Required even when empty: no implicit legacy control commands.
     business_schedule: Annotated[tuple[BusinessTask, ...], Field(max_length=120)]
+    maintenance_windows: Annotated[tuple[MaintenanceWindow, ...], Field(max_length=120)] = ()
+
+    @model_serializer(mode="wrap")
+    def serialize_compatible(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        result: dict[str, Any] = handler(self)
+        if self.schema_version == "0.4-scenario.1":
+            result.pop("maintenance_windows", None)
+        return result
+
+    def expanded_maintenance(self) -> tuple[StationMaintenance, ...]:
+        return legacy_maintenance(self.simulation.protocol) + tuple(
+            StationMaintenance(window.maintenance_id, station, window.start_s, window.duration_s)
+            for window in self.maintenance_windows
+            for station in window.station_ids
+        )
 
     def expanded_schedule(self) -> tuple[BusinessTask, ...]:
         tasks = []
@@ -79,6 +95,39 @@ class ScenarioConfig(V01Contract):
         if config.protocol.interruption is not None and not config.protocol.interruption.planned:
             raise ValueError("normal scene cannot authorize unplanned interruption")
         stations = {s.station_id: s for s in config.protocol.stations}
+        if self.maintenance_windows and self.schema_version != "0.4-scenario.2":
+            raise ValueError("group maintenance requires scenario contract 0.4-scenario.2")
+        if self.maintenance_windows and config.protocol.interruption is not None:
+            raise ValueError("explicit and legacy maintenance cannot be combined")
+        if len({m.maintenance_id for m in self.maintenance_windows}) != len(
+            self.maintenance_windows
+        ):
+            raise ValueError("maintenance IDs must be unique")
+        maintained: set[str] = set()
+        for maintenance in self.maintenance_windows:
+            selected = set(maintenance.station_ids)
+            if (
+                len(selected) != len(maintenance.station_ids)
+                or not selected.issubset(stations)
+                or selected & maintained
+            ):
+                raise ValueError("unknown, duplicate or repeated maintenance station")
+            maintained.update(selected)
+            if maintenance.scope == "region":
+                members = {
+                    s for s, site in stations.items() if site.region_id == maintenance.region_id
+                }
+                if maintenance.region_id is None or selected != members:
+                    raise ValueError(
+                        "region maintenance must include exactly its configured members"
+                    )
+            elif maintenance.region_id is not None:
+                raise ValueError("station maintenance cannot specify a region")
+            if (
+                maintenance.start_s < config.protocol.warmup_s
+                or maintenance.start_s + maintenance.duration_s + 15 >= config.protocol.duration_s
+            ):
+                raise ValueError("maintenance requires warmup and complete recovery observation")
         if len({t.schedule_id for t in self.business_schedule}) != len(self.business_schedule):
             raise ValueError("schedule IDs must be unique")
         windows: dict[str, list[tuple[float, float]]] = {s: [] for s in stations}
@@ -106,12 +155,12 @@ class ScenarioConfig(V01Contract):
             ordered = sorted(station_windows)
             if any(a[1] > b[0] for a, b in zip(ordered, ordered[1:], strict=False)):
                 raise ValueError("same-station schedule execution windows overlap")
-        maintenance = config.protocol.interruption
-        if maintenance is not None and any(
-            start < maintenance.start_s + maintenance.duration_s + 15 and maintenance.start_s < end
-            for start, end in windows[maintenance.station_id]
-        ):
-            raise ValueError("normal station tasks overlap maintenance/recovery observation")
+        for event in self.expanded_maintenance():
+            if any(
+                start < event.start_s + event.duration_s + 15 and event.start_s < end
+                for start, end in windows[event.station_id]
+            ):
+                raise ValueError("normal station tasks overlap maintenance/recovery observation")
         return self
 
 

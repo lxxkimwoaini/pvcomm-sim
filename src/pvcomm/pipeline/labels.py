@@ -83,9 +83,20 @@ def load_label_inputs(root: Path) -> LabelInputs:
         elif config.fault.fault_type == "A02":
             from pvcomm.qc.delay import VERSION as qc_version
         else:
-            from pvcomm.qc.terminal import VERSION as qc_version
+            from pvcomm.qc.terminal import version_for
+
+            qc_version = version_for(config)
     else:
         from pvcomm.qc.schedule import VERSION as qc_version
+
+        scenario_path = root / "truth/scenario/effective.json"
+        if scenario_path.is_file():
+            from pvcomm.config.scenes import ScenarioConfig
+            from pvcomm.qc.schedule import version_for as schedule_version_for
+
+            qc_version = schedule_version_for(
+                ScenarioConfig.model_validate_json(scenario_path.read_bytes())
+            )
     report_path = root / "qc" / qc_version / "report.json"
     report = json.loads(report_path.read_bytes())
     if report["run_id"] != manifest["run_id"]:

@@ -138,6 +138,21 @@ def terminal_scenario(
             release_after_s=25,
             interruption=dict(station_id=targets[0], start_s=40, duration_s=20, planned=True),
         )
+        if len(targets) > 1:
+            protocol["interruption"] = None
+            raw["background"].update(
+                schema_version="0.4-scenario.2",
+                maintenance_windows=[
+                    dict(
+                        maintenance_id="maintenance_1",
+                        scope="region" if scope.kind == "region" else "stations",
+                        station_ids=list(targets),
+                        region_id=scope.region_id if scope.kind == "region" else None,
+                        start_s=40,
+                        duration_s=20,
+                    )
+                ],
+            )
     raw["fault"] = dict(
         event_id="event_1",
         fault_type=code,

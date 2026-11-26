@@ -119,7 +119,7 @@ class FaultScenarioConfig(V01Contract):
     @model_validator(mode="after")
     def references_and_recovery(self) -> Self:
         protocol = self.background.simulation.protocol
-        if protocol.interruption is not None and self.fault.fault_type != "A08":
+        if self.background.expanded_maintenance() and self.fault.fault_type != "A08":
             raise ValueError("single fault cannot contain a second maintenance/interruption event")
         if isinstance(self.fault, TerminalFault):
             fault = self.fault
@@ -140,16 +140,20 @@ class FaultScenarioConfig(V01Contract):
             if fault.fault_type == "A05":
                 self.check_delayed_confirmation_support()
             if fault.fault_type == "A08":
-                maintenance = protocol.interruption
+                maintenance = self.background.expanded_maintenance()
+                targets = set(self.target_stations())
                 if (
-                    maintenance is None
-                    or not maintenance.planned
-                    or self.target_stations() != (maintenance.station_id,)
-                    or fault.start_s != maintenance.start_s + maintenance.duration_s
+                    not targets
+                    or not targets.issubset({m.station_id for m in maintenance if m.planned})
+                    or any(
+                        fault.start_s != m.start_s + m.duration_s
+                        for m in maintenance
+                        if m.station_id in targets
+                    )
                     or fault.duration_s != 15 * int(fault.recovery_cycles or 0)
                 ):
                     raise ValueError(
-                        "A08 requires matching single-station planned recovery and 15s cycles"
+                        "A08 requires matching planned recovery for every target and 15s cycles"
                     )
         if isinstance(self.fault, LinkDelay):
             if self.schema_version != "0.4-fault.2":
