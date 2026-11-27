@@ -12,7 +12,9 @@
 
 服务器正式正常小时于14:59:36启动PID1755669，源码5f4cf2d，计划`$HOME/pvcomm-data/plans/v10_server_normal_hour_s1`、输出`$HOME/pvcomm-data/runs/v10_server_normal_hour_s1`。新来源2024-06-13T04:00:00Z，train在启动前冻结，三站、3602秒含预热2秒，继承N10/总召唤/限发解除/计划维护，最多两次；不与本地12日24小时队列或27/28/29日test重复。仍在运行，0/1完成、0失败，不能算一小时验收或已入库。原生产驱动1151未停止，15:02正式独立测试21/21完成、0失败，六类各3次有效机制运行及3次正常业务，正常24小时第00片段已启动、0/48完成；业务阳性须另按标签统计，不用故障次数替代。
 
-相关普通回归`pytest tests/unit/test_batch.py tests/unit/test_batch_audit.py tests/unit/test_batch_resources.py tests/unit/test_capture_statistics.py tests/unit/test_v10_production_plan.py -q`实际24 passed（4.59s）；Ruff check/format294文件、shell语法检查和git diff --check退出0。实际服务器生产使用与本地新脚本相同字节的包装器，SHA352b557c365c70a8e56d64bb0aacf1833300cffd019df67900956fa871a3cf10。没有Python公共接口改动，未重复前端/全量机制测试。仓库lxxkimwoaini/pvcomm-sim、PUBLIC、默认main、开发分支feat/v04-scenarios；PR1→2→3→4→5仍OPEN、3～5 Draft，未合并。提交/推送和本切片CI以随后实际核验记录为准；数据、PCAP、SSH密钥及服务器连接配置不进入Git。
+相关普通回归`pytest tests/unit/test_batch.py tests/unit/test_batch_audit.py tests/unit/test_batch_resources.py tests/unit/test_capture_statistics.py tests/unit/test_v10_production_plan.py -q`实际24 passed（4.59s）；Ruff check/format294文件、shell语法检查和git diff --check退出0。实际服务器生产使用与本地新脚本相同字节的包装器，SHA352b557c365c70a8e56d64bb0aacf1833300cffd019df67900956fa871a3cf10。没有Python公共接口改动，未重复前端/全量机制测试。仓库lxxkimwoaini/pvcomm-sim、PUBLIC、默认main、开发分支feat/v04-scenarios；PR1→2→3→4→5仍OPEN、3～5 Draft，未合并。数据、PCAP、SSH密钥及服务器连接配置不进入Git。
+
+实现及部署记录2c4fd67101022fe108abefe9f19a2003b47af40d已普通推送，远程分支SHA实际一致。首次旧本机代理不可达失败；检查7897确实监听后，仅本次Git进程使用该代理推送成功，不改持久配置。Actions push45956099067及PR45956105116实际均success；该CI结论对应2c4fd67。本段仅补记录的后续文档提交另行推送，不能冒称继承该SHA的CI。15:07服务器正式run_3589a8b148e8463888c08bed1fa198c3仍running，后台PID存活、宿主netns为空；状态和薄driver SHA已留服务器计划目录，未提前计为通过。
 
 ## 2026-11-27：V1.0首批实际数据交付
 
