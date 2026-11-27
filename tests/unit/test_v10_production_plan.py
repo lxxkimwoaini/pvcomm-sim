@@ -2,6 +2,9 @@
 
 import runpy
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 
 def test_fault_jobs_have_real_history_and_distinct_heldout_dates() -> None:
@@ -37,3 +40,31 @@ def test_normal_day_is_independent_half_hour_segments() -> None:
         "2024-06-12"
     }
     assert {j.scenario.normal_scene for j in jobs} == {"N01", "N02", "N03", "N07", "N09", "N10"}
+
+
+def test_fixed_holdout_ignores_labels_and_old_test_is_development() -> None:
+    script = runpy.run_path(str(Path("scripts/build_v10_dataset.py")))
+    rows: list[dict[str, Any]] = [
+        dict(run_id=name, path=f"/unit/{name}", group_keys=[f"weather:sha:2024-06-{day:02d}"])
+        for name, day in (("a", 1), ("b", 2), ("c", 3), ("d", 27))
+    ]
+    protocol = dict(
+        test_dates=["2024-06-27"],
+        development_assignment=dict(
+            runs=[
+                dict(run_id="a", partition="train"),
+                dict(run_id="b", partition="validation"),
+                dict(run_id="c", partition="test"),
+            ]
+        ),
+    )
+    assigned = script["fixed_assignments"](rows, protocol)
+    assert {r["run_id"]: r["partition"] for r in assigned} == {
+        "a": "train",
+        "b": "validation",
+        "c": "train",
+        "d": "test",
+    }
+    rows[-1]["group_keys"].append("weather:sha:2024-06-02")
+    with pytest.raises(ValueError, match="crosses an unfrozen"):
+        script["fixed_assignments"](rows, protocol)
