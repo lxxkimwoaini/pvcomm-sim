@@ -16,6 +16,8 @@
 
 4f6a8f8已普通推送成功。扩展兼容回归40 passed（4.36s）、完整Ruff check/format298文件和Linux mypy197源文件通过。该SHA的Actions push45961428189/PR45961437589实际failure，仅Windows mypy缺少Linux flock/WNOHANG属性；Linux平台成功。最小修复为Linux专用入口增加明确平台守卫，不跳过检查、不修改服务器已冻结脚本；后续提交/CI另行核验。
 
+Windows守卫首提交52482ad遗漏sys导入，后续静态检查实际发现并补齐；服务器使用的既有437ca3脚本未被替换、不受此本地问题影响。新增Windows入口负测试后18项脚本单元测试通过（1.33s），Windows目标mypy197源文件实际通过，Ruff check/format及diff检查通过。源码与冻结脚本哈希不同是此平台兼容守卫修订造成，服务器仍以已记录原SHA运行，不静默修改冻结计划。
+
 ## 2026-11-27：实验室服务器部署及真实三站验证
 
 用户授权服务器实际运行。环境Ubuntu22.04.5、Linux6.8.0-90-generic、24逻辑CPU/约64GB，/home启动生产前可用311,159,259,136B；源码5f4cf2d干净冻结至服务器用户目录。uv0.13.10、Python3.11.15，原uv.lock离线frozen同步protocol/data/power/experiments实际退出0。PyPI文件CDN超时原日志保留，转运原Linux下载缓存解决，不改依赖或复制venv。历史weather/raw/source三个SHA与本地一致。

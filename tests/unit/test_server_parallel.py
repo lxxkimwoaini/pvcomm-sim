@@ -228,3 +228,14 @@ def test_resume_retains_live_workers_and_prior_failure_records(
     assert stopped["status"] == "queued" and "exit_code" not in stopped
     assert stopped["previous_launches"][0]["error"] == "actual failure"
     assert state["status"] == "production"
+
+
+def test_windows_entry_rejects_linux_operations_before_importing_fcntl(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = driver()
+    monkeypatch.setattr(module.sys, "platform", "win32")
+    with pytest.raises(RuntimeError, match="requires Linux"), module.locked(tmp_path / "lock"):
+        pass
+    with pytest.raises(RuntimeError, match="requires Linux"):
+        module.control(tmp_path)

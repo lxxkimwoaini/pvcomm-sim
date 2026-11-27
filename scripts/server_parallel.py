@@ -13,6 +13,7 @@ import os
 import runpy
 import shutil
 import subprocess
+import sys
 import time
 from collections.abc import Iterator
 from datetime import UTC, datetime
