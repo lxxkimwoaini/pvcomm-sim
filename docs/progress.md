@@ -8,11 +8,13 @@
 
 新增受控任务范围保护：catalog仅提供3/10，新30站提交在创建目录前返回422；消费者将历史超范围请求标为deferred_scope并继续后续小任务，原请求/矩阵/队列和证据保留。实际矩阵站点数须与请求一致。历史ExperimentRequest、V0.1～V0.3及原30站配置结构不变，schema/OpenAPI和生成TS同步。
 
-本切片实际相关31 passed（2.81s），包含超范围拒绝、历史读取、续跑跳过、后续小任务和矩阵不一致负测试；Ruff/format253文件、strict mypy174源文件（Linux平台）、schema/TS检查通过。首次mypy发现不同长度tuple推断错误，改为同类配置列表后通过，断言不变。前端7项单测、lint/format/typecheck/build通过，仅保留旧RunWorkbench两条warning和旧chunk提示；真实浏览器范围及M2隔离1 passed（3.2s），输出outputs/v04_small_scope_web_s1。一个三站真实API→运行器→解析/标签/QC回归待冻结后执行，不重跑全部机制或规模实验。
+本切片实际相关31 passed（2.81s），包含超范围拒绝、历史读取、续跑跳过、后续小任务和矩阵不一致负测试；Ruff/format253文件、strict mypy174源文件（Linux平台）、schema/TS检查通过。首次mypy发现不同长度tuple推断错误，改为同类配置列表后通过，断言不变。前端7项单测、lint/format/typecheck/build通过，仅保留旧RunWorkbench两条warning和旧chunk提示；真实浏览器范围及M2隔离1 passed（3.2s），输出outputs/v04_small_scope_web_s1。
+
+eb2c68cc4a43a5b289f3bcc561757866494ca8f3已冻结到`/var/lib/pvcomm/sources/v04_small_scope_s1`，唯一三站真实端到端回归实际**1 passed（151.29s），退出0**。N09实验experiment_d973c8ef2211407788df4a9198af5d4b、运行run_cc6f483787ce48918ac68537d4a121ba通过API提交→授权消费者→真实c104/电力闭环→解析/Arrow→标签→独立QC；完整APDU1188/1188，四路P0/P1工具丢包0，日志对齐P99为3.647101ms；正常业务QC和独立标签QC通过，3 valid、0 invalid、0 uncertain，无正常业务违约，code_dirty=false、cleanup_errors=[]。30站请求拒绝、完成任务不重复消费及M2隔离同时通过。原件位于`/var/lib/pvcomm/runs/v04_small_scope_s1`，驱动/日志位于同级`v04_small_scope_s1_plan`；复现命令及边界见[小规模交付验收记录](reports/2026-11-27-small-scope-acceptance.md)。不重跑已验收机制，不追加规模实验。
 
 此前a32bfa4冻结的正常有限并发驱动已实际退出0，`v04d_startup_profile_s1/report.json`的evaluation_valid=true，SHA256=434048b89de86c2c4fd2db768f0343974849a40ac1432a9517641f0cb6f0a942。四个不同run_id：run_6d0036b313e347d4947a3d2b8c1ccf48、run_ab6e813d16484378bbb9335562ed3465、run_7b02edef73c844e7a90d3484f699ac57、run_e37b62d51a2f4685876da6cf2a7bfa70；全部正常和独立标签QC通过，120 valid正常标签、完整APDU55,557/55,557、124路工具drop0、清理无错、留存哈希核验通过。串行366.580734s、双实例192.632093s，比值1.903010；日志P99最大3.756836ms。每次30站均有真实startup_periodic记录。两设置同时RSS峰值下界分别6,565,306,368/13,073,604,608B、临时解析587,390,834/1,006,893,840B，无采样错误。只支持两种短时正常模板，不作为持续异常吞吐或720小时承诺；生产并发仍1，本轮不追加资源测试。
 
-6b8c3c5首轮规模报告已本地提交；三次Git推送遇连接超时，当前核验远程仍a32bfa4，不能宣称新提交已推送或已有其CI。接续代码完成后统一普通推送并核验，不合并PR。
+6b8c3c5首轮规模报告与eb2c68c范围保护代码已普通推送至`https://github.com/lxxkimwoaini/pvcomm-sim`，所有者lxxkimwoaini、PUBLIC、默认main，开发分支feat/v04-scenarios。eb2c68c对应Actions push45923625862、PR45923631032均实际success；该CI结论仅对应此SHA。早先代理/直连超时通过单次Git进程空代理、HTTP/1.1及已验证GitHub地址解决，未改持久网络配置。PR堆叠关系不变，未合并。
 
 ## 冻结复验接续及三十站独立终态核验
 
