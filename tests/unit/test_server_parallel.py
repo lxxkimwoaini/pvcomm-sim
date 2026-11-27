@@ -132,7 +132,7 @@ def test_one_global_budget_reserves_all_workers_and_four_parsers(
     def memory(path: Path, *args: Any, **kwargs: Any) -> str:
         return (
             "MemAvailable: 33554432 kB\n"
-            if str(path) == "/proc/meminfo"
+            if path == Path("/proc/meminfo")
             else original(path, *args, **kwargs)
         )
 
