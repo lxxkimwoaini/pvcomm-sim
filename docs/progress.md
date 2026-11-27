@@ -1,6 +1,18 @@
 # PVComm 开发进度
 
-日期：2026-11-27（Asia/Shanghai）。当前阶段：**V1.0首批正式数据已实际导出并通过三尺度QC，固定3站；独立测试持续真实生产，24小时正常任务已排队、尚未启动，168小时未完成。** 30站/720小时/40次每类/228项强制目标已取消，不恢复旧队列；V1.3、历史失败和未匹配结果保留。统计匹配不再是入库门禁。最新用户指令、[科研范围调整](research-scope-2026-11-27.md)及[V1.0生产计划](plans/2026-11-27-v10-production.md)优先于下文历史记录。
+日期：2026-11-27（Asia/Shanghai）。当前阶段：**V1.0首批正式快照已交付，固定3站；15:02核验独立测试21/21完成、0失败，本地24小时正常队列已启动。实验室服务器部署验证通过，新增不同日期的一小时正常片段正在运行，均不提前计入有效时长；168小时未完成。** 推荐数据快照仍为pvcomm_v1.0_s2，新的已QC原件待下次增量导出。30站/720小时/40次每类/228项强制目标已取消，不恢复旧队列；V1.3、历史失败和未匹配结果保留。统计匹配不再是入库门禁。最新用户指令、[科研范围调整](research-scope-2026-11-27.md)及[V1.0生产计划](plans/2026-11-27-v10-production.md)优先于下文历史记录。
+
+## 2026-11-27：实验室服务器部署及真实三站验证
+
+用户授权服务器实际运行。环境Ubuntu22.04.5、Linux6.8.0-90-generic、24逻辑CPU/约64GB，/home启动生产前可用311,159,259,136B；源码5f4cf2d干净冻结至服务器用户目录。uv0.13.10、Python3.11.15，原uv.lock离线frozen同步protocol/data/power/experiments实际退出0。PyPI文件CDN超时原日志保留，转运原Linux下载缓存解决，不改依赖或复制venv。历史weather/raw/source三个SHA与本地一致。
+
+服务器sudo需要密码，但系统允许user namespace。新增薄脚本`scripts/run_userns_lab.sh`保留当前UID及namespace能力、私有/run和mount/network，不改宿主权限、安全机制或网络。tc5.15不支持seed，用户目录构建6.15后内核种子读回成功。映射root导致tcpdump setgroups失败，改用系统原生map-current-user，未修改tcpdump安全行为。原始抓包、业务和物理功能实际运行成功。
+
+部署N06 run_a290f9daeac7455f84855df12b87160b真实180秒，全流程191.078706697s；首轮tshark3.6.2仅145/1746独立APDU匹配，原队列QC失败完整保留。移入原环境已验证tshark4.6.4独立运行时，49个二进制/库SHA核验；只在新副本重处理，64个输入文件SHA相同，5.438956954s退出0，1746/1746完整APDU、四路工具drop0、P99=3.784621ms、业务及标签QC通过，3 valid/0 invalid/0 uncertain、无违约、cleanup_errors=[]。相同run_id不是第二次独立实验，不覆盖原失败清单。未重复六类机制验收，未改门槛。完整路径和命令见[部署报告](reports/2026-11-27-lab-server.md)、[操作指南](lab-server.md)及[部署计划](plans/2026-11-27-lab-server.md)。
+
+服务器正式正常小时于14:59:36启动PID1755669，源码5f4cf2d，计划`$HOME/pvcomm-data/plans/v10_server_normal_hour_s1`、输出`$HOME/pvcomm-data/runs/v10_server_normal_hour_s1`。新来源2024-06-13T04:00:00Z，train在启动前冻结，三站、3602秒含预热2秒，继承N10/总召唤/限发解除/计划维护，最多两次；不与本地12日24小时队列或27/28/29日test重复。仍在运行，0/1完成、0失败，不能算一小时验收或已入库。原生产驱动1151未停止，15:02正式独立测试21/21完成、0失败，六类各3次有效机制运行及3次正常业务，正常24小时第00片段已启动、0/48完成；业务阳性须另按标签统计，不用故障次数替代。
+
+相关普通回归`pytest tests/unit/test_batch.py tests/unit/test_batch_audit.py tests/unit/test_batch_resources.py tests/unit/test_capture_statistics.py tests/unit/test_v10_production_plan.py -q`实际24 passed（4.59s）；Ruff check/format294文件、shell语法检查和git diff --check退出0。实际服务器生产使用与本地新脚本相同字节的包装器，SHA352b557c365c70a8e56d64bb0aacf1833300cffd019df67900956fa871a3cf10。没有Python公共接口改动，未重复前端/全量机制测试。仓库lxxkimwoaini/pvcomm-sim、PUBLIC、默认main、开发分支feat/v04-scenarios；PR1→2→3→4→5仍OPEN、3～5 Draft，未合并。提交/推送和本切片CI以随后实际核验记录为准；数据、PCAP、SSH密钥及服务器连接配置不进入Git。
 
 ## 2026-11-27：V1.0首批实际数据交付
 
