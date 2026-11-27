@@ -9,6 +9,7 @@ test('keeps Oracle experiment management separate from the default M2 view', asy
   )
   expect(response.ok()).toBeTruthy()
   const catalog = await response.json()
+  expect(catalog.site_counts).toEqual([3, 10])
   await page.goto('/')
   await expect(
     page.getByRole('heading', { name: '场景与实验队列' }),

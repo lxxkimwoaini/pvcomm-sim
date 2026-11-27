@@ -14,6 +14,9 @@ from pvcomm.config.pairs import development_pair
 
 FAULT_CODES = tuple(STRENGTHS)
 PAIR_CODES = ("P03", "P04", "P06", "P03_recovery")
+# Active development scope authorized on 2026-11-27. Historical contracts keep
+# accepting 30-site records so retained runs and previous profiles remain readable.
+DEVELOPMENT_SITE_COUNTS = (3, 10)
 
 
 class ExperimentRequest(V01Contract):
@@ -53,6 +56,21 @@ class ExperimentRequest(V01Contract):
         if self.site_count == 3 and self.template in FAULT_CODES and self.region_id == "R3":
             raise ValueError("legacy fault templates have two communication regions")
         return self
+
+
+def validate_development_scope(request: ExperimentRequest, matrix: BatchConfig) -> None:
+    """Guard new execution without changing historical simulation contracts."""
+    if request.site_count not in DEVELOPMENT_SITE_COUNTS:
+        raise ValueError("current development execution supports only 3 or 10 sites")
+    for task in matrix.tasks:
+        if isinstance(task, PairJob):
+            simulations = [task.pair.normal.simulation, task.pair.changed.background.simulation]
+        elif isinstance(task, FaultJob):
+            simulations = [task.scenario.background.simulation]
+        else:
+            simulations = [task.scenario.simulation]
+        if any(len(s.protocol.stations) != request.site_count for s in simulations):
+            raise ValueError("request and matrix station counts disagree")
 
 
 def requested_matrix(

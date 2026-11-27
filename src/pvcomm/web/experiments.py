@@ -14,7 +14,12 @@ from fastapi.responses import FileResponse
 from pvcomm.config.batch import MatchingInputs
 from pvcomm.config.models import Contract
 from pvcomm.config.normal_scenes import SCENE_CODES
-from pvcomm.config.workbench import FAULT_CODES, PAIR_CODES, ExperimentRequest
+from pvcomm.config.workbench import (
+    DEVELOPMENT_SITE_COUNTS,
+    FAULT_CODES,
+    PAIR_CODES,
+    ExperimentRequest,
+)
 from pvcomm.domain.labels import EvidenceRef
 from pvcomm.pipeline.labels import file_sha256
 from pvcomm.scenario.requests import SCOPE, read_json, safe_file, submit_request
@@ -42,7 +47,7 @@ class TemplateCatalog(Contract):
     fault: tuple[str, ...] = FAULT_CODES
     pairs: tuple[str, ...] = PAIR_CODES
     strengths: dict[str, tuple[int, ...]]
-    site_counts: tuple[int, ...] = (3, 10, 30)
+    site_counts: tuple[int, ...] = DEVELOPMENT_SITE_COUNTS
     submission_enabled: bool
     pair_submission_enabled: bool
     execution: Literal["separate_authorized_linux_worker"] = "separate_authorized_linux_worker"
@@ -157,7 +162,11 @@ class ExperimentRepository:
         queue = read_json(self.root, projection) if projection.exists() else None
         return ExperimentView(
             experiment_id=identity,
-            status=queue["status"] if queue else worker.get("status", "queued"),
+            status="deferred_scope"
+            if worker.get("status") == "deferred_scope"
+            else queue["status"]
+            if queue
+            else worker.get("status", "queued"),
             request=request["request"],
             queue=queue,
             error=worker.get("error"),

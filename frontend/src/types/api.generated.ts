@@ -913,8 +913,7 @@ export interface components {
              * Site Counts
              * @default [
              *       3,
-             *       10,
-             *       30
+             *       10
              *     ]
              */
             site_counts: number[];

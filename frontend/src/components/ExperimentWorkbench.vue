@@ -275,7 +275,9 @@ onUnmounted(() => {
     />
     <section class="editor-panel">
       <h2>创建开发验收实验</h2>
-      <p>复用现有场景和固定强度。秒级云影为模型扰动，未做现场高频校准。</p>
+      <p>
+        当前开发以3站为主，最多10站。复用现有场景和固定强度。秒级云影为模型扰动，未做现场高频校准。
+      </p>
       <form class="experiment-form" @submit.prevent="submit">
         <label>
           <span>场景模板</span>

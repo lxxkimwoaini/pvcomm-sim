@@ -18,6 +18,15 @@ def test_real_submitted_request_and_quality(tmp_path: Path) -> None:
         pytest.skip("requires explicitly authorized Linux lab")
     root = tmp_path / "experiments"
     client = TestClient(create_app(tmp_path / "m2", root))
+    assert client.get("/api/diagnostics/experiments/catalog").json()["site_counts"] == [3, 10]
+    assert (
+        client.post(
+            "/api/diagnostics/experiments",
+            json=dict(template="N09", seed=902001, site_count=30),
+        ).status_code
+        == 422
+    )
+    assert not root.exists()
     response = client.post("/api/diagnostics/experiments", json=dict(template="N09", seed=902001))
     assert response.status_code == 201
     identity = response.json()["experiment_id"]

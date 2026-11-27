@@ -10,7 +10,12 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from pvcomm.config.batch import BatchConfig
-from pvcomm.config.workbench import ExperimentRequest, requested_matrix
+from pvcomm.config.scenes import canonical_hash
+from pvcomm.config.workbench import (
+    ExperimentRequest,
+    requested_matrix,
+    validate_development_scope,
+)
 from pvcomm.scenario.batch import save_json, summary
 from pvcomm.scenario.requests import execute_requests, submit_request
 from pvcomm.web.app import create_app
@@ -87,6 +92,61 @@ def test_api_opt_in_and_submission_cannot_execute_or_leak_to_m2(tmp_path: Path) 
     )
     assert client.post("/api/diagnostics/experiments", json=body(output="/tmp")).status_code == 422
     assert client.post("/api/diagnostics/experiments", json=body(template="P04")).status_code == 422
+
+
+def test_small_development_scope_rejects_large_submission_but_preserves_history(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "experiments"
+    client = TestClient(create_app(tmp_path / "runs", root))
+    assert client.get("/api/diagnostics/experiments/catalog").json()["site_counts"] == [3, 10]
+    assert client.post("/api/diagnostics/experiments", json=body(site_count=30)).status_code == 422
+    assert not root.exists()  # Rejection happens before any experiment is queued.
+    historical = ExperimentRequest.model_validate(body(site_count=30))
+    matrix = requested_matrix(historical, "historical_30")
+    assert matrix.tasks[0].kind == "normal"
+    assert len(matrix.tasks[0].scenario.simulation.protocol.stations) == 30
+    with pytest.raises(ValueError, match="3 or 10"):
+        validate_development_scope(historical, matrix)
+    ten = requested_matrix(ExperimentRequest.model_validate(body(site_count=10)), "ten")
+    with pytest.raises(ValueError, match="counts disagree"):
+        validate_development_scope(ExperimentRequest.model_validate(body()), ten)
+
+
+def test_worker_defers_historical_large_request_and_continues_small_queue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PVCOMM_ALLOW_LAB", "1")
+    monkeypatch.setattr("pvcomm.scenario.requests.sys.platform", "linux")
+    old = submit_request(tmp_path, ExperimentRequest.model_validate(body()))
+    directory = tmp_path / old["experiment_id"]
+    historical = ExperimentRequest.model_validate(body(site_count=30))
+    matrix = requested_matrix(historical, directory.name)
+    old.update(
+        request=historical.model_dump(mode="json"),
+        matrix_sha256=canonical_hash(matrix.model_dump(mode="json")),
+    )
+    save_json(directory / "request.json", old)
+    save_json(directory / "matrix.json", matrix.model_dump(mode="json"))
+    # Synthetic interrupted queue projection, not simulation or acceptance evidence.
+    (directory / "queue").mkdir()
+    save_json(directory / "queue/summary.json", dict(status="running"))
+    original = (directory / "matrix.json").read_bytes()
+    small = submit_request(tmp_path, ExperimentRequest.model_validate(body()))
+    calls = []
+
+    def synthetic(config: BatchConfig, output: Path, **_kwargs: Any) -> dict[str, str]:
+        calls.append(config.matrix_id)
+        return dict(status="completed", updated_at="synthetic-unit-fixture")
+
+    monkeypatch.setattr("pvcomm.scenario.requests.run_batch", synthetic)
+    assert execute_requests(tmp_path, resume=True) == [small["experiment_id"]]
+    assert calls == [small["experiment_id"]]
+    assert execute_requests(tmp_path, resume=True) == []
+    assert (directory / "matrix.json").read_bytes() == original
+    view = ExperimentRepository(tmp_path).view(directory.name)
+    assert view.status == "deferred_scope" and view.request["site_count"] == 30
+    assert view.queue == {"status": "running"}  # Original projection is retained.
 
 
 def test_poll_reads_compact_projection_and_rejects_symlink(tmp_path: Path) -> None:

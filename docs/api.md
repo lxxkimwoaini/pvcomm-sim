@@ -18,6 +18,8 @@ CLI `pvcomm --version` 和 `validate-config --config <path>` 已实现。成功�
 
 全部使用`/api/diagnostics/experiments`前缀，scope固定`Oracle_experiment_management_never_M2_features`，不进入M2接口或特征。服务显式设置PVCOMM_EXPERIMENT_ROOT才允许提交；成对配置PVCOMM_SIMILARITY_POLICY和PVCOMM_SIMILARITY_CALIBRATION后开放配对。文件路径仅由服务启动环境提供，不由HTTP输入选择。
 
+2026-11-27当前开发范围为3站或10站，catalog.site_counts=[3,10]，默认3站。新30站提交返回422且不创建任务；历史30站请求仍可读取。消费者把超范围旧任务标记为deferred_scope，保留原队列投影及证据，继续后续小任务；该状态不表示QC通过或实验无效。恢复大规模执行须另行明确调整范围。
+
 | 接口 | 实际功能 |
 |---|---|
 | GET /catalog | 模板、既定强度、站点规模、提交能力；不伪造执行能力 |

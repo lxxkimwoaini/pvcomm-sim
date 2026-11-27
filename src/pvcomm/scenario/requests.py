@@ -14,7 +14,12 @@ from typing import Any, Literal
 
 from pvcomm.config.batch import BatchConfig, MatchingInputs
 from pvcomm.config.scenes import canonical_hash
-from pvcomm.config.workbench import ExperimentRequest, requested_matrix
+from pvcomm.config.workbench import (
+    DEVELOPMENT_SITE_COUNTS,
+    ExperimentRequest,
+    requested_matrix,
+    validate_development_scope,
+)
 from pvcomm.scenario.batch import run_batch, save_json
 
 SCOPE: Literal["Oracle_experiment_management_never_M2_features"] = (
@@ -43,8 +48,11 @@ def read_json(root: Path, path: Path, maximum_bytes: int = 16 * 1024**2) -> dict
 def submit_request(
     root: Path, request: ExperimentRequest, matching: MatchingInputs | None = None
 ) -> dict[str, Any]:
+    if request.site_count not in DEVELOPMENT_SITE_COUNTS:
+        raise ValueError("current development execution supports only 3 or 10 sites")
     identity = f"experiment_{uuid.uuid4().hex}"
     matrix = requested_matrix(request, identity, matching)
+    validate_development_scope(request, matrix)
     root.mkdir(parents=True, exist_ok=True)
     directory = root / identity
     directory.mkdir(exist_ok=False)
@@ -84,13 +92,30 @@ def execute_requests(root: Path, *, resume: bool = False, maximum_jobs: int = 1)
                 raise ValueError("request identity or observation scope changed")
             state_path = directory / "worker.json"
             previous = read_json(root, state_path) if state_path.exists() else {}
-            if previous.get("status") in ("completed", "completed_with_failures", "failed"):
+            if previous.get("status") in (
+                "completed",
+                "completed_with_failures",
+                "failed",
+                "deferred_scope",
+            ):
                 continue
             if previous.get("status") == "running" and not resume:
                 continue
             matrix = BatchConfig.model_validate(read_json(root, directory / "matrix.json"))
             if canonical_hash(matrix.model_dump(mode="json")) != request["matrix_sha256"]:
                 raise ValueError("submitted matrix checksum changed")
+            specification = ExperimentRequest.model_validate(request["request"])
+            if specification.site_count not in DEVELOPMENT_SITE_COUNTS:
+                save_json(
+                    state_path,
+                    dict(
+                        status="deferred_scope",
+                        error="current development execution supports only 3 or 10 sites",
+                        updated_at=datetime.now(UTC).isoformat(),
+                    ),
+                )
+                continue  # A historical large request must not block the small queue.
+            validate_development_scope(specification, matrix)
             output = safe_file(root, directory / "queue")
             save_json(state_path, dict(status="running", started_at=datetime.now(UTC).isoformat()))
             try:
