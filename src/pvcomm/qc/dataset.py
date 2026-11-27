@@ -8,17 +8,24 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+from pvcomm.config.dataset import DatasetPolicy
 from pvcomm.domain.labels import EventLabel
 from pvcomm.pipeline.dataset import code_record, read_json, write_json
 from pvcomm.pipeline.features import FEATURES
 from pvcomm.storage.parquet import iter_jsonl, source_hash
 
 
-def qc_dataset(root: Path) -> dict[str, Any]:
-    destination = root / "leakage_report.json"
+def qc_dataset(root: Path, scale: str | None = None) -> dict[str, Any]:
+    output_root = root / scale if scale else root
+    destination = output_root / "leakage_report.json"
     if destination.exists():
         raise FileExistsError("dataset QC already exists")
-    folder = root / "features-M2"
+    folder = output_root / "features-M2"
+    policy = DatasetPolicy.model_validate(read_json(root / "split/policy.json"))
+    if policy.schema_version == "0.5.1-dataset.1" and scale is None:
+        raise ValueError("V0.5.1 requires an explicit registered scale")
+    if scale:
+        policy = policy.for_scale(scale)
     inventory = read_json(root / "inventory.json")
     split_audit = read_json(root / "split/audit.json")
     split = read_json(root / "split/assignment.json")["runs"]
@@ -71,7 +78,7 @@ def qc_dataset(root: Path) -> dict[str, Any]:
         causal &= index["latest_input_available_at"] is None or (
             index["latest_input_available_at"] < end
         )
-        causal &= end - begin == 60 * 10**9
+        causal &= end - begin == policy.window_s * 10**9
         causal &= begin >= record["scene_clock"]["start_utc_ns"]
         source = truth[index["run_id"], index["station_id"]]
         # Independent endpoint/coverage computation. Labels cannot simply follow
@@ -117,11 +124,119 @@ def qc_dataset(root: Path) -> dict[str, Any]:
         independent_window_label_mapping=bool(label_matches),
         split_rows_match=bool(group_rows),
     )
+    evidence_qc = None
+    event_coverage = None
+    if scale:
+        from pvcomm.pipeline.coverage import classify_event, run_bounds, service_events
+        from pvcomm.qc.feature_evidence import check_feature_evidence
+
+        events = service_events(catalogue)
+        for name, key in (
+            ("source_profile", "profile_sha256"),
+            ("stratification", "stratification_sha256"),
+            ("policy", "policy_sha256"),
+        ):
+            hashes &= source_hash(root / f"split/{name}.json") == split_audit[key]
+        evidence_qc = check_feature_evidence(catalogue, indices, features.to_pylist(), events)
+        checks["fixed_sample_independent_feature_recalculation"] = evidence_qc["passed"]
+        endpoints: dict[tuple[str, str], list[int]] = defaultdict(list)
+        for index in indices:
+            endpoints[index["run_id"], index["station_id"]].append(index["window_end_utc_ns"])
+        grid_matches = True
+        for run_id, record in catalogue.items():
+            _, warm, end_run = run_bounds(record)
+            expected = list(
+                range(warm + policy.window_s * 10**9, end_run + 1, policy.step_s * 10**9)
+            )
+            for station in truth:
+                if station[0] == run_id:
+                    grid_matches &= sorted(endpoints[station]) == expected
+            for relative, digest in record["evidence_sha256"].items():
+                hashes &= source_hash(Path(record["path"]) / relative) == digest
+        checks["immutable_sources_and_tables"] = bool(hashes)
+        checks["registered_sampling_grid"] = grid_matches
+        raw_partitions: dict[str, set[str]] = defaultdict(set)
+        for run_id, record in catalogue.items():
+            p0 = record.get("files", {}).get("P0")
+            if p0:
+                raw_partitions[source_hash(Path(p0))].add(assignments[run_id]["partition"])
+        checks["no_duplicate_raw_capture_crossing"] = all(
+            len(p) == 1 for p in raw_partitions.values()
+        )
+        checks["primary_partition_class_support"] = all(
+            {
+                y["label_at_end"]
+                for r, y in zip(indices, labels, strict=True)
+                if r["partition"] == part and catalogue[r["run_id"]]["site_count"] == 3
+            }
+            == {0, 1}
+            for part in ("train", "validation", "test")
+        )
+        profile = read_json(root / "split/source_profile.json")
+        group_lookup = {r["run_id"]: r["group_id"] for r in split}
+        event_coverage = []
+        for event in events:
+            partition = assignments[event["run_id"]]["partition"]
+            times = endpoints[event["run_id"], event["station_id"]]
+            event_coverage.append(
+                dict(
+                    event,
+                    partition=partition,
+                    site_count=catalogue[event["run_id"]]["site_count"],
+                    group_id=group_lookup[event["run_id"]],
+                    evaluation_status=classify_event(
+                        event, times, event["warmup_end_utc_ns"] + policy.window_s * 10**9
+                    ),
+                )
+            )
+        independent_by_run = Counter(
+            e["run_id"] for e in event_coverage if e["evaluation_status"] == "evaluable"
+        )
+        checks["preregistered_profile_event_counts"] = all(
+            independent_by_run[r["run_id"]] == r["scales"][scale]["evaluable_events"]
+            for r in profile["runs"]
+        )
+        write_json(output_root / "feature_evidence_qc.json", evidence_qc)
+        write_json(
+            output_root / "event_coverage.json",
+            dict(
+                events=event_coverage,
+                primary_site_count=3,
+                by_partition={
+                    part: dict(
+                        raw_events=len(
+                            es := [
+                                e
+                                for e in event_coverage
+                                if e["partition"] == part and e["site_count"] == 3
+                            ]
+                        ),
+                        independent_event_runs=len({e["run_id"] for e in es}),
+                        evaluable_events=sum(e["evaluation_status"] == "evaluable" for e in es),
+                        evaluable_event_runs=len(
+                            {e["run_id"] for e in es if e["evaluation_status"] == "evaluable"}
+                        ),
+                        statuses=dict(Counter(e["evaluation_status"] for e in es)),
+                        fault_event_counts=dict(Counter(k for e in es for k in e["fault_types"])),
+                        evaluable_fault_event_counts=dict(
+                            Counter(
+                                k
+                                for e in es
+                                if e["evaluation_status"] == "evaluable"
+                                for k in e["fault_types"]
+                            )
+                        ),
+                    )
+                    for part in ("train", "validation", "test")
+                },
+            ),
+        )
     report = dict(
         passed=all(checks.values()),
         checks=checks,
         checked_samples=len(samples),
-        schema_version="0.5-dataset-qc.1",
+        schema_version="0.5.1-dataset-qc.1" if scale else "0.5-dataset-qc.1",
+        scale=scale,
         crossed_groups=0 if group_isolation else None,
         oracle_columns=[],
         feature_quality_sha256=source_hash(folder / "quality.json"),
@@ -151,12 +266,39 @@ def qc_dataset(root: Path) -> dict[str, Any]:
         source_dates=sorted({r["weather"]["source_start"][:10] for r in catalogue.values()}),
         actual_run_hours=sum(r["duration_s"] for r in catalogue.values()) / 3600,
         duration_note="independent initialized segments; not one continuous time series",
+        window_s=policy.window_s,
+        step_s=policy.step_s,
+        overlap_ratio=1 - policy.step_s / policy.window_s,
+        primary_by_partition={
+            part: dict(
+                windows=sum(
+                    r["partition"] == part and catalogue[r["run_id"]]["site_count"] == 3
+                    for r in indices
+                ),
+                positives=sum(
+                    y["label_at_end"] == 1
+                    for r, y in zip(indices, labels, strict=True)
+                    if r["partition"] == part and catalogue[r["run_id"]]["site_count"] == 3
+                ),
+            )
+            for part in ("train", "validation", "test")
+        },
+        normal_context_runs_by_partition={
+            part: dict(
+                Counter(
+                    str(catalogue[r["run_id"]].get("normal_scene"))
+                    for r in split
+                    if r["partition"] == part and catalogue[r["run_id"]]["site_count"] == 3
+                )
+            )
+            for part in ("train", "validation", "test")
+        },
         known_anomalous_runs_without_endpoint_violation=[
             r["run_id"]
             for r in catalogue.values()
             if r["fault_types"] and r["violation_stations"] == 0
         ],
     )
-    write_json(root / "dataset_statistics.json", statistics)
+    write_json(output_root / "dataset_statistics.json", statistics)
     write_json(destination, report)
     return report

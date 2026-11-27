@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import math
 import os
@@ -319,7 +320,15 @@ def split_dataset(root: Path, policy: DatasetPolicy) -> dict[str, Any]:
     if source_hash(root / "runs.jsonl") != catalogue["run_index_sha256"]:
         raise ValueError("run index changed after inventory")
     rows = [r for r in iter_jsonl([root / "runs.jsonl"]) if r["eligible"]]
-    assignment = split_records(rows, policy.split_seed)
+    profile: dict[str, Any] | None = None
+    if policy.training_protocol == "S1_stratified_development":
+        from pvcomm.pipeline.coverage import profile_records
+
+        profile = profile_records(rows)
+        assignment, stratification = stratified_records(rows, profile, policy.split_seed)
+    else:
+        assignment = split_records(rows, policy.split_seed)
+        stratification = None
     partitions: dict[str, set[str]] = {}
     for row in assignment:
         for key in [f"run:{row['run_id']}", *row["group_keys"]]:
@@ -332,17 +341,117 @@ def split_dataset(root: Path, policy: DatasetPolicy) -> dict[str, Any]:
         stage.mkdir()
         write_json(stage / "assignment.json", dict(runs=assignment))
         write_json(stage / "policy.json", policy.model_dump(mode="json"))
+        if profile is not None:
+            write_json(stage / "source_profile.json", profile)
+            write_json(stage / "stratification.json", stratification)
         report = dict(
             passed=True,
-            schema_version=VERSION,
+            schema_version=policy.schema_version,
             grouped_before_windowing=True,
             crossed_keys=crossed,
             partition_runs=dict(Counter(r["partition"] for r in assignment)),
             independent_groups=len({r["group_id"] for r in assignment}),
             assignment_sha256=source_hash(stage / "assignment.json"),
             inventory_sha256=source_hash(root / "inventory.json"),
+            policy_sha256=source_hash(stage / "policy.json"),
+            profile_sha256=source_hash(stage / "source_profile.json")
+            if profile is not None
+            else None,
+            stratification_sha256=source_hash(stage / "stratification.json")
+            if profile is not None
+            else None,
             **code_record(),
         )
         write_json(stage / "audit.json", report)
         stage.rename(destination)
     return report
+
+
+def stratified_records(
+    rows: list[dict[str, Any]], profile: dict[str, Any], seed: int
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Exact small-group search, with registered lexicographic evidence objectives."""
+    legacy = split_records(rows, seed)
+    group_ids = sorted({a["group_id"] for a in legacy})
+    if len(group_ids) > 12:
+        raise ValueError("registered exact split supports at most 12 source groups")
+    lookup = {a["run_id"]: a["group_id"] for a in legacy}
+    scales = ("W10", "W30", "W60")
+    groups = []
+    for group_id in group_ids:
+        all_members = [r for r in profile["runs"] if lookup[r["run_id"]] == group_id]
+        members = [r for r in all_members if r["site_count"] == 3]
+        groups.append(
+            dict(
+                group_id=group_id,
+                runs=len(members),
+                supplemental_runs=len(all_members) - len(members),
+                group_keys=sorted({k for r in all_members for k in r["group_keys"]}),
+                normal_station_hours=sum(r["normal_station_hours"] for r in members),
+                normal_scenes=sorted({r["normal_scene"] for r in members if r["normal_scene"]}),
+                fault_types=sorted({k for r in members for k in r["fault_types"]}),
+                raw_events=sum(r["events"] for r in members),
+                scales={
+                    s: dict(
+                        events=sum(r["scales"][s]["evaluable_events"] for r in members),
+                        event_runs=sum(r["scales"][s]["evaluable_events"] > 0 for r in members),
+                        positives=sum(r["scales"][s]["positives"] for r in members),
+                        normal=sum(r["scales"][s]["normal"] for r in members),
+                    )
+                    for s in scales
+                },
+            )
+        )
+    totals = [sum(g["scales"][s]["event_runs"] for g in groups) for s in scales]
+    hours = sum(g["normal_station_hours"] for g in groups)
+    best: tuple[Any, ...] | None = None
+    chosen: tuple[int, ...] = ()
+    evaluated = 0
+    for allocation in itertools.product(range(3), repeat=len(groups)):
+        if len(set(allocation)) != 3:
+            continue
+        counts = [[0] * 3 for _ in range(3)]
+        normal = [[0] * 3 for _ in range(3)]
+        durations = [0.0] * 3
+        kinds: list[set[str]] = [set(), set(), set()]
+        scenes: list[set[str]] = [set(), set(), set()]
+        for group, part in zip(groups, allocation, strict=True):
+            durations[part] += group["normal_station_hours"]
+            kinds[part].update(group["fault_types"])
+            scenes[part].update(group["normal_scenes"])
+            for j, scale in enumerate(scales):
+                counts[part][j] += group["scales"][scale]["event_runs"]
+                normal[part][j] += group["scales"][scale]["normal"]
+        missing = sum(counts[p][j] == 0 for p in range(3) for j in range(3))
+        missing += sum(normal[p][j] == 0 for p in range(3) for j in range(3))
+        weakest = min(counts[p][j] / max(1, totals[j]) for p in range(3) for j in range(3))
+        coverage = sum(len(x) for x in kinds) + sum(len(x) for x in scenes)
+        balance = sum(
+            abs(counts[p][j] / max(1, totals[j]) - ratio)
+            for p, ratio in enumerate((0.6, 0.2, 0.2))
+            for j in range(3)
+        ) + sum(
+            abs(durations[p] / max(hours, 1e-12) - ratio) for p, ratio in enumerate((0.6, 0.2, 0.2))
+        )
+        tie = hashlib.sha256(f"{seed}:{allocation}".encode()).hexdigest()
+        objective = (missing, -weakest, -coverage, round(balance, 12), tie)
+        evaluated += 1
+        if best is None or objective < best:
+            best, chosen = objective, allocation
+    parts = ("train", "validation", "test")
+    frozen = dict(zip(group_ids, (parts[p] for p in chosen), strict=True))
+    for row in legacy:
+        row["partition"] = frozen[row["group_id"]]
+    return legacy, dict(
+        groups=groups,
+        group_partitions=frozen,
+        objective=best,
+        candidates=evaluated,
+        seed=seed,
+        primary_site_count=3,
+        supplemental_site_count=10,
+        strategy="lexicographic missing cells, weakest independent event-run coverage, "
+        "mechanism/context coverage, 60/20/20 balance, seeded SHA tie",
+        model_performance_used=False,
+        evaluation_use="development_only",
+    )

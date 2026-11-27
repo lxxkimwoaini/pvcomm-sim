@@ -17,14 +17,21 @@ from pvcomm.pipeline.features import FEATURES
 from pvcomm.storage.parquet import iter_jsonl, source_hash
 
 
-def choose_threshold(labels: Any, scores: Any) -> float:
+def choose_threshold(labels: Any, scores: Any, *, legacy: bool = False) -> float:
     """Validation F1, conservative tie break; never inspect test labels here."""
     np = importlib.import_module("numpy")
     metrics = importlib.import_module("sklearn.metrics")
     if len(set(labels.tolist())) < 2:
         # With a single validation class report the limitation and use its
         # normal-score 99th percentile (fixed engineering selection rule).
-        return float(np.quantile(scores, 0.99))
+        if legacy:
+            return float(np.quantile(scores, 0.99))
+        if len(scores) == 0 or not np.any(labels == 0):
+            raise ValueError("threshold calibration requires normal validation observations")
+        # >= is fixed. Include the representable value just above the maximum
+        # so tied discrete scores can satisfy the preregistered <=1% FPR.
+        candidates = [*np.unique(scores), np.nextafter(np.max(scores), np.inf)]
+        return min(float(t) for t in candidates if float(np.mean(scores >= t)) <= 0.01)
     precision, recall, thresholds = metrics.precision_recall_curve(labels, scores)
     f1 = 2 * precision[:-1] * recall[:-1] / np.maximum(precision[:-1] + recall[:-1], 1e-15)
     candidates = thresholds[f1 == np.max(f1)]
@@ -98,6 +105,30 @@ def evaluate(
     normal = labels == 0
     false_positives = int(np.sum(predictions[normal]))
     episodes = alert_episodes(indices, predictions.tolist(), policy.alert_merge_s)
+    if policy.schema_version == "0.5.1-dataset.1":
+        from pvcomm.experiments.event_metrics import evaluate_events
+
+        precision, recall, f1, _ = metrics.precision_recall_fscore_support(
+            labels, predictions, average="binary", zero_division=0
+        )
+        return dict(
+            windows=len(labels),
+            positives=int(np.sum(labels)),
+            threshold=threshold,
+            precision=float(precision),
+            recall=float(recall),
+            f1=float(f1),
+            pr_auc_average_precision=float(metrics.average_precision_score(labels, scores))
+            if len(set(labels.tolist())) == 2
+            else None,
+            normal_false_positive_rate=false_positives / int(np.sum(normal))
+            if np.any(normal)
+            else None,
+            single_class_test=len(set(labels.tolist())) < 2,
+            **evaluate_events(
+                indices, predictions.tolist(), labels.tolist(), events, episodes, policy
+            ),
+        )
     observed: dict[tuple[str, str], list[int]] = defaultdict(list)
     for row in indices:
         observed[row["run_id"], row["station_id"]].append(row["window_end_utc_ns"])
@@ -182,18 +213,35 @@ def temporal_scores(values: Any, indices: list[dict[str, Any]]) -> Any:
     return scores
 
 
-def benchmark_dataset(root: Path, mode: str = "M2") -> dict[str, Any]:
-    destination = root / f"benchmark-{mode}"
+RULE_PROXIES = (
+    "power_age_budget_ratio",
+    "confirmation_wait_s",
+    "execution_wait_s",
+    "fresh_point_coverage",
+    "known_maintenance_active",
+    "maintenance_recovery_remaining_s",
+    "power_age_s",
+    "available_age_s",
+    "command_age_s",
+)
+PEER_FEATURES = ("peer_fresh_power_coverage", "peer_mean_power_kw", "peer_mean_power_age_s")
+
+
+def benchmark_dataset(
+    root: Path, mode: str = "M2", scale: str | None = None, ablation: str | None = None
+) -> dict[str, Any]:
+    output_root = root / scale if scale else root
+    destination = output_root / f"benchmark-{mode}{'-' + ablation if ablation else ''}"
     if destination.exists():
         raise FileExistsError("benchmark results already exist")
     if mode not in FEATURES:
         raise ValueError("only M0/M1/M2 observations are implemented")
     # All comparisons project the same independently audited sample table.
-    folder = root / "features-M2"
+    folder = output_root / "features-M2"
     quality = read_json(folder / "quality.json")
     if not quality["passed"]:
         raise ValueError("feature quality failed")
-    independent_qc = read_json(root / "leakage_report.json")
+    independent_qc = read_json(output_root / "leakage_report.json")
     if (
         not independent_qc["passed"]
         or independent_qc["feature_quality_sha256"] != source_hash(folder / "quality.json")
@@ -210,6 +258,20 @@ def benchmark_dataset(root: Path, mode: str = "M2") -> dict[str, Any]:
     preprocessing = importlib.import_module("sklearn.preprocessing")
     impute = importlib.import_module("sklearn.impute")
     policy = DatasetPolicy.model_validate(read_json(root / "split/policy.json"))
+    if policy.schema_version == "0.5.1-dataset.1" and scale is None:
+        raise ValueError("V0.5.1 requires an explicit registered scale")
+    if scale:
+        policy = policy.for_scale(scale)
+    if ablation not in (None, "without-rule-proxies", "without-peer") or (
+        ablation and mode != "M2"
+    ):
+        raise ValueError("registered ablations apply only to M2")
+    removed = (
+        RULE_PROXIES
+        if ablation == "without-rule-proxies"
+        else (PEER_FEATURES if ablation == "without-peer" else ())
+    )
+    columns = [name for name in FEATURES[mode] if name not in removed]
     frames = {
         name: pq.read_table(folder / f"{name}.parquet").to_pylist()
         for name in ("features", "labels", "rules", "index")
@@ -219,16 +281,17 @@ def benchmark_dataset(root: Path, mode: str = "M2") -> dict[str, Any]:
         [r["sample_id"] for r in values] != ids for values in frames.values()
     ):
         raise ValueError("duplicate or misaligned training samples")
+    catalogue = {r["run_id"]: r for r in iter_jsonl([root / "runs.jsonl"]) if r["eligible"]}
     known = [
         i
         for i, r in enumerate(frames["labels"])
-        if r["label_status"] == "valid" and r["label_at_end"] in (0, 1)
+        if r["label_status"] == "valid"
+        and r["label_at_end"] in (0, 1)
+        and (scale is None or catalogue[frames["index"][i]["run_id"]]["site_count"] == 3)
     ]
     indices = [frames["index"][i] for i in known]
     labels = np.array([frames["labels"][i]["label_at_end"] for i in known])
-    x = np.array(
-        [[frames["features"][i][name] for name in FEATURES[mode]] for i in known], dtype=float
-    )
+    x = np.array([[frames["features"][i][name] for name in columns] for i in known], dtype=float)
     masks = {
         part: np.array([r["partition"] == part for r in indices])
         for part in ("train", "validation", "test")
@@ -238,12 +301,35 @@ def benchmark_dataset(root: Path, mode: str = "M2") -> dict[str, Any]:
     normal_train = masks["train"] & (labels == 0)
     if int(np.sum(normal_train)) < policy.minimum_train_normal:
         raise ValueError("insufficient confirmed normal training windows")
-    catalogue = {r["run_id"]: r for r in iter_jsonl([root / "runs.jsonl"]) if r["eligible"]}
-    events = service_events(catalogue)
+    if scale:
+        from pvcomm.pipeline.coverage import service_events as sampled_events
+
+        test_runs = {
+            r["run_id"]
+            for r in read_json(root / "split/assignment.json")["runs"]
+            if r["partition"] == "test" and catalogue[r["run_id"]]["site_count"] == 3
+        }
+        events = sampled_events({k: v for k, v in catalogue.items() if k in test_runs})
+    else:
+        events = service_events(catalogue)
     test_indices = [r for r, select in zip(indices, masks["test"], strict=True) if select]
     results: list[dict[str, Any]] = []
     prediction_rows: list[dict[str, Any]] = []
     train_indices = [r for r, select in zip(indices, masks["train"], strict=True) if select]
+    supplemental = [
+        i
+        for i, r in enumerate(frames["index"])
+        if scale
+        and catalogue[r["run_id"]]["site_count"] == 10
+        and frames["labels"][i]["label_status"] == "valid"
+    ]
+    supplemental_indices = [frames["index"][i] for i in supplemental]
+    supplemental_events = (
+        sampled_events({k: v for k, v in catalogue.items() if v["site_count"] == 10})
+        if scale
+        else []
+    )
+    supplemental_results = []
     for algorithm in ("business_rule", "isolation_forest", "random_forest", "ewma"):
         seeds = policy.model_seeds if algorithm in ("isolation_forest", "random_forest") else (0,)
         for seed in seeds:
@@ -289,7 +375,9 @@ def benchmark_dataset(root: Path, mode: str = "M2") -> dict[str, Any]:
                 else:
                     scores = temporal_scores(transformed, indices)
                 threshold = choose_threshold(
-                    labels[masks["validation"]], scores[masks["validation"]]
+                    labels[masks["validation"]],
+                    scores[masks["validation"]],
+                    legacy=policy.schema_version == "0.5-dataset.1",
                 )
                 preprocessing_record = dict(
                     fit_partition="train",
@@ -316,6 +404,18 @@ def benchmark_dataset(root: Path, mode: str = "M2") -> dict[str, Any]:
                 status="completed",
                 preprocessing=preprocessing_record,
                 validation_single_class=len(set(labels[masks["validation"]].tolist())) < 2,
+                validation_false_positive_rate=float(
+                    np.mean(scores[masks["validation"] & (labels == 0)] >= threshold)
+                )
+                if np.any(masks["validation"] & (labels == 0))
+                else None,
+                threshold_method="fixed_rule"
+                if algorithm == "business_rule"
+                else (
+                    "validation_F1_highest_threshold_tie"
+                    if len(set(labels[masks["validation"]].tolist())) == 2
+                    else "normal_validation_FPR_le_0.01_discrete_ge"
+                ),
             )
             # Scenario metadata is used only for an offline false-positive report.
             contexts: dict[str, list[int]] = defaultdict(list)
@@ -328,6 +428,52 @@ def benchmark_dataset(root: Path, mode: str = "M2") -> dict[str, Any]:
                 context: float(np.mean(test_scores[members] >= threshold))
                 for context, members in contexts.items()
             }
+            if supplemental:
+                if algorithm == "business_rule":
+                    extra_scores = np.array(
+                        [frames["rules"][i]["business_rule"] for i in supplemental]
+                    )
+                else:
+                    extra_x = np.array(
+                        [[frames["features"][i][name] for name in columns] for i in supplemental],
+                        dtype=float,
+                    )
+                    extra_x = scaler.transform(filler.transform(extra_x))
+                    if algorithm == "isolation_forest":
+                        extra_scores = -model.decision_function(extra_x)
+                    elif algorithm == "random_forest":
+                        extra_scores = model.predict_proba(extra_x)[
+                            :, list(model.classes_).index(1)
+                        ]
+                    else:
+                        extra_scores = temporal_scores(extra_x, supplemental_indices)
+                extra_result = evaluate(
+                    np.array([frames["labels"][i]["label_at_end"] for i in supplemental]),
+                    extra_scores,
+                    threshold,
+                    supplemental_indices,
+                    supplemental_events,
+                    policy,
+                )
+                supplemental_results.append(
+                    dict(
+                        extra_result,
+                        algorithm=algorithm,
+                        seed=seed,
+                        evaluation_use="shared_source_diagnostic_only",
+                    )
+                )
+                prediction_rows.extend(
+                    dict(
+                        sample_id=row["sample_id"],
+                        algorithm=algorithm,
+                        seed=seed,
+                        score=float(score),
+                        predicted=int(score >= threshold),
+                        evaluation_set="ten_site_diagnostic",
+                    )
+                    for row, score in zip(supplemental_indices, extra_scores, strict=True)
+                )
             results.append(result)
             prediction_rows.extend(
                 dict(
@@ -336,6 +482,7 @@ def benchmark_dataset(root: Path, mode: str = "M2") -> dict[str, Any]:
                     seed=seed,
                     score=float(score),
                     predicted=int(score >= threshold),
+                    evaluation_set="primary_three_site_test",
                 )
                 for row, score in zip(test_indices, test_scores, strict=True)
             )
@@ -351,8 +498,14 @@ def benchmark_dataset(root: Path, mode: str = "M2") -> dict[str, Any]:
                 "pr_auc_average_precision",
                 "normal_false_positive_rate",
                 "false_alerts_per_station_hour",
+                "raw_event_count",
+                "event_count",
+                "detected_events",
+                "event_recall",
+                "detection_delay_mean_s",
+                "detection_delay_p95_s",
             )
-            if (values := [r[metric] for r in members if r[metric] is not None])
+            if (values := [r[metric] for r in members if r.get(metric) is not None])
         }
     with tempfile.TemporaryDirectory(prefix=".benchmark-", dir=root) as temporary:
         stage = Path(temporary) / "results"
@@ -362,9 +515,24 @@ def benchmark_dataset(root: Path, mode: str = "M2") -> dict[str, Any]:
             pa.Table.from_pylist(prediction_rows), stage / "predictions.parquet", compression="zstd"
         )
         report = dict(
-            schema_version="0.5-benchmark.1",
+            schema_version="0.5.1-benchmark.1" if scale else "0.5-benchmark.1",
             mode=mode,
+            scale=scale,
+            ablation=ablation,
+            features=columns,
+            removed_features=removed,
             results=results,
+            ten_site_diagnostic=supplemental_results,
+            ten_site_independence=dict(
+                strict_generalization=False,
+                runs=len({r["run_id"] for r in supplemental_indices}),
+                shared_group_ids=sorted(
+                    {r["group_id"] for r in supplemental_indices}
+                    & {r["group_id"] for r in train_indices}
+                ),
+                reason="shared weather source/date and station identities; "
+                "never fit or calibrate on ten-site",
+            ),
             summaries=summaries,
             seeds=policy.model_seeds,
             training_runs=len({r["run_id"] for r in train_indices}),
@@ -373,7 +541,7 @@ def benchmark_dataset(root: Path, mode: str = "M2") -> dict[str, Any]:
                 "simulation prerelease; no field calibration or innovation claim",
                 "overlapping windows are correlated; seed SD is not a confidence interval",
                 "business-rule-derived labels require the included rule baseline",
-                "event results exclude events outside evaluated window endpoints",
+                "V0.5.1 reports all raw events, with endpoint eligibility separate from detection",
                 "PR-AUC reported as non-interpolated average precision",
                 "business_rule is the same M2 reference in every mode report",
             ],
@@ -382,7 +550,8 @@ def benchmark_dataset(root: Path, mode: str = "M2") -> dict[str, Any]:
                 for name in ("sklearn", "numpy", "pyarrow")
             },
             feature_table_sha256=quality["tables"]["features"],
-            threshold_selection="validation F1; highest threshold wins ties",
+            threshold_selection="validation F1 highest threshold tie; single-normal-class "
+            "validation uses discrete >= FPR<=1% (legacy uses original 99th percentile)",
             hyperparameters=dict(
                 n_estimators=100,
                 rf_max_depth=6,

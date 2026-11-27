@@ -91,10 +91,14 @@ def main(argv: list[str] | None = None) -> int:
     split.add_argument("--config", type=Path)
     dataset_qc = commands.add_parser("qc-dataset", help="independent exported dataset checks")
     dataset_qc.add_argument("--dataset-dir", type=Path, required=True)
+    dataset_qc.add_argument("--scale", choices=("W10", "W30", "W60"))
     for name in ("features", "benchmark"):
         processing = commands.add_parser(name, help="offline causal dataset processing")
         processing.add_argument("--dataset-dir", type=Path, required=True)
         processing.add_argument("--mode", choices=("M0", "M1", "M2"), default="M2")
+        processing.add_argument("--scale", choices=("W10", "W30", "W60"))
+        if name == "benchmark":
+            processing.add_argument("--ablation", choices=("without-rule-proxies", "without-peer"))
     args, unknown = parser.parse_known_args(argv)
     if args.command in ("dataset-inventory", "split", "features", "benchmark", "qc-dataset"):
         if unknown:
@@ -115,15 +119,17 @@ def main(argv: list[str] | None = None) -> int:
             elif args.command == "features":
                 from pvcomm.pipeline.features import build_features
 
-                dataset_result = build_features(args.dataset_dir, args.mode)
+                dataset_result = build_features(args.dataset_dir, args.mode, args.scale)
             elif args.command == "qc-dataset":
                 from pvcomm.qc.dataset import qc_dataset
 
-                dataset_result = qc_dataset(args.dataset_dir)
+                dataset_result = qc_dataset(args.dataset_dir, args.scale)
             else:
                 from pvcomm.experiments.baselines import benchmark_dataset
 
-                dataset_result = benchmark_dataset(args.dataset_dir, args.mode)
+                dataset_result = benchmark_dataset(
+                    args.dataset_dir, args.mode, args.scale, args.ablation
+                )
         except (OSError, ValueError, RuntimeError, ImportError, KeyError) as exc:
             print(str(exc), file=sys.stderr)
             return 1

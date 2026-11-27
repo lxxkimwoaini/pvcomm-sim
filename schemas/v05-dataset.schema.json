@@ -26,8 +26,11 @@
       "type": "array"
     },
     "schema_version": {
-      "const": "0.5-dataset.1",
       "default": "0.5-dataset.1",
+      "enum": [
+        "0.5-dataset.1",
+        "0.5.1-dataset.1"
+      ],
       "title": "Schema Version",
       "type": "string"
     },
@@ -38,20 +41,30 @@
       "type": "integer"
     },
     "step_s": {
-      "const": 5,
       "default": 5,
+      "enum": [
+        1,
+        5
+      ],
       "title": "Step S",
       "type": "integer"
     },
     "training_protocol": {
-      "const": "S1_source_date_pair_groups",
       "default": "S1_source_date_pair_groups",
+      "enum": [
+        "S1_source_date_pair_groups",
+        "S1_stratified_development"
+      ],
       "title": "Training Protocol",
       "type": "string"
     },
     "window_s": {
-      "const": 60,
       "default": 60,
+      "enum": [
+        10,
+        30,
+        60
+      ],
       "title": "Window S",
       "type": "integer"
     }

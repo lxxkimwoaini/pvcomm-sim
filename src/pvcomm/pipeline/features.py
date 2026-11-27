@@ -125,6 +125,15 @@ class Observations:
                 ts = max(row["available_at"], row["ts_event_utc_ns"])
                 self.insert("master", row.get("station_id", ""), ts, row)
         self.connection.execute("CREATE INDEX query_r ON r(kind,station,ts)")
+        self.connection.execute("CREATE INDEX availability_r ON r(ts)")
+        self.connection.execute(
+            "CREATE INDEX context_r ON r(station,ts) WHERE kind='master' "
+            "AND json_extract(detail,'$.event_type')!='master_observed_point'"
+        )
+        self.connection.execute(
+            "CREATE INDEX point_r ON r(station,json_extract(detail,'$.ioa'),ts DESC) "
+            "WHERE kind='master' AND json_extract(detail,'$.event_type')='master_observed_point'"
+        )
         self.connection.commit()
         return config
 
@@ -407,10 +416,14 @@ def sample_windows(
     stations = config["protocol"]["stations"]
     for end in range(first, end_run + 1, policy.step_s * 10**9):
         start = end - policy.window_s * 10**9
+        latest_available = db.latest_available(end)
         business = {s["station_id"]: business_features(db, s, end) for s in stations}
         for station in stations:
             identity = station["station_id"]
-            sample_id = hashlib.sha256(f"{record['run_id']}:{identity}:{end}".encode()).hexdigest()
+            identity_text = f"{record['run_id']}:{identity}:{end}"
+            if policy.schema_version == "0.5.1-dataset.1":
+                identity_text += f":{policy.window_s}:{policy.step_s}"
+            sample_id = hashlib.sha256(identity_text.encode()).hexdigest()
             row = traffic_features(db, identity, start, end)
             own, rule = business[identity]
             row.update(own)
@@ -440,7 +453,7 @@ def sample_windows(
                 window_start_utc_ns=start,
                 window_end_utc_ns=end,
                 scene_end_s=(end - origin) / 1e9,
-                latest_input_available_at=db.latest_available(end),
+                latest_input_available_at=latest_available,
             )
             yield (
                 dict(sample_id=sample_id, **row),
@@ -450,10 +463,11 @@ def sample_windows(
             )
 
 
-def build_features(root: Path, mode: str = "M2") -> dict[str, Any]:
+def build_features(root: Path, mode: str = "M2", scale: str | None = None) -> dict[str, Any]:
     if mode not in FEATURES:
         raise ValueError("supported observation modes: M0/M1/M2; M3 has no independent source")
-    destination = root / f"features-{mode}"
+    output_root = root / scale if scale else root
+    destination = output_root / f"features-{mode}"
     if destination.exists():
         raise FileExistsError("feature export already exists")
     split = read_json(root / "split/assignment.json")
@@ -465,14 +479,22 @@ def build_features(root: Path, mode: str = "M2") -> dict[str, Any]:
     ):
         raise ValueError("frozen split integrity failed")
     policy = DatasetPolicy.model_validate(read_json(root / "split/policy.json"))
+    if policy.schema_version == "0.5.1-dataset.1" and scale is None:
+        raise ValueError("V0.5.1 requires an explicit registered scale")
+    if scale:
+        policy = policy.for_scale(scale)
     if source_hash(root / "runs.jsonl") != read_json(root / "inventory.json")["run_index_sha256"]:
         raise ValueError("run index changed after split")
     catalogue = {r["run_id"]: r for r in iter_jsonl([root / "runs.jsonl"]) if r["eligible"]}
+    output_root.mkdir(exist_ok=True)
     pa = importlib.import_module("pyarrow")
     pq = importlib.import_module("pyarrow.parquet")
     feature_schema = pa.schema(
         [("sample_id", pa.string()), *((name, pa.float64()) for name in FEATURES[mode])],
-        metadata={b"scope": mode.encode(), b"contract": b"0.5-features.1"},
+        metadata={
+            b"scope": mode.encode(),
+            b"contract": (b"0.5.1-features.1" if scale else b"0.5-features.1"),
+        },
     )
     label_schema = pa.schema(
         [
@@ -573,7 +595,7 @@ def build_features(root: Path, mode: str = "M2") -> dict[str, Any]:
             mode=mode,
             window_s=policy.window_s,
             step_s=policy.step_s,
-            label_convention="state_at_t_minus_1ns; union overlap on [t-60s,t)",
+            label_convention=f"state_at_t_minus_1ns; union overlap on [t-{policy.window_s}s,t)",
             inputs="primary P0 + observed/master_events only; labels separate",
             future_rows_excluded=True,
             oracle_feature_columns=[],
