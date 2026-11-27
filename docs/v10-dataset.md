@@ -18,6 +18,7 @@ export PVCOMM_ALLOW_LAB=1
 每个完成片段已经过现有运行器的解析、协议/物理Arrow导出、业务或机制QC、正式标签和独立标签QC；summary.json记录真实状态。运行中和失败片段只保留证据，不进入训练，不作正常负例。需要新增发布快照时，在干净、包含build_v10_dataset.py的处理源码目录执行；已有目标拒绝覆盖，用新唯一名称保留历次交付：
 
 ```bash
+cd /var/lib/pvcomm/sources/v10_export_s1
 export PYTHONPATH="$PWD/src"
 /var/lib/pvcomm/venvs/v05-data/bin/python scripts/build_v10_dataset.py \
   --plan /var/lib/pvcomm/runs/v10_production_s2_plan \
@@ -26,6 +27,8 @@ export PYTHONPATH="$PWD/src"
 ```
 
 后续目录使用`pvcomm_v1.0_s2`等新名称。构建复用V0.5.1的W10/W30/W60特征与13项独立QC，不重算划分最优解、不训练模型。继承的schema/purpose字符串用于兼容，正式发布版本、固定划分方法和来源优先以production_protocol.json及split/stratification.json为准。只有QC全部通过才写release.json；失败快照保留，不能作为已验收版本。
+
+首批实际快照`pvcomm_v1.0`已完成，处理源码d0c5ab2、code_dirty=false，276.824006秒；101次三站运行，train/validation/test为76/24/1次，来源组7/1/1。该快照只包含构建开始时已合格的新增A01，后续完成的运行要使用新目录增量导出。三尺度各13项QC通过，44个发布文件SHA逐项验证通过；三尺度M2训练表实际读取为43287×39、38727×39、6423×39。它是可读取的首批数据，不代表六类新测试或24/168小时生产已完成。后续快照和覆盖以[实际交付报告](reports/2026-11-27-v10-first-delivery.md)为准。
 
 原始PCAP、协议事件、主站观测、事件标签、QC及校验和通过raw_structured_index.json关联到持久原件；不复制大PCAP，也不改时间戳。每尺度features-M2目录含features/labels/index/rules四个Parquet表。M0/M1/M2列名单在whitelist.json；index、标签、规则及来源元数据不得拼入X。空值保留缺测语义，仅训练集拟合填补。详细字段继承data-dictionary-v05.md和data-dictionary-v051.md。
 
