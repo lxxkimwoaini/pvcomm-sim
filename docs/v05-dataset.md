@@ -51,8 +51,11 @@ labels = pq.read_table(folder / "labels.parquet").to_pylist()
 index = pq.read_table(folder / "index.parquet").to_pylist()
 assert table["sample_id"].to_pylist() == [r["sample_id"] for r in labels]
 assert table["sample_id"].to_pylist() == [r["sample_id"] for r in index]
-mask = [i for i, (r, y) in enumerate(zip(index, labels, strict=True))
-        if r["partition"] == "train" and y["label_status"] == "valid"]
+mask = [
+    i
+    for i, (r, y) in enumerate(zip(index, labels, strict=True))
+    if r["partition"] == "train" and y["label_status"] == "valid"
+]
 rows = table.select(columns).to_pylist()
 X_train = np.asarray([[rows[i][c] for c in columns] for i in mask], dtype=float)
 y_train = np.asarray([labels[i]["label_at_end"] for i in mask], dtype=np.int8)
