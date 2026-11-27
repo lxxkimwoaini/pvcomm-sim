@@ -2,6 +2,8 @@
 
 依据2026-11-27科研范围调整，默认3站、最多10站。下列命令只处理已保留原件；不会创建网络或启动仿真。使用干净冻结源码；目标目录必须不存在，禁止复用已存在目录。
 
+推荐已有目录`/var/lib/pvcomm/datasets/v05_prerelease_s3`已包含106次有效运行及完整实际基线，可以直接执行下方训练读取示例。阅读`DATA_CARD.md`和`release-addendum.json`中的单类验证限制；初始`release.json`及其文件保持原哈希，最终数据卡以追加元数据关联，不修改任何训练表。复制到其他机器还需保留runs.jsonl所指原件或显式重建索引，不能仅移动绝对路径清单后声称证据仍可访问。
+
 ```bash
 uv sync --frozen --group data --group experiments --group power
 # 历史运行若缺当前版标签，可在干净冻结代码下仅补充新版本派生产物。
@@ -43,7 +45,7 @@ from pathlib import Path
 import numpy as np
 import pyarrow.parquet as pq
 
-root = Path("/var/lib/pvcomm/datasets/v05_prerelease_s2")
+root = Path("/var/lib/pvcomm/datasets/v05_prerelease_s3")
 folder = root / "features-M2"
 columns = json.loads((folder / "whitelist.json").read_text())["cumulative_modes"]["M2"]
 table = pq.read_table(folder / "features.parquet")
