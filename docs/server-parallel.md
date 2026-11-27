@@ -15,14 +15,16 @@ python3 -m json.tool "$HOME/pvcomm-data/plans/v10_server_parallel_20240614_s1/pa
 python3 -m json.tool "$HOME/pvcomm-data/runs/v10_server_parallel_20240614_s1/worker_1/summary.json"
 ```
 
-SSH断开后nohup协调进程和独立session的Worker继续。协调进程仍在运行时不要重复启动。若协调进程退出，先检查索引PID、/proc起点和实际命令；恢复使用相同冻结脚本、应用、清单和输出：
+SSH断开后nohup协调进程和独立session的Worker继续。协调进程仍在运行时不要重复启动。若协调进程退出，先检查索引PID、/proc起点和实际命令。2026-11-27实际发现原资源采样的/proc/io权限错误会退出协调器；四个独立Worker持续正常生产，不应因此重启它们。现使用外置恢复入口，保持冻结脚本、应用、清单和输出，只在新协调进程内替换诊断采样；它会重新纳入已归属PID1、起点身份匹配的Worker。缺测逐字段记录，未知IO总量为null，旧资源缺口不补造。服务器已部署的恢复脚本SHA为deaaa9c5deac8297366abbeb765e6d98e9559d0416eab259306e76cb4dab048a。
 
 ```bash
 cd "$HOME/pvcomm-sim"
 . "$HOME/pvcomm-tools/env.sh"
-nohup .venv/bin/python -u "$HOME/pvcomm-tools/server-parallel-s1/server_parallel.py" \
-  control --resume --plan "$HOME/pvcomm-data/plans/v10_server_parallel_20240614_s1" \
-  >> "$HOME/pvcomm-data/plans/v10_server_parallel_20240614_s1/coordinator.log" 2>&1 < /dev/null &
+nohup .venv/bin/python -u \
+  "$HOME/pvcomm-tools/server-parallel-recovery-s1/resume_server_parallel.py" \
+  --plan "$HOME/pvcomm-data/plans/v10_server_parallel_20240614_s1" \
+  >> "$HOME/pvcomm-data/plans/v10_server_parallel_20240614_s1/coordinator-recovery.log" \
+  2>&1 < /dev/null &
 ```
 
 恢复会保留存活Worker，不重跑completed任务；仅重新调度已退出driver。原run_batch重新校验已有文件SHA及矩阵，未完成真实运行从新attempt开始，既有失败/中断均消耗原max_attempts=2。进程锁阻止同一协调器/Worker的重复执行；不共享或合并不同Worker清单。资源等待不创建额外attempt，原始及失败证据始终保留。
