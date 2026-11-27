@@ -15,6 +15,14 @@ uv run --frozen --group data --group experiments python scripts/build_v051_datas
 
 WSL已验证数据环境可用`/var/lib/pvcomm/venvs/v05-data/bin/python`替代uv，并将PYTHONPATH设为冻结源src。inventory→split只执行一次，再对各尺度构建、QC和固定基线。分步CLI的features、qc-dataset和benchmark均须指定`--scale W10`、W30或W60。benchmark的`--mode M0/M1/M2`投影同一M2表，`--mode M2 --ablation without-rule-proxies`及without-peer执行预登记消融。拒绝覆盖已有产物；失败产物保留，新版本另建目录。
 
+构建完成后可追加校验附录，不改原release.json及训练表。该命令核验旧版全部发布哈希，并按run/站/端点逐行比较9036个W60特征、标签和规则值，再复制指南和字典至publication目录。若来源目录后续增加运行，W60集合自然变化，不能宣称与本次旧控制完全一致；此附录只适用于本轮相同106原件的对照。
+
+```bash
+uv run --frozen --group data python scripts/finalize_v051_release.py \
+  --dataset-dir /var/lib/pvcomm/datasets/v051_prerelease_s1 \
+  --previous-dataset /var/lib/pvcomm/datasets/v05_prerelease_s3
+```
+
 ## 表与训练读取
 
 根目录runs.jsonl包含合格和排除记录及原件路径/SHA。split/source_profile.json包含每运行/来源的真实事件和三尺度覆盖，stratification.json保存固定目标、枚举结果和组分区。各尺度下features-M2保存features、labels、index、rules四表，后面三表不能拼入X。特征白名单仍为M0的13项、M1累计22项、M2累计39项，字段单位和缺失语义继承[data-dictionary-v05.md](data-dictionary-v05.md)，本版时间与事件修正见[data-dictionary-v051.md](data-dictionary-v051.md)。
