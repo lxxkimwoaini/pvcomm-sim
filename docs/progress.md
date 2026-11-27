@@ -18,6 +18,8 @@
 
 最终文档检查Ruff check/format共284文件、git diff --check退出0。实际原件配置确认三/十站均共享2024-06-23T04:00:00Z和PV01/PV02/PV03身份，十站诊断的限制有直接来源证据。
 
+交付文档6701c42df4b704d043a42436c52da6cdba9e2420已普通推送，Actions push45944004097、PR45944009968均实际success。最后核对发现CI数据集专项未显式包含test_v051_dataset.py，普通环境可能因缺可选依赖跳过；已将其加入同一个data/experiments任务，未新增运行器。对应完整命令实际51 passed（17.99秒），包含新版10项回归。此工作流入口修正随后提交推送，最终SHA及其CI以交付时远程核验为准。
+
 仓库`https://github.com/lxxkimwoaini/pvcomm-sim`、所有者lxxkimwoaini、PUBLIC、默认main，分支feat/v04-scenarios。PR堆叠main←#1←#2←#3←#4←#5均OPEN，#3～#5为Draft，未合并。数据、PCAP、模型产物留本地。下一科研工作是预留独立来源及明确论文评估协议，不因旧规模目标或相似匹配追加实验。
 
 ## 2026-11-27：V0.5.1质量修正实施历史

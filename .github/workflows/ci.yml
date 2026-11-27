@@ -63,7 +63,7 @@ jobs:
           version: '0.11.13'
       - run: uv python install 3.11.15
       - run: uv sync --frozen --group data --group experiments
-      - run: uv run --frozen --group data --group experiments pytest tests/unit/test_dataset_windows.py tests/unit/test_baselines.py tests/integration/test_cli.py
+      - run: uv run --frozen --group data --group experiments pytest tests/unit/test_dataset_windows.py tests/unit/test_baselines.py tests/unit/test_v051_dataset.py tests/integration/test_cli.py
 
   frontend:
     name: Frontend and browser
