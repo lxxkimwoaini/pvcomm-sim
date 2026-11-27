@@ -33,7 +33,36 @@ uv run --frozen --group data --group experiments pvcomm benchmark \
 
 现有WSL环境可用`/var/lib/pvcomm/venvs/v05-data/bin/python`替换uv，设置`PYTHONPATH`指向所选干净冻结源的src。完整脚本自动执行独立QC，训练入口验证其通过且哈希仍一致；三个模式都投影同一已审计M2样本表。任何阶段失败保留证据，使用新唯一发布目录，不删原件重跑。
 
+## 直接读取训练分区
+
+在安装data/experiments依赖的Python环境执行，root替换为本次报告指定的发布目录。保留原分区，不重新随机切分：
+
+```python
+import json
+from pathlib import Path
+import numpy as np
+import pyarrow.parquet as pq
+
+root = Path("/var/lib/pvcomm/datasets/v05_prerelease_s2")
+folder = root / "features-M2"
+columns = json.loads((folder / "whitelist.json").read_text())["cumulative_modes"]["M2"]
+table = pq.read_table(folder / "features.parquet")
+labels = pq.read_table(folder / "labels.parquet").to_pylist()
+index = pq.read_table(folder / "index.parquet").to_pylist()
+assert table["sample_id"].to_pylist() == [r["sample_id"] for r in labels]
+assert table["sample_id"].to_pylist() == [r["sample_id"] for r in index]
+mask = [i for i, (r, y) in enumerate(zip(index, labels, strict=True))
+        if r["partition"] == "train" and y["label_status"] == "valid"]
+rows = table.select(columns).to_pylist()
+X_train = np.asarray([[rows[i][c] for c in columns] for i in mask], dtype=float)
+y_train = np.asarray([labels[i]["label_at_end"] for i in mask], dtype=np.int8)
+# NaN保留待训练分区拟合预处理；不将sample_id/index/规则/标签拼进X。
+print(X_train.shape, np.bincount(y_train))
+```
+
 ## 产物与数据字典
+
+逐字段的单位、缺失语义及输入边界见[训练数据字典](data-dictionary-v05.md)。
 
 | 路径 | 含义/权限 |
 |---|---|

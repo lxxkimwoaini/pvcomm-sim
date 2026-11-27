@@ -1,5 +1,6 @@
 """Explicit synthetic unit fixtures; never part of the real run catalogue."""
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -8,7 +9,7 @@ import pytest
 from pvcomm.config.dataset import DatasetPolicy
 from pvcomm.config.power import power_document
 from pvcomm.domain.labels import ServiceFinding
-from pvcomm.pipeline.dataset import grouping_keys, split_records
+from pvcomm.pipeline.dataset import grouping_keys, split_records, write_json
 from pvcomm.pipeline.features import (
     FEATURES,
     REQUIRED_IOAS,
@@ -145,6 +146,32 @@ def test_weather_interval_ending_at_midnight_excludes_next_day() -> None:
         {},
     )
     assert keys == [f"weather:{'a' * 64}:2024-06-23"]
+
+
+@pytest.mark.parametrize(
+    "identity,capture,error", [("unit", "diagnostic_rtu1", "P0"), ("other", "primary", "cross-run")]
+)
+def test_feature_loader_rejects_diagnostic_or_cross_run_input(
+    tmp_path: Path, identity: str, capture: str, error: str
+) -> None:
+    source = tmp_path / "source"
+    parsed = source / "parsed/tshark-pdml-v2"
+    parsed.mkdir(parents=True)
+    write_json(
+        source / "power_config.json", dict(protocol=dict(stations=[dict(station_id="PV01")]))
+    )
+    write_json(source / "manifest.json", dict(network=dict(addresses=["10.1.0.2"])))
+    (parsed / "packets.jsonl").write_text(
+        json.dumps(dict(run_id=identity, capture_id=capture)) + "\n", encoding="utf-8"
+    )
+    original = (parsed / "packets.jsonl").read_bytes()
+    db = Observations(tmp_path / "unit.sqlite")
+    try:
+        with pytest.raises(ValueError, match=error):
+            db.load(source, dict(run_id="unit"))
+    finally:
+        db.close()
+    assert (parsed / "packets.jsonl").read_bytes() == original
 
 
 def test_zero_traffic_is_a_sample_and_unknown_is_not_zero(tmp_path: Path) -> None:
