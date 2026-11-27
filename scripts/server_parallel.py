@@ -44,6 +44,8 @@ def now() -> str:
 
 @contextlib.contextmanager
 def locked(path: Path, *, blocking: bool = False) -> Iterator[None]:
+    if sys.platform == "win32":
+        raise RuntimeError("parallel laboratory execution requires Linux")
     import fcntl
 
     with path.open("a") as stream:
@@ -444,6 +446,8 @@ def resume_index(index: dict[str, Any]) -> None:
 
 
 def control(plan: Path, *, resume: bool = False) -> None:
+    if sys.platform == "win32":
+        raise RuntimeError("parallel laboratory execution requires Linux")
     from pvcomm.clock import ClockOrigin
     from pvcomm.scenario.batch_resources import descendants
     from pvcomm.scenario.resources import ResourceSampler
