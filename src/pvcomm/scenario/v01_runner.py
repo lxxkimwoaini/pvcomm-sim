@@ -61,6 +61,8 @@ class V01Runner:
             raise FileExistsError(f"run directory already exists: {self.run_dir}")
 
     def run(self) -> Path:
+        if len(self.config.stations) > 10:
+            raise ValueError("research scope permits at most 10 stations")
         if self.config.topology != "loopback":
             raise ValueError("isolated configuration requires --isolated")
         if sys.platform != "linux":

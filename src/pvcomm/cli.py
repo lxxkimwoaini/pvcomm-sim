@@ -81,10 +81,54 @@ def main(argv: list[str] | None = None) -> int:
     run_pair.add_argument("--output-root", type=Path, required=True)
     label = commands.add_parser("label", help="derive evidence-linked Oracle labels; requires QC")
     label.add_argument("--run-dir", type=Path, required=True)
-    for name in ("split", "features", "benchmark"):
-        reserved = commands.add_parser(name, help="not implemented in this development version")
-        reserved.add_argument("arguments", nargs=argparse.REMAINDER)
+    catalogue = commands.add_parser(
+        "dataset-inventory", help="index existing evidence; no simulation"
+    )
+    catalogue.add_argument("--root", type=Path, action="append", required=True)
+    catalogue.add_argument("--dataset-dir", type=Path, required=True)
+    split = commands.add_parser("split", help="freeze source/date/pair groups before windows")
+    split.add_argument("--dataset-dir", type=Path, required=True)
+    split.add_argument("--config", type=Path)
+    dataset_qc = commands.add_parser("qc-dataset", help="independent exported dataset checks")
+    dataset_qc.add_argument("--dataset-dir", type=Path, required=True)
+    for name in ("features", "benchmark"):
+        processing = commands.add_parser(name, help="offline causal dataset processing")
+        processing.add_argument("--dataset-dir", type=Path, required=True)
+        processing.add_argument("--mode", choices=("M0", "M1", "M2"), default="M2")
     args, unknown = parser.parse_known_args(argv)
+    if args.command in ("dataset-inventory", "split", "features", "benchmark", "qc-dataset"):
+        if unknown:
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}")
+        from pvcomm.config.dataset import DatasetPolicy
+        from pvcomm.pipeline.dataset import inventory_runs, split_dataset
+
+        try:
+            if args.command == "dataset-inventory":
+                dataset_result = inventory_runs(args.root, args.dataset_dir)
+            elif args.command == "split":
+                dataset_policy = (
+                    DatasetPolicy.model_validate_json(args.config.read_bytes())
+                    if (args.config is not None)
+                    else DatasetPolicy()
+                )
+                dataset_result = split_dataset(args.dataset_dir, dataset_policy)
+            elif args.command == "features":
+                from pvcomm.pipeline.features import build_features
+
+                dataset_result = build_features(args.dataset_dir, args.mode)
+            elif args.command == "qc-dataset":
+                from pvcomm.qc.dataset import qc_dataset
+
+                dataset_result = qc_dataset(args.dataset_dir)
+            else:
+                from pvcomm.experiments.baselines import benchmark_dataset
+
+                dataset_result = benchmark_dataset(args.dataset_dir, args.mode)
+        except (OSError, ValueError, RuntimeError, ImportError, KeyError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(json.dumps(dataset_result, sort_keys=True))
+        return 0 if dataset_result.get("passed", True) else 1
     if args.command == "label":
         if unknown:
             parser.error(f"unrecognized arguments: {' '.join(unknown)}")

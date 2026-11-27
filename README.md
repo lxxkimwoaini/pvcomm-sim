@@ -2,9 +2,9 @@
 
 分布式光伏电力—通信联合仿真平台。研究依据为 [V1.3 方案](docs/分布式光伏电力—通信联合仿真数据集构建方案_V1.3.md) 和 [AGENTS.md](AGENTS.md)。
 
-当前版本为 0.4.0.dev0，V0.4a/b、六类P0三站机制及首四组配对/分层标签开发切片已通过，**V0.4 尚未验收**。V0.3 多站点开发门禁已通过：完成3→10→20→30站逐级实跑，以及30站、3通信区域、3600秒电力—通信联合仿真和关闭Web/实时监测/历史回放资源验收。保留已验收的V0.0基础、V0.1真实协议和V0.2三站物理复现能力；当前提供配置驱动多站点、真实c104、pvlib/pandapower、独立P0/P1、Arrow、独立QC及M2只读工作台。未发布正式科研数据集或异常检测结果。实测、适用边界和复现方式见 [V0.3验收报告](docs/reports/2026-11-25-v03-acceptance.md) 及 [进度](docs/progress.md)。
+当前主线为V0.5论文数据集预发布。调整后小规模V0.4已收尾，正常场景、六类异常、三/十站真实证据、标签/QC、队列及工作台直接复用，见[收尾报告](docs/reports/2026-11-27-v04-small-closeout.md)。原大规模目标未全部通过的事实保留，不阻塞调整后的数据集阶段。
 
-2026-11-27起按用户要求，**当前开发默认3站、最多10站**。新工作台任务限于3/10站；30站复验和大批量覆盖暂停，历史配置与原始证据保留。复用已通过的正常、六类异常及配对能力，按改动补针对性回归，见[执行范围](docs/decisions/0030-small-development-scope.md)。
+**永久默认3站、最多10站**；取消30站强制验收及续跑、720小时、40次/类和剩余228项要求。完整优先级见[正式科研范围调整](docs/research-scope-2026-11-27.md)。接受统计匹配0，业务对照有效成员可入库，不改阈值。正常168小时按约1小时、24小时、一周渐进，不阻塞首版训练流程。
 
 ## 安装与复现
 
@@ -44,7 +44,7 @@ pnpm --dir frontend dev
 
 打开终端显示的本地前端地址，粘贴 `configs/foundation.yaml` 并校验。前端通过本机 Vite 代理调用真实后端，不生成任何遥测。网页关闭不影响独立后端。
 
-有 GNU make 时可用 `make bootstrap lint typecheck test web-test web-build schemas`。Windows 没有 make 时使用等价 `uv run python scripts/dev.py <target>`，完整说明见 [开发指南](docs/development.md)。`run`/`parse` 已实现实验入口；`label` 已实现证据关联的Oracle分层标签（需要先完成QC）；`split/features/benchmark` 尚未实现，明确退出3。
+有 GNU make 时可用 `make bootstrap lint typecheck test web-test web-build schemas`。Windows 没有 make 时使用等价 `uv run python scripts/dev.py <target>`，完整说明见 [开发指南](docs/development.md)。`run`/`parse` 已实现实验入口；`label` 已实现证据关联的Oracle分层标签（需要先完成QC）；`dataset-inventory`、`split`、`features`、`qc-dataset`及`benchmark`提供离线数据生产入口，见[V0.5复现指南](docs/v05-dataset.md)。
 
 V0.1 仅在授权的 WSL Linux 实验环境运行，使用已安装的 `.venv-wsl`：
 

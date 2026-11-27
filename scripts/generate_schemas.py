@@ -6,6 +6,7 @@ from pathlib import Path
 
 from pvcomm.config import FoundationConfig
 from pvcomm.config.batch import BatchConfig
+from pvcomm.config.dataset import DatasetPolicy
 from pvcomm.config.faults import FaultScenarioConfig
 from pvcomm.config.lab import V01Config
 from pvcomm.config.multisite import V03Config
@@ -29,6 +30,7 @@ def main() -> int:
     args = parser.parse_args()
     contracts = {
         "foundation.schema.json": FoundationConfig.model_json_schema(),
+        "v05-dataset.schema.json": DatasetPolicy.model_json_schema(),
         "v01-lab.schema.json": V01Config.model_json_schema(),
         "v02-power.schema.json": V02Config.model_json_schema(),
         "v03-multisite.schema.json": V03Config.model_json_schema(),

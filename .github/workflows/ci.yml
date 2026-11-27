@@ -53,6 +53,18 @@ jobs:
       - run: uv sync --frozen --group power
       - run: uv run --frozen python scripts/dev.py power-test
 
+  dataset-baselines:
+    name: Causal dataset and lightweight baselines
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
+        with:
+          version: '0.11.13'
+      - run: uv python install 3.11.15
+      - run: uv sync --frozen --group data --group experiments
+      - run: uv run --frozen --group data --group experiments pytest tests/unit/test_dataset_windows.py tests/unit/test_baselines.py tests/integration/test_cli.py
+
   frontend:
     name: Frontend and browser
     runs-on: ubuntu-latest

@@ -46,6 +46,10 @@ def run_isolated(
     scenario: ScenarioConfig | None = None,
     fault: FaultScenarioConfig | None = None,
 ) -> Path:
+    if len(config.stations) > 10:
+        raise ValueError(
+            "research scope permits at most 10 stations; historical runs are read-only"
+        )
     if sys.platform != "linux":
         raise RuntimeError("isolated IEC 104 laboratory run requires Linux")
     for name in ("ip", "tcpdump", "tshark", *(("tc",) if isinstance(power, V03Config) else ())):

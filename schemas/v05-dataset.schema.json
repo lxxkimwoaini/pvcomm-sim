@@ -1,0 +1,61 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "alert_merge_s": {
+      "const": 10,
+      "default": 10,
+      "title": "Alert Merge S",
+      "type": "integer"
+    },
+    "minimum_train_normal": {
+      "default": 20,
+      "minimum": 10,
+      "title": "Minimum Train Normal",
+      "type": "integer"
+    },
+    "model_seeds": {
+      "default": [
+        7,
+        17,
+        27
+      ],
+      "items": {
+        "type": "integer"
+      },
+      "title": "Model Seeds",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "0.5-dataset.1",
+      "default": "0.5-dataset.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "split_seed": {
+      "default": 20261127,
+      "minimum": 0,
+      "title": "Split Seed",
+      "type": "integer"
+    },
+    "step_s": {
+      "const": 5,
+      "default": 5,
+      "title": "Step S",
+      "type": "integer"
+    },
+    "training_protocol": {
+      "const": "S1_source_date_pair_groups",
+      "default": "S1_source_date_pair_groups",
+      "title": "Training Protocol",
+      "type": "string"
+    },
+    "window_s": {
+      "const": 60,
+      "default": 60,
+      "title": "Window S",
+      "type": "integer"
+    }
+  },
+  "title": "DatasetPolicy",
+  "type": "object"
+}

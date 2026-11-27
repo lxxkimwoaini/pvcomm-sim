@@ -43,11 +43,18 @@ def test_run_and_parse_invalid_inputs_preserve_output_root(tmp_path: Path) -> No
 
 
 @pytest.mark.parametrize("command", ["split", "features", "benchmark"])
-def test_unimplemented_fails(command: str, tmp_path: Path) -> None:
+def test_dataset_commands_reject_invalid_arguments(command: str, tmp_path: Path) -> None:
     result = invoke(command, "--output-root", str(tmp_path / "outputs"))
-    assert result.returncode == 3
-    assert "not implemented" in result.stderr
+    assert result.returncode == 2
+    assert "--dataset-dir" in result.stderr
     assert not (tmp_path / "outputs").exists()
+
+
+@pytest.mark.parametrize("command", ["split", "features", "benchmark"])
+def test_dataset_commands_require_existing_evidence(command: str, tmp_path: Path) -> None:
+    result = invoke(command, "--dataset-dir", str(tmp_path / "absent"))
+    assert result.returncode == 1
+    assert not (tmp_path / "absent").exists()
 
 
 def test_label_requires_actual_evidence(tmp_path: Path) -> None:
