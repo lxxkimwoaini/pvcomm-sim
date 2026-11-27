@@ -23,10 +23,12 @@ export PYTHONPATH="$PWD/src"
 /var/lib/pvcomm/venvs/v05-data/bin/python scripts/build_v10_dataset.py \
   --plan /var/lib/pvcomm/runs/v10_production_s2_plan \
   --production /var/lib/pvcomm/runs/v10_production_s2 \
-  --dataset-dir /var/lib/pvcomm/datasets/pvcomm_v1.0
+  --dataset-dir /var/lib/pvcomm/datasets/pvcomm_v1.0_s3
 ```
 
-后续目录使用`pvcomm_v1.0_s2`等新名称。构建复用V0.5.1的W10/W30/W60特征与13项独立QC，不重算划分最优解、不训练模型。继承的schema/purpose字符串用于兼容，正式发布版本、固定划分方法和来源优先以production_protocol.json及split/stratification.json为准。只有QC全部通过才写release.json；失败快照保留，不能作为已验收版本。
+当前已经存在`pvcomm_v1.0`、`pvcomm_v1.0_s2`，所以上例使用尚未存在的`pvcomm_v1.0_s3`；执行前核对目录，后续继续选择新唯一名称。构建复用V0.5.1的W10/W30/W60特征与13项独立QC，不重算划分最优解、不训练模型。继承的schema/purpose字符串用于兼容，正式发布版本、固定划分方法和来源优先以production_protocol.json及split/stratification.json为准。只有QC全部通过才写release.json；失败快照保留，不能作为已验收版本。
+
+当前推荐读取`pvcomm_v1.0_s2`，107次三站运行、76/24/7次训练/验证/正式测试，来源组7/1/1，六类各1次独立测试阳性。导出371.259701秒、实际退出0，三尺度13项QC及44文件SHA核验通过。W10/W30六类都可评估，W60暂未命中A02短事件的5秒终点，保留缺口；正常累计3.135小时，24小时批次尚排队，168小时未完成。详见[实际交付报告](reports/2026-11-27-v10-first-delivery.md)。
 
 首批实际快照`pvcomm_v1.0`已完成，处理源码d0c5ab2、code_dirty=false，276.824006秒；101次三站运行，train/validation/test为76/24/1次，来源组7/1/1。该快照只包含构建开始时已合格的新增A01，后续完成的运行要使用新目录增量导出。三尺度各13项QC通过，44个发布文件SHA逐项验证通过；三尺度M2训练表实际读取为43287×39、38727×39、6423×39。它是可读取的首批数据，不代表六类新测试或24/168小时生产已完成。后续快照和覆盖以[实际交付报告](reports/2026-11-27-v10-first-delivery.md)为准。
 
@@ -38,7 +40,7 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
-root = Path("/var/lib/pvcomm/datasets/pvcomm_v1.0")
+root = Path("/var/lib/pvcomm/datasets/pvcomm_v1.0_s2")
 folder = root / "W10/features-M2"
 columns = json.loads((folder / "whitelist.json").read_text())["cumulative_modes"]["M2"]
 features = pq.read_table(folder / "features.parquet").select(columns)
