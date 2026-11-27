@@ -311,6 +311,7 @@ def benchmark_dataset(root: Path, mode: str = "M2") -> dict[str, Any]:
             )
             result.update(
                 algorithm=algorithm,
+                observation_mode="M2" if algorithm == "business_rule" else mode,
                 seed=seed,
                 status="completed",
                 preprocessing=preprocessing_record,
@@ -374,6 +375,7 @@ def benchmark_dataset(root: Path, mode: str = "M2") -> dict[str, Any]:
                 "business-rule-derived labels require the included rule baseline",
                 "event results exclude events outside evaluated window endpoints",
                 "PR-AUC reported as non-interpolated average precision",
+                "business_rule is an M2 reference repeated across mode reports, not an M0/M1 detector",
             ],
             versions={
                 name: importlib.import_module(name).__version__

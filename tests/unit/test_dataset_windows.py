@@ -216,6 +216,68 @@ def test_legal_negative_confirmation_is_not_timeout(tmp_path: Path) -> None:
         db.close()
 
 
+@pytest.mark.parametrize(
+    "repeated,reply_epoch,waiting", [(False, 1, 0), (True, 1, 8), (False, 2, 8)]
+)
+def test_late_confirmation_recovers_only_unambiguous_same_epoch_command(
+    tmp_path: Path, repeated: bool, reply_epoch: int, waiting: int
+) -> None:
+    db = Observations(tmp_path / "unit.sqlite")
+    try:
+        for ioa in (*REQUIRED_IOAS, 1006):
+            db.insert(
+                "master",
+                "PV01",
+                8 * 10**9,
+                dict(
+                    event_type="master_observed_point",
+                    ioa=ioa,
+                    value=10.0,
+                    available_at=8 * 10**9,
+                    quality_valid=True,
+                ),
+            )
+        command = dict(
+            event_type="master_command_sent",
+            task_id="unit_current",
+            ioa=3001,
+            sent_utc_ns=10**9,
+            target_kw=10.0,
+            deadline_ms=3000,
+            execution_deadline_ms=10000,
+            connection_epoch=1,
+        )
+        if repeated:
+            db.insert("master", "PV01", 0, dict(command, task_id="unit_prior", sent_utc_ns=0))
+        db.insert("master", "PV01", 10**9, command)
+        db.insert(
+            "master",
+            "PV01",
+            5 * 10**9,
+            dict(
+                event_type="master_command_confirmation",
+                task_id=None,
+                matched=False,
+                ioa=3001,
+                target_kw=10.0,
+                positive_confirmation=True,
+                connection_epoch=reply_epoch,
+                available_at=5 * 10**9,
+            ),
+        )
+        feature, violation = business_features(
+            db, dict(station_id="PV01", telemetry_period_s=2, capacity_kw=30.0), 9 * 10**9
+        )
+        assert feature["confirmation_wait_s"] == waiting
+        assert violation is bool(waiting)
+        before, _ = business_features(
+            db, dict(station_id="PV01", telemetry_period_s=2, capacity_kw=30.0), 5 * 10**9
+        )
+        assert before["confirmation_wait_s"] == 4
+    finally:
+        db.close()
+
+
 def test_whitelist_excludes_labels_ids_and_final_rule() -> None:
     forbidden = {
         "run_id",

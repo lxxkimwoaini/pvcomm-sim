@@ -301,6 +301,30 @@ def business_features(
             and r.get("task_id") == command["task_id"]
             and r.get("connection_epoch") == command.get("connection_epoch")
         ]
+        # The live tracker expires at its deadline, so a genuine late reply may
+        # have matched=False. Resolve it only when this epoch/point/value has a
+        # single causal command; a repeated setpoint must remain ambiguous.
+        if not confirmations:
+            same_value_commands = [
+                r
+                for r in commands
+                if r.get("connection_epoch") == command.get("connection_epoch")
+                and r.get("ioa") == command.get("ioa")
+                and abs(r["target_kw"] - command["target_kw"]) <= 0.1
+            ]
+            if len(same_value_commands) == 1:
+                late = [
+                    r
+                    for r in history
+                    if r["event_type"] == "master_command_confirmation"
+                    and r.get("matched") is False
+                    and r.get("connection_epoch") == command.get("connection_epoch")
+                    and r.get("ioa") == command.get("ioa")
+                    and abs(r.get("target_kw", math.inf) - command["target_kw"]) <= 0.1
+                    and r["available_at"] >= command["sent_utc_ns"]
+                ]
+                if len(late) == 1:
+                    confirmations = late
         if not confirmations:
             features["confirmation_wait_s"] = age
             violation |= age > command["deadline_ms"] / 1000
