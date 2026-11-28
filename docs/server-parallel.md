@@ -1,5 +1,7 @@
 # 三站正常数据并行生产
 
+本批48/48项已完成，累计24小时有效数据，最终质量和哈希核验通过；见[验收报告](reports/2026-11-28-server-parallel-normal.md)。当前无需启动或续跑，以下命令仅用于只读查询和意外中断恢复。
+
 应用冻结5f4cf2d，不对活动`$HOME/pvcomm-sim`执行pull或编辑。独立薄driver部署于`$HOME/pvcomm-tools/server-parallel-s1/server_parallel.py`；脚本SHA和应用SHA、clean、48项原清单及6份BatchConfig哈希在protocol.json冻结，续跑前检查。生产数据不进Git。
 
 计划：`$HOME/pvcomm-data/plans/v10_server_parallel_20240614_s1`；统一产物：`$HOME/pvcomm-data/runs/v10_server_parallel_20240614_s1`。trial_a/trial_b为两个1802秒真实验证，余项worker_1～4分别12/12/11/11项。每项只有1800秒有效历史，48项累计24小时，不能当成连续24小时。所有任务同属6月14日train来源组，27～29日正式test隔离。
