@@ -19,9 +19,18 @@ from typing import Any, TextIO
 
 from pvcomm.capture.tcpdump import TcpdumpCapture
 from pvcomm.clock import ClockOrigin, SceneClock
+from pvcomm.config.faults import (
+    FaultScenarioConfig,
+    LinkDelay,
+    TerminalFault,
+    instantiate_fault,
+    load_fault_scenario,
+)
 from pvcomm.config.lab import V01Config, v01_config_sha256
+from pvcomm.config.maintenance import legacy_maintenance
 from pvcomm.config.multisite import V03Config
 from pvcomm.config.power import V02Config
+from pvcomm.config.scenes import ScenarioConfig, canonical_hash, instantiate_scenario, load_scenario
 from pvcomm.network.isolated import IsolatedNetwork
 from pvcomm.network.regional import RegionalNetwork
 from pvcomm.scenario.resources import ResourceSampler
@@ -34,18 +43,71 @@ def run_isolated(
     output_root: Path,
     *,
     power: V02Config | V03Config | None = None,
+    scenario: ScenarioConfig | None = None,
+    fault: FaultScenarioConfig | None = None,
 ) -> Path:
+    if len(config.stations) > 10:
+        raise ValueError(
+            "research scope permits at most 10 stations; historical runs are read-only"
+        )
     if sys.platform != "linux":
         raise RuntimeError("isolated IEC 104 laboratory run requires Linux")
     for name in ("ip", "tcpdump", "tshark", *(("tc",) if isinstance(power, V03Config) else ())):
         if shutil.which(name) is None:
             raise RuntimeError(f"lab tool is unavailable: {name}")
     dependencies = {name: version(name) for name in ("c104", "pydantic", "PyYAML")}
+    if fault is not None:
+        for name in ("bridge", "strace"):
+            if shutil.which(name) is None:
+                raise RuntimeError(f"lab tool is unavailable: {name}")
+        if fault.background != scenario or not isinstance(power, V03Config):
+            raise ValueError("fault and compiled scenario disagree")
+        if instantiate_fault(load_fault_scenario(source), config.run_id) != fault:
+            raise ValueError("fault source and effective document disagree")
+    if scenario is not None:
+        if scenario.simulation != power or scenario.simulation.protocol != config:
+            raise ValueError("scenario and compiled simulation disagree")
+        template = (
+            load_scenario(source) if fault is None else load_fault_scenario(source).background
+        )
+        if instantiate_scenario(template, config.run_id) != scenario:
+            raise ValueError("scenario source and effective document disagree")
     root = (output_root / config.run_id).resolve()
     root.mkdir(parents=True, exist_ok=False)
-    (root / "scenario.yaml").write_bytes(source.read_bytes())
+    if scenario is None:
+        (root / "scenario.yaml").write_bytes(source.read_bytes())
+    else:
+        diagnostic = root / "truth/scenario"
+        diagnostic.mkdir(parents=True)
+        (diagnostic / "source.yaml").write_bytes(
+            source.read_bytes() if fault is None else template.model_dump_json(indent=2).encode()
+        )
+        (diagnostic / "effective.json").write_text(
+            scenario.model_dump_json(indent=2), encoding="utf-8"
+        )
+        plan = [t.model_dump(mode="json") for t in scenario.expanded_schedule()]
+        (diagnostic / "expanded-plan.json").write_text(json.dumps(plan, indent=2), encoding="utf-8")
+        (root / "scenario.yaml").write_text(
+            scenario.simulation.model_dump_json(indent=2), encoding="utf-8"
+        )
+    if fault is not None:
+        diagnostic = root / "truth/fault"
+        diagnostic.mkdir(parents=True)
+        (diagnostic / "source.yaml").write_bytes(source.read_bytes())
+        (diagnostic / "effective.json").write_text(
+            fault.model_dump_json(indent=2), encoding="utf-8"
+        )
     (root / "effective_config.json").write_text(config.model_dump_json(indent=2), encoding="utf-8")
-    network = RegionalNetwork(power) if isinstance(power, V03Config) else IsolatedNetwork()
+    network = (
+        RegionalNetwork(
+            power,
+            delay_fault=fault.fault
+            if fault is not None and isinstance(fault.fault, LinkDelay)
+            else None,
+        )
+        if isinstance(power, V03Config)
+        else IsolatedNetwork()
+    )
     origin = ClockOrigin.capture()
     metadata = {"clock_origin": asdict(origin), "addresses": network.addresses}
     (root / "runtime.json").write_text(json.dumps(metadata), encoding="utf-8")
@@ -74,6 +136,23 @@ def run_isolated(
             "default_route": None,
         },
     }
+    if scenario is not None:
+        manifest["scenario_contract"] = {
+            "version": scenario.schema_version,
+            "source_sha256": hashlib.sha256(
+                (root / "truth/scenario/source.yaml").read_bytes()
+            ).hexdigest(),
+            "effective_sha256": canonical_hash(scenario.model_dump(mode="json")),
+            "plan_sha256": canonical_hash(plan),
+            "scope": "Oracle",
+        }
+    if fault is not None:
+        manifest["fault_contract"] = {
+            "version": fault.schema_version,
+            "scope": "Oracle",
+            "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+            "effective_sha256": canonical_hash(fault.model_dump(mode="json")),
+        }
 
     def save_manifest() -> None:
         temp = root / "manifest.json.tmp"
@@ -104,31 +183,41 @@ def run_isolated(
         scene_clock=SceneClock(root / "scene.json") if isinstance(power, V03Config) else None,
     )
     feeder = None
+    fault_controller = None
+    socket_audit = None
     resources = ResourceSampler(root, origin) if isinstance(power, V03Config) else None
 
     def launch(role: str, namespace: str) -> subprocess.Popen[bytes]:
         log = (root / f"{role}.stderr.log").open("x", encoding="utf-8")
         logs.append(log)
+        command = [
+            sys.executable,
+            "-m",
+            "pvcomm.scenario.lab_worker",
+            "--run-dir",
+            str(root),
+            "--role",
+            role,
+        ]
+        if socket_audit is not None:
+            command = socket_audit.command(role, command)
         process = subprocess.Popen(
-            [
-                *network.prefix(namespace),
-                sys.executable,
-                "-m",
-                "pvcomm.scenario.lab_worker",
-                "--run-dir",
-                str(root),
-                "--role",
-                role,
-            ],
+            [*network.prefix(namespace), *command],
             stdin=subprocess.DEVNULL,
             stdout=log,
             stderr=log,
             start_new_session=True,
         )
         processes.append(process)
+        if socket_audit is not None:
+            socket_audit.bind(role, process.pid)
         return process
 
     try:
+        if fault is not None:
+            from pvcomm.capture.socket_audit import SocketAudit
+
+            socket_audit = SocketAudit(root)
         if power is not None:
             from pvcomm.power.runtime import FeederRuntime, prepare_power
 
@@ -143,8 +232,23 @@ def run_isolated(
                 power.model_dump_json().encode()
             ).hexdigest()
         network.create()
+        if fault is not None and isinstance(network, RegionalNetwork):
+            from pvcomm.scenario.delay_fault import DelayFaultController
+            from pvcomm.scenario.link_fault import LinkFaultController
+            from pvcomm.scenario.terminal_fault import TerminalFaultController
+
+            controller_type = (
+                DelayFaultController
+                if isinstance(fault.fault, LinkDelay)
+                else TerminalFaultController
+                if isinstance(fault.fault, TerminalFault)
+                else LinkFaultController
+            )
+            fault_controller = controller_type(root, fault, network, origin)
         if isinstance(network, RegionalNetwork):
             manifest["network"]["netem_initial"] = network.shaping_evidence()
+            if network.delay_segments:
+                manifest["network"]["delay_segments"] = network.delay_segments
             save_manifest()
         capture_specs = [
             ("primary", network.master, "any"),
@@ -161,6 +265,7 @@ def run_isolated(
                 command_prefix=network.prefix(namespace),
                 native_spool=isinstance(power, V03Config),
                 immediate_mode=not isinstance(power, V03Config),
+                drain_on_stop=isinstance(power, V03Config),
             )
             captures.append(capture)
             capture.start()
@@ -186,13 +291,19 @@ def run_isolated(
         save_manifest()
         master = launch("master", network.master)
         deadline = time.monotonic() + config.duration_s + 30
-        interrupted = False
-        resumed = False
+        maintenance_events = (
+            scenario.expanded_maintenance() if scenario is not None else legacy_maintenance(config)
+        )
+        interrupted: set[str] = set()
+        resumed: set[str] = set()
         while master.poll() is None:
+            if fault_controller is not None:
+                fault_controller.step()
             if resources is not None:
                 resources.sample(
                     [p.pid for p in processes]
                     + [c.process_id for c in captures if c.process_id is not None]
+                    + (socket_audit.tracer_pids() if socket_audit is not None else [])
                 )
             if feeder is not None:
                 feeder.step()
@@ -219,27 +330,44 @@ def run_isolated(
                 stage.rename(root / "scene.json")
                 manifest["scene_clock"] = scene
                 save_manifest()
-            event = config.interruption
             ready = root / "master.ready"
-            if event is not None and ready.exists():
+            for event in maintenance_events if ready.exists() else ():
                 elapsed = time.monotonic() - float(ready.read_text(encoding="ascii"))
                 index = next(
                     i for i, s in enumerate(config.stations) if s.station_id == event.station_id
                 )
                 worker = processes[index]
-                if elapsed >= event.start_s and not interrupted:
+                maintenance_ready = (
+                    not isinstance(power, V03Config)
+                    or not event.planned
+                    or (root / event.ready_file).exists()
+                )
+                if (
+                    elapsed >= event.start_s
+                    and event.station_id not in interrupted
+                    and maintenance_ready
+                ):
                     worker.send_signal(signal.SIGUSR1)
                     controller.record_event(
                         "terminal_interruption_requested",
-                        {"station_id": event.station_id, "planned": event.planned},
+                        {
+                            "station_id": event.station_id,
+                            "planned": event.planned,
+                            "maintenance_id": event.maintenance_id,
+                        },
                     )
-                    interrupted = True
-                if elapsed >= event.start_s + event.duration_s and interrupted and not resumed:
+                    interrupted.add(event.station_id)
+                if (
+                    elapsed >= event.start_s + event.duration_s
+                    and event.station_id in interrupted
+                    and event.station_id not in resumed
+                ):
                     worker.send_signal(signal.SIGUSR2)
                     controller.record_event(
-                        "terminal_recovery_requested", {"station_id": event.station_id}
+                        "terminal_recovery_requested",
+                        {"station_id": event.station_id, "maintenance_id": event.maintenance_id},
                     )
-                    resumed = True
+                    resumed.add(event.station_id)
             time.sleep(0.1)
         if master.returncode:
             raise RuntimeError(f"master returned {master.returncode}; see master.stderr.log")
@@ -252,6 +380,14 @@ def run_isolated(
         manifest["error"] = f"{type(exc).__name__}: {exc}"
         raise
     finally:
+        if fault_controller is not None:
+            try:
+                fault_controller.close()
+                manifest["fault_contract"]["events_sha256"] = hashlib.sha256(
+                    (root / "truth/fault/events.jsonl").read_bytes()
+                ).hexdigest()
+            except Exception as exc:
+                failures.append(f"fault restoration: {exc}")
         for process in reversed(processes):
             try:
                 if process.poll() is None:
@@ -263,6 +399,11 @@ def run_isolated(
                 process.kill()
                 process.wait(timeout=5)
                 failures.append(f"worker {process.pid} required kill")
+        if socket_audit is not None:
+            try:
+                manifest["socket_audit"] = socket_audit.finish()
+            except Exception as exc:
+                failures.append(f"socket audit finalization: {exc}")
         capture_results = []
         for capture in reversed(captures):
             try:

@@ -13,15 +13,44 @@ from fastapi.exceptions import RequestValidationError
 
 from pvcomm import __version__
 from pvcomm.config import ConfigError, config_sha256, validate_yaml
+from pvcomm.config.batch import MatchingInputs
 from pvcomm.logging import create_logger
+from pvcomm.web.experiments import ExperimentRepository, experiment_router
+from pvcomm.web.pair_replay import PairReplayRepository, pair_replay_router
 from pvcomm.web.runs import EventsPage, ResourceView, RunList, RunRepository, RunSnapshot
 from pvcomm.web.schemas import Health, ValidationRequest, ValidationResult
 
 
-def create_app(run_root: Path | None = None) -> FastAPI:
+def create_app(run_root: Path | None = None, experiment_root: Path | None = None) -> FastAPI:
     app = FastAPI(title="PVComm foundation API", version=__version__)
     repository = RunRepository(run_root or Path(os.environ.get("PVCOMM_RUN_ROOT", "outputs")))
     logger = create_logger("pvcomm.web.runs", sys.stderr)
+    configured_experiments = os.environ.get("PVCOMM_EXPERIMENT_ROOT")
+    policy = os.environ.get("PVCOMM_SIMILARITY_POLICY")
+    calibration = os.environ.get("PVCOMM_SIMILARITY_CALIBRATION")
+    if bool(policy) != bool(calibration):
+        raise ValueError("pair management requires both frozen policy and calibration")
+    matching = (
+        MatchingInputs.model_validate(
+            dict(
+                policy=json.loads(Path(policy).read_bytes()),
+                calibration=json.loads(Path(calibration).read_bytes()),
+            )
+        )
+        if policy and calibration
+        else None
+    )
+    experiments = ExperimentRepository(
+        experiment_root or (Path(configured_experiments) if configured_experiments else None),
+        matching,
+    )
+    app.include_router(experiment_router(experiments))
+    archive = os.environ.get("PVCOMM_PAIR_REPLAY_ROOT")
+    app.include_router(
+        pair_replay_router(
+            PairReplayRepository(experiments.root, Path(archive) if archive else None)
+        )
+    )
 
     @app.middleware("http")
     async def request_timing(
@@ -90,7 +119,7 @@ def create_app(run_root: Path | None = None) -> FastAPI:
 
     @app.get("/api/health", response_model=Health)
     def health() -> Health:
-        return Health()
+        return Health(web_run_submission_available=experiments.root is not None)
 
     @app.get("/api/diagnostics/runs/{run_key}/resources", response_model=ResourceView)
     def resources(run_key: str) -> ResourceView:

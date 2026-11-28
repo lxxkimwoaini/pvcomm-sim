@@ -30,14 +30,17 @@ def audit_commands(
     used: set[str] = set()
     results = []
     for index, command in enumerate(commands):
-        start = command["ts_mono_ns"]
-        utc = command["ts_event_utc_ns"]
+        start = command.get("sent_mono_ns", command["ts_mono_ns"])
+        utc = command.get("sent_utc_ns", command["ts_event_utc_ns"])
         following = next((c for c in commands[index + 1 :] if c["ioa"] == command["ioa"]), None)
         ack_end = start + command["deadline_ms"] * 1_000_000
         end = start + command.get("execution_deadline_ms", 10000) * 1_000_000
+        confirmation_deadline = ack_end
+        execution_deadline = end
         if following is not None:
-            ack_end = min(ack_end, following["ts_mono_ns"])
-            end = min(end, following["ts_mono_ns"])
+            following_start = following.get("sent_mono_ns", following["ts_mono_ns"])
+            ack_end = min(ack_end, following_start)
+            end = min(end, following_start)
         utc_ack_end = utc + (ack_end - start)
         target = command["target_kw"]
         run_id = command.get("run_id")
@@ -122,6 +125,7 @@ def audit_commands(
                     for r in own_run
                     if accept is not None
                     and r["event_type"] == "master_observed_point"
+                    and r.get("quality_valid") is not False
                     and r.get("ioa") == ioa
                     and (
                         same_value(r, "value")
@@ -172,15 +176,20 @@ def audit_commands(
             and same_value(r, "value_num")
             and wire["available_at"] <= r["available_at"] < utc_ack_end
         ]
-        successful = ids[command["task_id"]] == 1 and all(
-            (response, accept, wire, ack, feedback[1006], feedback[1001])
+        negative_response = unique(negative_responses, "event_id")
+        rejection = unique(rejections, "event_id")
+        negative_ack = unique(negative_acks, "apdu_id")
+        successful = (
+            ids[command["task_id"]] == 1
+            and all((response, accept, wire, ack, feedback[1006], feedback[1001]))
+            and not (negative_responses or rejections or negative_acks)
         )
         rejected = (
             ids[command["task_id"]] == 1
             and not accept
             and not response
             and bool(wire)
-            and len(negative_responses) == len(rejections) == len(negative_acks) == 1
+            and bool(negative_response and rejection and negative_ack)
         )
         cutoff = max((r["ts_mono_ns"] for r in own_run), default=start)
         outcome = (
@@ -189,9 +198,20 @@ def audit_commands(
             else "rejected"
             if rejected
             else "feedback_missing"
-            if response and accept and wire and ack
+            if response
+            and accept
+            and wire
+            and ack
+            and cutoff >= execution_deadline
+            and end == execution_deadline
             else "confirmation_timeout"
-            if not response and not negative_responses and cutoff >= ack_end
+            if wire
+            and not response
+            and not ack
+            and not negative_acks
+            and not negative_responses
+            and cutoff >= confirmation_deadline
+            and ack_end == confirmation_deadline
             else "incomplete_or_ambiguous"
         )
         results.append(
@@ -199,17 +219,29 @@ def audit_commands(
                 "task_id": command["task_id"],
                 "passed": bool(successful),
                 "outcome": outcome,
-                "transaction_evidence_valid": bool(successful or rejected),
+                "transaction_evidence_valid": bool(
+                    successful
+                    or rejected
+                    or outcome in ("feedback_missing", "confirmation_timeout")
+                ),
                 "command_event": command["event_id"],
                 "accept_event": accept["event_id"] if accept else None,
                 "response_event": response["event_id"] if response else None,
                 "wire_apdu": wire["apdu_id"] if wire else None,
                 "wire_ack_apdu": ack["apdu_id"] if ack else None,
+                "negative_response_event": negative_response["event_id"]
+                if negative_response
+                else None,
+                "rejection_event": rejection["event_id"] if rejection else None,
+                "negative_ack_apdu": negative_ack["apdu_id"] if negative_ack else None,
                 "setpoint_feedback_event": feedback[1006]["event_id"] if feedback[1006] else None,
                 "power_feedback_event": feedback[1001]["event_id"] if feedback[1001] else None,
                 "confirmation_ms": (response["ts_mono_ns"] - start) / 1e6 if response else None,
                 "deadline_ms": command["deadline_ms"],
                 "execution_end_mono_ns_exclusive": end,
+                "confirmation_deadline_mono_ns": confirmation_deadline,
+                "execution_deadline_mono_ns": execution_deadline,
+                "evidence_observed_until_mono_ns": cutoff,
                 "method": "serialized_station_ioa_unique_evidence_half_open_intervals",
             }
         )

@@ -1,0 +1,483 @@
+{
+  "$defs": {
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "available_at": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Available At"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "record_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Record Id"
+        },
+        "role": {
+          "enum": [
+            "online",
+            "retrospective"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "tier": {
+          "enum": [
+            "M1",
+            "M2",
+            "Oracle"
+          ],
+          "title": "Tier",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "tier",
+        "role"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    },
+    "ServiceFinding": {
+      "additionalProperties": false,
+      "properties": {
+        "end_utc_ns": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "End Utc Ns"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "execution_recovery_utc_ns": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Recovery Utc Ns"
+        },
+        "finding_id": {
+          "title": "Finding Id",
+          "type": "string"
+        },
+        "ioa": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ioa"
+        },
+        "kind": {
+          "enum": [
+            "command",
+            "reception_freshness"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "label_status": {
+          "enum": [
+            "valid",
+            "uncertain",
+            "invalid"
+          ],
+          "title": "Label Status",
+          "type": "string"
+        },
+        "observable_at_utc_ns": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Observable At Utc Ns"
+        },
+        "outcome": {
+          "title": "Outcome",
+          "type": "string"
+        },
+        "recovery_censored": {
+          "title": "Recovery Censored",
+          "type": "boolean"
+        },
+        "recovery_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "late_positive_confirmation",
+                "late_negative_confirmation",
+                "feedback"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recovery Kind"
+        },
+        "recovery_utc_ns": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recovery Utc Ns"
+        },
+        "service_violation": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Service Violation"
+        },
+        "start_utc_ns": {
+          "minimum": 0,
+          "title": "Start Utc Ns",
+          "type": "integer"
+        },
+        "station_id": {
+          "title": "Station Id",
+          "type": "string"
+        },
+        "superseded_at_utc_ns": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Superseded At Utc Ns"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Id"
+        }
+      },
+      "required": [
+        "finding_id",
+        "kind",
+        "station_id",
+        "outcome",
+        "service_violation",
+        "label_status",
+        "start_utc_ns",
+        "end_utc_ns",
+        "observable_at_utc_ns",
+        "recovery_utc_ns",
+        "recovery_censored",
+        "evidence"
+      ],
+      "title": "ServiceFinding",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "anomaly_id": {
+      "title": "Anomaly Id",
+      "type": "string"
+    },
+    "communication_impact": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Communication Impact"
+    },
+    "communication_impact_end_utc_ns": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Communication Impact End Utc Ns"
+    },
+    "communication_impact_start_utc_ns": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Communication Impact Start Utc Ns"
+    },
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/EvidenceRef"
+      },
+      "title": "Evidence",
+      "type": "array"
+    },
+    "fault_applied": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Fault Applied"
+    },
+    "fault_end_utc_ns": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Fault End Utc Ns"
+    },
+    "fault_start_utc_ns": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Fault Start Utc Ns"
+    },
+    "fault_type": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Fault Type",
+      "type": "array"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/ServiceFinding"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "independent_information_available": {
+      "const": false,
+      "default": false,
+      "title": "Independent Information Available",
+      "type": "boolean"
+    },
+    "label_status": {
+      "enum": [
+        "valid",
+        "uncertain",
+        "invalid"
+      ],
+      "title": "Label Status",
+      "type": "string"
+    },
+    "label_version": {
+      "const": "0.4-label.3",
+      "default": "0.4-label.3",
+      "title": "Label Version",
+      "type": "string"
+    },
+    "observable_anomaly": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Observable Anomaly"
+    },
+    "observation_mode": {
+      "const": "M2",
+      "default": "M2",
+      "title": "Observation Mode",
+      "type": "string"
+    },
+    "operating_context": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Operating Context",
+      "type": "array"
+    },
+    "recovery_censored": {
+      "default": true,
+      "title": "Recovery Censored",
+      "type": "boolean"
+    },
+    "recovery_complete_utc_ns": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Recovery Complete Utc Ns"
+    },
+    "region_id": {
+      "title": "Region Id",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "scope": {
+      "enum": [
+        "station",
+        "region",
+        "global"
+      ],
+      "title": "Scope",
+      "type": "string"
+    },
+    "service_violation": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Service Violation"
+    },
+    "station_id": {
+      "title": "Station Id",
+      "type": "string"
+    },
+    "transport_impact": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Transport Impact"
+    },
+    "uncertainty_reasons": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Uncertainty Reasons",
+      "type": "array"
+    }
+  },
+  "required": [
+    "run_id",
+    "anomaly_id",
+    "station_id",
+    "region_id",
+    "scope",
+    "fault_applied",
+    "fault_type",
+    "fault_start_utc_ns",
+    "fault_end_utc_ns",
+    "transport_impact",
+    "service_violation",
+    "observable_anomaly",
+    "operating_context",
+    "label_status",
+    "findings",
+    "evidence"
+  ],
+  "title": "EventLabel",
+  "type": "object"
+}

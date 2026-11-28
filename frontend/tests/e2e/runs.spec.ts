@@ -122,7 +122,21 @@ test('reads real evidence and replays only available observations', async ({
   await expect(page.locator('.power-reading').first()).toContainText(
     (latest.stations[0].latest_power_kw as number).toFixed(2),
   )
-  if (runName.startsWith('v02_') || runName.startsWith('v03_')) {
+  await expect(slider).toHaveAttribute(
+    'aria-valuenow',
+    (
+      (BigInt(latest.cursor_utc_ns) - BigInt(latest.first_available_at)) /
+      1000000000n
+    ).toString(),
+  )
+  const hasPowerTelemetry = latest.stations.some(
+    (station: { measurements?: { ioa: number; points: unknown[] }[] }) =>
+      station.measurements?.some(
+        (measurement) =>
+          measurement.ioa === 1008 && measurement.points.length > 0,
+      ),
+  )
+  if (hasPowerTelemetry) {
     await expect(
       page.getByRole('heading', { name: '光伏电气过程' }),
     ).toBeVisible()

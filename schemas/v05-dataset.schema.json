@@ -1,0 +1,74 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "alert_merge_s": {
+      "const": 10,
+      "default": 10,
+      "title": "Alert Merge S",
+      "type": "integer"
+    },
+    "minimum_train_normal": {
+      "default": 20,
+      "minimum": 10,
+      "title": "Minimum Train Normal",
+      "type": "integer"
+    },
+    "model_seeds": {
+      "default": [
+        7,
+        17,
+        27
+      ],
+      "items": {
+        "type": "integer"
+      },
+      "title": "Model Seeds",
+      "type": "array"
+    },
+    "schema_version": {
+      "default": "0.5-dataset.1",
+      "enum": [
+        "0.5-dataset.1",
+        "0.5.1-dataset.1"
+      ],
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "split_seed": {
+      "default": 20261127,
+      "minimum": 0,
+      "title": "Split Seed",
+      "type": "integer"
+    },
+    "step_s": {
+      "default": 5,
+      "enum": [
+        1,
+        5
+      ],
+      "title": "Step S",
+      "type": "integer"
+    },
+    "training_protocol": {
+      "default": "S1_source_date_pair_groups",
+      "enum": [
+        "S1_source_date_pair_groups",
+        "S1_stratified_development"
+      ],
+      "title": "Training Protocol",
+      "type": "string"
+    },
+    "window_s": {
+      "default": 60,
+      "enum": [
+        10,
+        30,
+        60
+      ],
+      "title": "Window S",
+      "type": "integer"
+    }
+  },
+  "title": "DatasetPolicy",
+  "type": "object"
+}

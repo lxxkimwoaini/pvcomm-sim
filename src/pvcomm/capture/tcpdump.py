@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -24,11 +25,14 @@ class TcpdumpCapture:
     buffer_kib: int = 16384
     native_spool: bool = False
     immediate_mode: bool = True
+    drain_on_stop: bool = False
     _spool: Path | None = field(default=None, init=False)
     _process: subprocess.Popen[str] | None = field(default=None, init=False)
     _ready: threading.Event = field(default_factory=threading.Event, init=False)
     _reader: threading.Thread | None = field(default=None, init=False)
     _lines: list[str] = field(default_factory=list, init=False)
+    _statistics_ready: threading.Condition = field(default_factory=threading.Condition, init=False)
+    _snapshots: list[dict[str, int]] = field(default_factory=list, init=False)
     stats: dict[str, int | None] = field(default_factory=dict, init=False)
 
     @property
@@ -87,11 +91,63 @@ class TcpdumpCapture:
             self._lines.append(line)
             if "listening on " in line:
                 self._ready.set()
+            if "packets dropped by kernel" in line:
+                snapshot = self._statistics()
+                if len(snapshot) == 3:
+                    with self._statistics_ready:
+                        self._snapshots.append(snapshot)
+                        self._statistics_ready.notify_all()
+
+    def _statistics(self) -> dict[str, int]:
+        stderr = "".join(self._lines)
+        result = {}
+        for key, phrase in (
+            ("packets_captured", "packets captured"),
+            ("packets_received_by_filter", "packets received by filter"),
+            ("packets_dropped_by_kernel", "packets dropped by kernel"),
+        ):
+            matches = re.findall(rf"(\d+) {phrase}", stderr)
+            if matches:
+                result[key] = int(matches[-1])
+        return result
+
+    def _wait_for_capture_drain(self, process: subprocess.Popen[str]) -> bool:
+        # Opt-in only for the isolated Ethernet/any captures: Linux loopback
+        # ps_recv can count both directions of a packet once captured by pcap.
+        # Callers must first stop every owned traffic producer. SIGINT exits
+        # tcpdump without processing all packets already buffered by libpcap.
+        deadline = time.monotonic() + 5
+        with self._statistics_ready:
+            while process.poll() is None:
+                previous = len(self._snapshots)
+                process.send_signal(signal.Signals["SIGUSR1"])
+                remaining = deadline - time.monotonic()
+
+                def snapshot_ready(previous: int = previous) -> bool:
+                    return len(self._snapshots) > previous
+
+                if remaining <= 0 or not self._statistics_ready.wait_for(
+                    snapshot_ready, timeout=remaining
+                ):
+                    return False
+                snapshot = self._snapshots[-1]
+                if (
+                    snapshot["packets_captured"] + snapshot["packets_dropped_by_kernel"]
+                    >= snapshot["packets_received_by_filter"]
+                ):
+                    return True
+                # Statistics are acknowledged by the reader; poll only while
+                # a measured backlog remains, bounded by the same deadline.
+                self._statistics_ready.wait(timeout=min(0.05, max(0, deadline - time.monotonic())))
+        return False
 
     def stop(self) -> int:
         process = self._process
         if process is None:
             return 0
+        drain_complete = True
+        if self.drain_on_stop and process.poll() is None:
+            drain_complete = self._wait_for_capture_drain(process)
         if process.poll() is None:
             process.send_signal(signal.SIGINT)
         try:
@@ -125,15 +181,13 @@ class TcpdumpCapture:
             self._spool = None
         stderr = "".join(self._lines)
         self.stats["buffer_size_kib"] = self.buffer_kib
-        for key, phrase in (
-            ("packets_captured", "packets captured"),
-            ("packets_received_by_filter", "packets received by filter"),
-            ("packets_dropped_by_kernel", "packets dropped by kernel"),
-        ):
-            match = re.search(rf"(\d+) {phrase}", stderr)
-            self.stats[key] = int(match[1]) if match else None
+        self.stats.update(self._statistics())
+        if self.drain_on_stop:
+            self.stats["drain_complete"] = int(drain_complete)
         self.output_path.with_suffix(".stderr.log").write_text(stderr, encoding="utf-8")
         self._process = None
+        if not drain_complete:
+            raise RuntimeError(f"capture did not drain before its deadline: {self.output_path}")
         return int(process.returncode or 0)
 
     @property

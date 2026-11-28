@@ -1,0 +1,67 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "capacity_margin": {
+      "default": 1.5,
+      "minimum": 1,
+      "title": "Capacity Margin",
+      "type": "number"
+    },
+    "compression": {
+      "const": "gzip_lossless",
+      "default": "gzip_lossless",
+      "title": "Compression",
+      "type": "string"
+    },
+    "concurrent_instances": {
+      "default": 1,
+      "minimum": 1,
+      "title": "Concurrent Instances",
+      "type": "integer"
+    },
+    "delete_sources": {
+      "const": false,
+      "default": false,
+      "title": "Delete Sources",
+      "type": "boolean"
+    },
+    "formal_hours": {
+      "default": 720,
+      "minimum": 1,
+      "title": "Formal Hours",
+      "type": "integer"
+    },
+    "level": {
+      "enum": [
+        "full_evidence",
+        "verified_archive",
+        "derived_rebuildable"
+      ],
+      "title": "Level",
+      "type": "string"
+    },
+    "measured_parse_temporary_bytes": {
+      "default": 11275084964,
+      "exclusiveMinimum": 0,
+      "title": "Measured Parse Temporary Bytes",
+      "type": "integer"
+    },
+    "retained_bytes_per_hour": {
+      "default": 1383250188,
+      "exclusiveMinimum": 0,
+      "title": "Retained Bytes Per Hour",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": "0.4-retention.1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "level"
+  ],
+  "title": "RetentionPolicy",
+  "type": "object"
+}

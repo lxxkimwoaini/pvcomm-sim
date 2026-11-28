@@ -157,9 +157,18 @@ def test_rejection_timeout_and_missing_feedback_are_distinct() -> None:
     assert result["transaction_evidence_valid"] and not result["passed"]
     data = fixture()
     data[0].pop(1)
+    data[2].pop(1)  # A real timeout has no valid on-time wire confirmation either.
     assert audit(data)[0]["outcome"] == "confirmation_timeout"
     data = fixture()
     data[0].pop(3)
+    data[0][:] = data[0][:3]  # Keep a complete execution window without a superseding task.
+    data[0].append(
+        {
+            "event_type": "master_business_finished",
+            "station_id": "PV01",
+            "ts_mono_ns": 10_000_000_000,
+        }
+    )
     assert audit(data)[0]["outcome"] == "feedback_missing"
 
 
@@ -190,10 +199,26 @@ def test_repeated_action_uses_new_application_task_id() -> None:
 
     from pvcomm.config.lab import load_v01_config
     from pvcomm.protocol.c104_runtime import C104Master
+    from pvcomm.protocol.confirmation import Confirmation, ConfirmationTracker
 
     # Test double only for the local application ID/serialization contract.
-    point = SimpleNamespace(value=10.0, transmit=lambda **_: True)
     endpoint = C104Master.__new__(C104Master)
+    endpoint._confirmations = ConfirmationTracker()
+    endpoint._confirmations.state("PV01", "OPEN")
+    endpoint._observations = {}
+    endpoint._invalid_observations = set()
+    endpoint._observation_lock = threading.Lock()
+
+    def transmit(**_: Any) -> bool:
+        import time
+
+        assert type(point.value) is float  # c104's native setter requires float even for 10 kW.
+        endpoint._confirmations.observe(
+            "PV01", Confirmation(1, 3001, 10, True, "unit"), time.monotonic_ns()
+        )
+        return True
+
+    point = SimpleNamespace(value=10.0, transmit=transmit)
     endpoint._command_lock = threading.Lock()
     endpoint._command_sequence = 0
     endpoint._station_locks = {"PV01": threading.Lock()}
@@ -209,3 +234,28 @@ def test_repeated_action_uses_new_application_task_id() -> None:
     responses = [r for r in records if r["kind"] == "master_command_response"]
     assert sends[0]["task_id"] != sends[1]["task_id"]
     assert [r["task_id"] for r in sends] == [r["task_id"] for r in responses]
+
+
+def test_on_time_wire_ack_with_missing_application_callback_is_incomplete_evidence() -> None:
+    data = fixture()
+    data[0].pop(1)
+    first = audit(data)[0]
+    assert first["outcome"] == "incomplete_or_ambiguous"
+    assert not first["transaction_evidence_valid"]
+
+
+def test_invalid_quality_cannot_complete_power_feedback() -> None:
+    data = fixture()
+    data[0][3]["quality_valid"] = False
+    assert audit(data)[0]["power_feedback_event"] is None
+
+
+def test_superseded_command_does_not_become_missing_feedback_violation() -> None:
+    data = fixture()
+    data[0].pop(3)
+    data[0].append(
+        dict(event_type="master_connection_state", station_id="PV01", ts_mono_ns=20_000_000_000)
+    )
+    first = audit(data)[0]
+    assert first["execution_end_mono_ns_exclusive"] < first["execution_deadline_mono_ns"]
+    assert first["outcome"] == "incomplete_or_ambiguous"

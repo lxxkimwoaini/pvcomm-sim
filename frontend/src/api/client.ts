@@ -6,6 +6,75 @@ export type RunList = components['schemas']['RunList']
 export type RunSnapshot = components['schemas']['RunSnapshot']
 export type EventsPage = components['schemas']['EventsPage']
 export type ResourceView = components['schemas']['ResourceView']
+export type ExperimentRequest = components['schemas']['ExperimentRequest']
+export type ExperimentList = components['schemas']['ExperimentList']
+export type ExperimentView = components['schemas']['ExperimentView']
+export type TemplateCatalog = components['schemas']['TemplateCatalog']
+export type ExperimentQuality = components['schemas']['ExperimentQuality']
+export type LabelPage = components['schemas']['LabelPage']
+export type EvidenceView = components['schemas']['EvidenceView']
+export type ExportInventory = components['schemas']['ExportInventory']
+export type PairList = components['schemas']['PairList']
+export type PairReplay = components['schemas']['PairReplay']
+export const getPairs = (offset = 0) =>
+  request<PairList>(`/api/diagnostics/pairs?offset=${offset}&limit=20`)
+export const getPairReplay = (
+  key: string,
+  station: string,
+  ioa: number,
+  atS?: number,
+) =>
+  request<PairReplay>(
+    `/api/diagnostics/pairs/${encodeURIComponent(key)}/replay?station_id=${encodeURIComponent(station)}&ioa=${ioa}${atS === undefined ? '' : `&at_s=${atS}`}`,
+  )
+const experimentRunPath = (identity: string, runKey: string) =>
+  `/api/diagnostics/experiments/${encodeURIComponent(identity)}/runs/${encodeURIComponent(runKey)}`
+export const getExperimentEvidence = (
+  identity: string,
+  runKey: string,
+  ordinal: number,
+  key: string,
+) =>
+  request<EvidenceView>(
+    `${experimentRunPath(identity, runKey)}/labels/${ordinal}/evidence/${encodeURIComponent(key)}`,
+  )
+export const getExperimentInventory = (
+  identity: string,
+  runKey: string,
+  offset = 0,
+) =>
+  request<ExportInventory>(
+    `${experimentRunPath(identity, runKey)}/export?offset=${offset}&limit=50`,
+  )
+export const experimentFileUrl = (
+  identity: string,
+  runKey: string,
+  key: string,
+) => `${experimentRunPath(identity, runKey)}/export/${encodeURIComponent(key)}`
+export const getExperimentCatalog = () =>
+  request<TemplateCatalog>('/api/diagnostics/experiments/catalog')
+export const getExperiments = (offset = 0) =>
+  request<ExperimentList>(
+    `/api/diagnostics/experiments?offset=${offset}&limit=20`,
+  )
+export const submitExperiment = (body: ExperimentRequest) =>
+  request<ExperimentView>('/api/diagnostics/experiments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+export const getExperimentQuality = (identity: string) =>
+  request<ExperimentQuality>(
+    `/api/diagnostics/experiments/${encodeURIComponent(identity)}/quality`,
+  )
+export const getExperimentLabels = (
+  identity: string,
+  runKey: string,
+  offset = 0,
+) =>
+  request<LabelPage>(
+    `/api/diagnostics/experiments/${encodeURIComponent(identity)}/runs/${encodeURIComponent(runKey)}/labels?offset=${offset}&limit=10`,
+  )
 export const getResources = (key: string) =>
   request<ResourceView>(
     `/api/diagnostics/runs/${encodeURIComponent(key)}/resources`,

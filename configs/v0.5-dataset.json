@@ -1,0 +1,10 @@
+{
+  "schema_version": "0.5-dataset.1",
+  "window_s": 60,
+  "step_s": 5,
+  "split_seed": 20261127,
+  "model_seeds": [7, 17, 27],
+  "alert_merge_s": 10,
+  "minimum_train_normal": 20,
+  "training_protocol": "S1_source_date_pair_groups"
+}

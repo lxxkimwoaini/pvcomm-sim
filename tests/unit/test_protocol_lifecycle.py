@@ -85,3 +85,36 @@ def test_failed_quiescence_still_stops_client_without_claiming_success() -> None
     with pytest.raises(TimeoutError, match="missing actual"):
         endpoint.stop()
     assert calls == ["client stop"]
+
+
+def test_planned_maintenance_requires_real_stopdt_and_closed_before_resume_request() -> None:
+    endpoint = C104Master.__new__(C104Master)
+    endpoint._lifecycle_condition = threading.Condition()
+    endpoint._callback_states = {"PV01": "OPEN"}
+    calls: list[str] = []
+
+    def mute() -> bool:
+        calls.append("STOPDT")
+        endpoint._callback_states["PV01"] = "OPEN_MUTED"
+        return True
+
+    def disconnect() -> None:
+        assert endpoint._callback_states["PV01"] == "OPEN_MUTED"
+        calls.append("disconnect")
+        endpoint._callback_states["PV01"] = "CLOSED"
+
+    endpoint._connections = {
+        "PV01": SimpleNamespace(
+            mute=mute, disconnect=disconnect, connect=lambda: calls.append("connect")
+        )
+    }
+    endpoint._record_event = lambda kind, _: calls.append(kind)
+    endpoint.suspend_for_maintenance("PV01")
+    endpoint.resume_connection("PV01")
+    assert calls == [
+        "STOPDT",
+        "disconnect",
+        "master_maintenance_connection_closed",
+        "connect",
+        "master_maintenance_connection_requested",
+    ]

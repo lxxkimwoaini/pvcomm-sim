@@ -1,0 +1,130 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "burst_gap_s": {
+      "default": 0.1,
+      "maximum": 0.1,
+      "minimum": 0.1,
+      "title": "Burst Gap S",
+      "type": "number"
+    },
+    "burst_min_packets": {
+      "const": 3,
+      "default": 3,
+      "title": "Burst Min Packets",
+      "type": "integer"
+    },
+    "capture": {
+      "const": "primary",
+      "default": "primary",
+      "title": "Capture",
+      "type": "string"
+    },
+    "distribution_distance": {
+      "const": "sqrt_jensen_shannon_base2",
+      "default": "sqrt_jensen_shannon_base2",
+      "title": "Distribution Distance",
+      "type": "string"
+    },
+    "iat_bounds_s": {
+      "default": [
+        0.0,
+        0.001,
+        0.01,
+        0.1,
+        0.5,
+        1.0,
+        2.0,
+        5.0,
+        10.0,
+        30.0,
+        60.0
+      ],
+      "items": {
+        "type": "number"
+      },
+      "title": "Iat Bounds S",
+      "type": "array"
+    },
+    "length_bounds": {
+      "default": [
+        0,
+        64,
+        128,
+        256,
+        512,
+        1024,
+        1518,
+        9000
+      ],
+      "items": {
+        "type": "integer"
+      },
+      "title": "Length Bounds",
+      "type": "array"
+    },
+    "match_strategy": {
+      "const": "all_features_all_targets_and_global",
+      "default": "all_features_all_targets_and_global",
+      "title": "Match Strategy",
+      "type": "string"
+    },
+    "minimum_calibration_pairs": {
+      "const": 6,
+      "default": 6,
+      "title": "Minimum Calibration Pairs",
+      "type": "integer"
+    },
+    "post_event_s": {
+      "const": 20,
+      "default": 20,
+      "title": "Post Event S",
+      "type": "integer"
+    },
+    "pre_event_s": {
+      "const": 5,
+      "default": 5,
+      "title": "Pre Event S",
+      "type": "integer"
+    },
+    "rate_bounds": {
+      "default": [
+        0,
+        1,
+        2,
+        4,
+        8,
+        16,
+        32,
+        64,
+        128,
+        256
+      ],
+      "items": {
+        "type": "integer"
+      },
+      "title": "Rate Bounds",
+      "type": "array"
+    },
+    "scalar_distance": {
+      "const": "symmetric_relative_max",
+      "default": "symmetric_relative_max",
+      "title": "Scalar Distance",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "0.4-similarity.1",
+      "default": "0.4-similarity.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "threshold_rule": {
+      "const": "min_1_max_005_125_times_calibration_max",
+      "default": "min_1_max_005_125_times_calibration_max",
+      "title": "Threshold Rule",
+      "type": "string"
+    }
+  },
+  "title": "SimilarityPolicy",
+  "type": "object"
+}

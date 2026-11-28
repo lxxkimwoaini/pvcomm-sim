@@ -58,6 +58,9 @@ class ObservationIndex:
                 "allocated_kw",
                 "unallocated_kw",
                 "targets_kw",
+                "quality_valid",
+                "outcome",
+                "excluded_observations",
             }
         )
         totals = dict(self.raw_totals)

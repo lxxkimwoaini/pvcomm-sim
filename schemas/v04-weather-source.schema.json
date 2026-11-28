@@ -1,0 +1,174 @@
+{
+  "$defs": {
+    "CloudShadow": {
+      "additionalProperties": false,
+      "properties": {
+        "center_s": {
+          "exclusiveMinimum": 0,
+          "title": "Center S",
+          "type": "number"
+        },
+        "half_width_m": {
+          "exclusiveMinimum": 0,
+          "title": "Half Width M",
+          "type": "number"
+        },
+        "model": {
+          "const": "advected_grey_optical_layer",
+          "title": "Model",
+          "type": "string"
+        },
+        "optical_depth": {
+          "exclusiveMinimum": 0,
+          "maximum": 10,
+          "title": "Optical Depth",
+          "type": "number"
+        },
+        "speed_m_s": {
+          "exclusiveMinimum": 0,
+          "title": "Speed M S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model",
+        "optical_depth",
+        "half_width_m",
+        "speed_m_s",
+        "center_s"
+      ],
+      "title": "CloudShadow",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "adapter": {
+      "const": "nasa_power_hourly_v1",
+      "title": "Adapter",
+      "type": "string"
+    },
+    "altitude_m": {
+      "title": "Altitude M",
+      "type": "number"
+    },
+    "cloud_shadow": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CloudShadow"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "coverage_end_exclusive": {
+      "format": "date-time",
+      "title": "Coverage End Exclusive",
+      "type": "string"
+    },
+    "coverage_start": {
+      "format": "date-time",
+      "title": "Coverage Start",
+      "type": "string"
+    },
+    "directory": {
+      "title": "Directory",
+      "type": "string"
+    },
+    "latitude": {
+      "maximum": 90,
+      "minimum": -90,
+      "title": "Latitude",
+      "type": "number"
+    },
+    "longitude": {
+      "maximum": 180,
+      "minimum": -180,
+      "title": "Longitude",
+      "type": "number"
+    },
+    "policy_url": {
+      "format": "uri",
+      "maxLength": 2083,
+      "minLength": 1,
+      "title": "Policy Url",
+      "type": "string"
+    },
+    "product_url": {
+      "format": "uri",
+      "maxLength": 2083,
+      "minLength": 1,
+      "title": "Product Url",
+      "type": "string"
+    },
+    "product_version": {
+      "minLength": 1,
+      "title": "Product Version",
+      "type": "string"
+    },
+    "retrieved_at": {
+      "format": "date-time",
+      "title": "Retrieved At",
+      "type": "string"
+    },
+    "sampling": {
+      "const": "hourly_mean_zero_order_hold",
+      "title": "Sampling",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "0.4-weather-source.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Sha256",
+      "type": "string"
+    },
+    "source_id": {
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+      "title": "Source Id",
+      "type": "string"
+    },
+    "source_kind": {
+      "const": "historical_satellite_reanalysis_not_field_measurement",
+      "title": "Source Kind",
+      "type": "string"
+    },
+    "source_start": {
+      "format": "date-time",
+      "title": "Source Start",
+      "type": "string"
+    },
+    "usage_basis": {
+      "minLength": 10,
+      "title": "Usage Basis",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "source_id",
+    "adapter",
+    "product_version",
+    "source_kind",
+    "usage_basis",
+    "policy_url",
+    "product_url",
+    "retrieved_at",
+    "directory",
+    "sha256",
+    "source_start",
+    "coverage_start",
+    "coverage_end_exclusive",
+    "latitude",
+    "longitude",
+    "altitude_m",
+    "sampling"
+  ],
+  "title": "HistoricalInput",
+  "type": "object"
+}

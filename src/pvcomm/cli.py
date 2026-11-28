@@ -4,6 +4,7 @@ import argparse
 import json
 import signal
 import sys
+import uuid
 from pathlib import Path
 
 from pvcomm import __version__
@@ -29,19 +30,169 @@ def main(argv: list[str] | None = None) -> int:
         "validate-power-config", help="validate V0.2/V0.3 power YAML"
     )
     validate_power.add_argument("--config", type=Path, required=True)
+    validate_weather = commands.add_parser(
+        "validate-weather-source", help="validate a versioned offline historical source descriptor"
+    )
+    validate_weather.add_argument("--config", type=Path, required=True)
     parse = commands.add_parser("parse", help="parse retained PCAP with TShark")
     parse.add_argument("--run-dir", type=Path, required=True)
     parse.add_argument("--parquet", action="store_true", help="also export versioned Arrow tables")
     qc = commands.add_parser("qc", help="independent protocol and physical verification")
     qc.add_argument("--run-dir", type=Path, required=True)
+    qc.add_argument(
+        "--profile",
+        choices=("normal", "experiment", "schedule", "fault", "labels"),
+        default="normal",
+    )
+    storage = commands.add_parser("storage-audit", help="read-only inventory and capacity budget")
+    storage.add_argument("--run-dir", type=Path, required=True)
+    storage.add_argument("--policy", type=Path, required=True)
+    archive = commands.add_parser("archive-lossless", help="verify gzip archive; retain source")
+    archive.add_argument("--source", type=Path, required=True)
+    archive.add_argument("--destination", type=Path, required=True)
     run = commands.add_parser("run", help="run configured real IEC 104 isolated/local lab")
     run.add_argument("--config", type=Path, required=True)
     run.add_argument("--output-root", type=Path, required=True)
     run.add_argument("--isolated", action="store_true", help="owned Linux namespace P0/P1 lab")
-    for name in ("label", "split", "features", "benchmark"):
-        reserved = commands.add_parser(name, help="not implemented in this development version")
-        reserved.add_argument("arguments", nargs=argparse.REMAINDER)
+    validate_scene = commands.add_parser(
+        "validate-scenario", help="validate and expand an explicit V0.4 business schedule"
+    )
+    validate_scene.add_argument("--config", type=Path, required=True)
+    run_scene = commands.add_parser(
+        "run-scenario", help="run an explicit V0.4 scene in the owned isolated Linux lab"
+    )
+    run_scene.add_argument("--config", type=Path, required=True)
+    run_scene.add_argument("--output-root", type=Path, required=True)
+    run_scene.add_argument("--run-id", help="optional unique identity; existing output is refused")
+    validate_fault = commands.add_parser(
+        "validate-fault-scenario", help="validate an Oracle-only single-fault configuration"
+    )
+    validate_fault.add_argument("--config", type=Path, required=True)
+    run_fault = commands.add_parser(
+        "run-fault", help="run a single fault only in the owned isolated Linux lab"
+    )
+    run_fault.add_argument("--config", type=Path, required=True)
+    run_fault.add_argument("--output-root", type=Path, required=True)
+    run_fault.add_argument("--run-id", help="optional unique identity; existing output is refused")
+    run_pair = commands.add_parser(
+        "run-pair", help="run and audit a frozen pair in the isolated lab"
+    )
+    run_pair.add_argument("--config", type=Path, required=True)
+    run_pair.add_argument("--output-root", type=Path, required=True)
+    label = commands.add_parser("label", help="derive evidence-linked Oracle labels; requires QC")
+    label.add_argument("--run-dir", type=Path, required=True)
+    catalogue = commands.add_parser(
+        "dataset-inventory", help="index existing evidence; no simulation"
+    )
+    catalogue.add_argument("--root", type=Path, action="append", required=True)
+    catalogue.add_argument("--dataset-dir", type=Path, required=True)
+    split = commands.add_parser("split", help="freeze source/date/pair groups before windows")
+    split.add_argument("--dataset-dir", type=Path, required=True)
+    split.add_argument("--config", type=Path)
+    dataset_qc = commands.add_parser("qc-dataset", help="independent exported dataset checks")
+    dataset_qc.add_argument("--dataset-dir", type=Path, required=True)
+    dataset_qc.add_argument("--scale", choices=("W10", "W30", "W60"))
+    for name in ("features", "benchmark"):
+        processing = commands.add_parser(name, help="offline causal dataset processing")
+        processing.add_argument("--dataset-dir", type=Path, required=True)
+        processing.add_argument("--mode", choices=("M0", "M1", "M2"), default="M2")
+        processing.add_argument("--scale", choices=("W10", "W30", "W60"))
+        if name == "benchmark":
+            processing.add_argument("--ablation", choices=("without-rule-proxies", "without-peer"))
     args, unknown = parser.parse_known_args(argv)
+    if args.command in ("dataset-inventory", "split", "features", "benchmark", "qc-dataset"):
+        if unknown:
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}")
+        from pvcomm.config.dataset import DatasetPolicy
+        from pvcomm.pipeline.dataset import inventory_runs, split_dataset
+
+        try:
+            if args.command == "dataset-inventory":
+                dataset_result = inventory_runs(args.root, args.dataset_dir)
+            elif args.command == "split":
+                dataset_policy = (
+                    DatasetPolicy.model_validate_json(args.config.read_bytes())
+                    if (args.config is not None)
+                    else DatasetPolicy()
+                )
+                dataset_result = split_dataset(args.dataset_dir, dataset_policy)
+            elif args.command == "features":
+                from pvcomm.pipeline.features import build_features
+
+                dataset_result = build_features(args.dataset_dir, args.mode, args.scale)
+            elif args.command == "qc-dataset":
+                from pvcomm.qc.dataset import qc_dataset
+
+                dataset_result = qc_dataset(args.dataset_dir, args.scale)
+            else:
+                from pvcomm.experiments.baselines import benchmark_dataset
+
+                dataset_result = benchmark_dataset(
+                    args.dataset_dir, args.mode, args.scale, args.ablation
+                )
+        except (OSError, ValueError, RuntimeError, ImportError, KeyError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(json.dumps(dataset_result, sort_keys=True))
+        return 0 if dataset_result.get("passed", True) else 1
+    if args.command == "label":
+        if unknown:
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}")
+        from pvcomm.pipeline.labels import label_run
+
+        try:
+            label_report = label_run(args.run_dir)
+        except (OSError, ValueError, RuntimeError, ImportError, KeyError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(json.dumps(label_report, sort_keys=True))
+        return 0
+    if args.command == "validate-weather-source":
+        if unknown:
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}")
+        from pvcomm.config.weather import HistoricalInput
+        from pvcomm.weather import open_historical_input
+
+        try:
+            weather_source = HistoricalInput.model_validate_json(args.config.read_bytes())
+            open_historical_input(weather_source).sample(0)
+        except (OSError, ValueError, KeyError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        print(
+            json.dumps(
+                {
+                    "valid": True,
+                    "source_id": weather_source.source_id,
+                    "adapter": weather_source.adapter,
+                    "sha256": weather_source.sha256,
+                }
+            )
+        )
+        return 0
+    if args.command in ("storage-audit", "archive-lossless"):
+        if unknown:
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}")
+        from pvcomm.storage.retention import (
+            RetentionPolicy,
+            archive_lossless,
+            inventory,
+            storage_budget,
+        )
+
+        try:
+            if args.command == "storage-audit":
+                if not args.run_dir.is_dir():
+                    raise ValueError("run directory does not exist")
+                policy = RetentionPolicy.model_validate_json(args.policy.read_bytes())
+                result = {"inventory": inventory(args.run_dir), "budget": storage_budget(policy)}
+            else:
+                result = archive_lossless(args.source, args.destination)
+        except (OSError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(json.dumps(result, sort_keys=True))
+        return 0
     if args.command == "validate-power-config":
         if unknown:
             parser.error(f"unrecognized arguments: {' '.join(unknown)}")
@@ -79,7 +230,52 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return 0
-    if args.command == "run":
+    if args.command == "validate-scenario":
+        if unknown:
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}")
+        from pvcomm.config.scenes import canonical_hash, load_scenario
+
+        try:
+            template = load_scenario(args.config)
+        except (OSError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        print(
+            json.dumps(
+                {
+                    "valid": True,
+                    "schema_version": template.schema_version,
+                    "config_sha256": canonical_hash(template.model_dump(mode="json")),
+                    "expanded_plan": [
+                        t.model_dump(mode="json") for t in template.expanded_schedule()
+                    ],
+                    "scope": "Oracle_configuration_not_M2",
+                }
+            )
+        )
+        return 0
+    if args.command == "validate-fault-scenario":
+        if unknown:
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}")
+        from pvcomm.config.faults import load_fault_scenario
+
+        try:
+            fault_template = load_fault_scenario(args.config)
+        except (OSError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        print(
+            json.dumps(
+                {
+                    "valid": True,
+                    "schema_version": fault_template.schema_version,
+                    "target_stations": fault_template.target_stations(),
+                    "scope": "Oracle_configuration_not_M2",
+                }
+            )
+        )
+        return 0
+    if args.command in ("run", "run-scenario", "run-fault", "run-pair"):
         if unknown:
             parser.error(f"unrecognized arguments: {' '.join(unknown)}")
         previous_sigterm = signal.getsignal(signal.SIGTERM)
@@ -89,15 +285,47 @@ def main(argv: list[str] | None = None) -> int:
 
         signal.signal(signal.SIGTERM, request_cancellation)
         try:
-            document = load_lab_document(args.config)
+            if args.command == "run-pair":
+                from pvcomm.config.pairs import PairConfig
+                from pvcomm.scenario.pairs import run_pair as execute_pair
+
+                pair = PairConfig.model_validate_json(args.config.read_bytes())
+                pair_dir = execute_pair(pair, args.output_root)
+                pair_state = json.loads((pair_dir / "pair-manifest.json").read_bytes())
+                print(json.dumps({"status": pair_state["status"], "pair_dir": str(pair_dir)}))
+                return 0 if pair_state["status"] == "completed" else 1
+            scenario = None
+            fault = None
+            isolated = args.command in ("run-scenario", "run-fault") or args.isolated
+            if args.command == "run-fault":
+                from pvcomm.config.faults import instantiate_fault, load_fault_scenario
+
+                fault = instantiate_fault(
+                    load_fault_scenario(args.config), args.run_id or f"run_{uuid.uuid4().hex}"
+                )
+                scenario = fault.background
+            if args.command == "run-scenario":
+                from pvcomm.config.scenes import instantiate_scenario, load_scenario
+
+                scenario = instantiate_scenario(
+                    load_scenario(args.config), args.run_id or f"run_{uuid.uuid4().hex}"
+                )
+            document = load_lab_document(args.config) if scenario is None else scenario.simulation
             power = document if not isinstance(document, V01Config) else None
             lab_config = power.protocol if power is not None else load_v01_config(args.config)
-            if power is not None and not args.isolated:
+            if power is not None and not isolated:
                 raise ValueError("physical simulation requires --isolated")
-            if args.isolated:
+            if isolated:
                 from pvcomm.scenario.isolated_runner import run_isolated
 
-                run_dir = run_isolated(lab_config, args.config, args.output_root, power=power)
+                run_dir = run_isolated(
+                    lab_config,
+                    args.config,
+                    args.output_root,
+                    power=power,
+                    scenario=scenario,
+                    fault=fault,
+                )
             else:
                 run_dir = V01Runner(lab_config, args.config, args.output_root).run()
         except (OSError, ValueError, RuntimeError, TimeoutError, ImportError) as exc:
@@ -136,7 +364,23 @@ def main(argv: list[str] | None = None) -> int:
         from pvcomm.qc.v01 import qc_run
 
         try:
-            if (args.run_dir / "power_config.json").exists():
+            if args.profile == "labels":
+                from pvcomm.qc.labels import qc_labels
+
+                report = qc_labels(args.run_dir)
+            elif args.profile == "fault":
+                from pvcomm.qc.fault import qc_fault
+
+                report = qc_fault(args.run_dir)
+            elif args.profile == "schedule":
+                from pvcomm.qc.schedule import qc_schedule
+
+                report = qc_schedule(args.run_dir)
+            elif args.profile == "experiment":
+                from pvcomm.qc.experiment import qc_experiment
+
+                report = qc_experiment(args.run_dir)
+            elif (args.run_dir / "power_config.json").exists():
                 from pvcomm.qc.power import qc_power
 
                 report = qc_power(args.run_dir)

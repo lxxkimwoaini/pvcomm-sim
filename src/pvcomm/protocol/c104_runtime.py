@@ -18,6 +18,9 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from pvcomm.config.lab import V01StationConfig
+from pvcomm.domain.command import CommandResult, ObservationUnavailable
+from pvcomm.protocol.confirmation import ConfirmationTracker, confirmations
+from pvcomm.protocol.terminal_faults import TerminalFaultRuntime
 
 RecordEvent = Callable[[str, dict[str, object]], None]
 RecordRaw = Callable[[str, str, bytes], None]
@@ -80,19 +83,24 @@ class C104StationEndpoint:
         record_raw: RecordRaw,
         state: StationModel | None = None,
         logical_elapsed: Callable[[float], float] | None = None,
+        fault: TerminalFaultRuntime | None = None,
     ) -> None:
         c104 = importlib.import_module("c104")
         self._c104 = c104
         self.config = config
         self._record_event = record_event
         self._record_raw = record_raw
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._logical_elapsed = logical_elapsed
+        self.fault = fault
+        self._reporting_mask: frozenset[int] = frozenset()
+        self._recovery_feedback: set[int] = set()
         self._active = False
         self._next_report_s = float(getattr(config, "telemetry_phase_s", 0))
         self._last_sent_power: float | None = None
         self._last_sent_running: bool | None = None
         now = time.monotonic()
+        self._next_startup_report_mono = now + float(getattr(config, "telemetry_phase_s", 0))
         self.state: StationModel = state or StationState(
             config=config,
             accepted_setpoint_kw=config.initial_setpoint_kw,
@@ -169,6 +177,63 @@ class C104StationEndpoint:
                 *self.extra_points.values(),
             ):
                 point.report_ms = 0
+        if fault is not None:
+            fault.bind(self.set_reporting_mask)
+
+    def measurement_points(self) -> dict[int, Any]:
+        return {
+            1001: self.power_point,
+            1002: self.reactive_point,
+            1003: self.voltage_point,
+            1006: self.accepted_setpoint_point,
+            2001: self.status_point,
+            **self.extra_points,
+        }
+
+    def set_reporting_mask(self, suppressed: frozenset[int]) -> list[int]:
+        """Suspend registration as well as explicit reports so GI cannot bypass a fault.
+
+        Point definitions and current physical values remain in this adapter;
+        restoration re-registers them through c104, never writes wire bytes.
+        """
+        with self._lock:
+            points = self.measurement_points()
+            selected = suppressed & points.keys()
+            for ioa in selected - self._reporting_mask:
+                if not self.station.remove_point(io_address=ioa):
+                    raise RuntimeError(f"c104 could not suspend reporting point {ioa}")
+                self._reporting_mask |= {ioa}
+            restored = self._reporting_mask - selected
+            for ioa in restored:
+                previous = points[ioa]
+                point = self.station.add_point(io_address=ioa, type=previous.type, report_ms=0)
+                if point is None:
+                    raise RuntimeError(f"c104 could not restore reporting point {ioa}")
+                point.value = previous.value
+                if ioa in self.extra_points:
+                    self.extra_points[ioa] = point
+                else:
+                    attr = {
+                        1001: "power_point",
+                        1002: "reactive_point",
+                        1003: "voltage_point",
+                        1006: "accepted_setpoint_point",
+                        2001: "status_point",
+                    }[ioa]
+                    setattr(self, attr, point)
+                self._reporting_mask -= {ioa}
+            self._reporting_mask = frozenset(selected)
+            if restored:
+                self._install_callbacks()
+                # Publish the current accepted target after recovery; otherwise a
+                # short A06 hold could leave IOA1006 absent until an unrelated GI.
+                self._recovery_feedback.update(restored & {1001, 1006})
+            registered = sorted(p.io_address for p in self.station.points)
+            if any(ioa in registered for ioa in selected) or any(
+                ioa not in registered for ioa in points.keys() - selected
+            ):
+                raise RuntimeError("c104 reporting registry readback mismatch")
+            return registered
 
     def _refresh_telemetry(self) -> None:
         points = {
@@ -186,9 +251,22 @@ class C104StationEndpoint:
             self.state.advance(now)
             self.power_point.value = self.state.actual_kw
             self._refresh_telemetry()
+            if self._active:
+                for ioa in sorted(self._recovery_feedback - self._reporting_mask):
+                    self.measurement_points()[ioa].transmit(cause=self._c104.Cot.SPONTANEOUS)
+                self._recovery_feedback.clear()
             if self._logical_elapsed is not None and self._active:
                 elapsed = self._logical_elapsed(now)
-                periodic = elapsed >= self._next_report_s and elapsed > 0
+                # Sequential GI/clock initialization can outlast the earliest
+                # station's freshness budget. Keep real telemetry alive while
+                # scene time/weather are held at zero; do not grant a label
+                # exemption or advance the scene's deterministic report phase.
+                startup = elapsed <= 0
+                periodic = (
+                    now >= self._next_startup_report_mono
+                    if startup
+                    else elapsed >= self._next_report_s
+                )
                 event = self._last_sent_power is not None and abs(
                     self.state.actual_kw - self._last_sent_power
                 ) >= self.config.capacity_kw * float(
@@ -207,13 +285,25 @@ class C104StationEndpoint:
                         self.status_point,
                         *self.extra_points.values(),
                     ):
-                        point.transmit(cause=cause)
+                        if point.io_address not in self._reporting_mask:
+                            point.transmit(cause=cause)
+                        else:
+                            self._record_event(
+                                "terminal_report_suppressed",
+                                {
+                                    "station_id": self.config.station_id,
+                                    "ioa": point.io_address,
+                                    "reason": "periodic" if periodic else "event",
+                                },
+                            )
                     self._last_sent_power, self._last_sent_running = self.state.actual_kw, running
                     self._record_event(
                         "terminal_telemetry_report",
                         {
                             "station_id": self.config.station_id,
-                            "reason": "periodic"
+                            "reason": "startup_periodic"
+                            if periodic and startup
+                            else "periodic"
                             if periodic
                             else "state_change"
                             if state_changed
@@ -222,18 +312,42 @@ class C104StationEndpoint:
                         },
                     )
                 if periodic:
-                    while self._next_report_s <= elapsed:
-                        self._next_report_s += self.config.telemetry_period_s
+                    if startup:
+                        while self._next_startup_report_mono <= now:
+                            self._next_startup_report_mono += self.config.telemetry_period_s
+                    else:
+                        while self._next_report_s <= elapsed:
+                            self._next_report_s += self.config.telemetry_period_s
 
     def _install_callbacks(self) -> None:
         c104 = self._c104
 
         def on_command(point: Any, previous_info: Any, message: Any) -> Any:
             target = float(point.value)
+
+            def complete_delayed() -> None:
+                result = apply_command(point, previous_info, target, message.cot.name)
+                if result != c104.ResponseState.SUCCESS:
+                    # The pinned public API provides lazy positive confirmations,
+                    # but no negative flag for a deferred control point response.
+                    # Fail the experiment rather than fabricate a positive ACK.
+                    raise RuntimeError("c104 cannot emit a deferred negative confirmation")
+                if abs(float(point.value) - target) > 1e-6:
+                    raise RuntimeError("pending command point changed before deferred confirmation")
+                if not point.transmit(cause=c104.Cot.ACTIVATION_CON):
+                    raise RuntimeError("deferred c104 confirmation transmission failed")
+
+            if self.fault is not None and self.fault.defer_response(complete_delayed):
+                return c104.ResponseState.NONE
+            return apply_command(point, previous_info, target, message.cot.name)
+
+        def apply_command(point: Any, previous_info: Any, target: float, cot: str) -> Any:
             with self._lock:
                 accepted = self.state.accept(target, time.monotonic())
                 if accepted:
                     self.accepted_setpoint_point.value = target
+                    if self.fault is not None:
+                        self.fault.accepted()
                 else:
                     point.info = previous_info
             self._record_event(
@@ -244,12 +358,13 @@ class C104StationEndpoint:
                     "ioa": point.io_address,
                     "target_kw": target,
                     "previous_value": getattr(previous_info, "value", None),
-                    "cot": message.cot.name,
+                    "cot": cot,
                     "accepted_setpoint_kw": self.state.accepted_setpoint_kw,
                 },
             )
             if accepted:
-                self.accepted_setpoint_point.transmit(cause=c104.Cot.SPONTANEOUS)
+                if 1006 not in self._reporting_mask:
+                    self.accepted_setpoint_point.transmit(cause=c104.Cot.SPONTANEOUS)
                 return c104.ResponseState.SUCCESS
             return c104.ResponseState.FAILURE
 
@@ -368,7 +483,9 @@ class C104Master:
         self._station_locks = {s.station_id: threading.Lock() for s in stations}
         self._command_sequence = 0
         self._observations: dict[tuple[str, int], tuple[float, float]] = {}
+        self._invalid_observations: set[tuple[str, int]] = set()
         self._observation_lock = threading.Lock()
+        self._confirmations = ConfirmationTracker()
 
     def _install_connection_callbacks(
         self, station_config: V01StationConfig, connection: Any
@@ -376,6 +493,7 @@ class C104Master:
         c104 = self._c104
 
         def on_state_change(connection: Any, state: Any) -> None:
+            self._confirmations.state(station_config.station_id, state.name)
             self._record_event(
                 "master_connection_state",
                 {"station_id": station_config.station_id, "state": state.name},
@@ -391,7 +509,27 @@ class C104Master:
         connection.on_state_change(on_state_change)
 
         def on_receive_raw(connection: Any, data: bytes) -> None:
+            received_ns = time.monotonic_ns()
             self._record_raw("master_receive", station_config.station_id, data)
+            for item in confirmations(data):
+                task_id = self._confirmations.observe(station_config.station_id, item, received_ns)
+                self._record_event(
+                    "master_command_confirmation",
+                    {
+                        "station_id": station_config.station_id,
+                        "task_id": task_id,
+                        "common_address": item.common_address,
+                        "ioa": item.ioa,
+                        "target_kw": item.target_kw,
+                        "positive_confirmation": item.positive,
+                        "matched": task_id is not None,
+                        "received_mono_ns": received_ns,
+                        "data_hex": item.data_hex,
+                        "connection_epoch": self._confirmations.epochs.get(
+                            station_config.station_id, 0
+                        ),
+                    },
+                )
 
         _set_callback_annotations(
             on_receive_raw,
@@ -490,19 +628,15 @@ class C104Master:
                 previous_info: Any,
                 message: Any,
             ) -> Any:
-                with self._observation_lock:
-                    self._observations[(station_config.station_id, point.io_address)] = (
-                        float(point.value),
-                        time.monotonic(),
-                    )
-                self._record_event(
-                    "master_observed_point",
-                    {
-                        "station_id": station_config.station_id,
-                        "ioa": point.io_address,
-                        "value": point.value,
-                        "cot": message.cot.name,
-                    },
+                quality = point.info.quality
+                value = float(point.value)
+                valid = quality is not None and quality.is_good() and math.isfinite(value)
+                self._publish_observation(
+                    station_config.station_id,
+                    point.io_address,
+                    value,
+                    bool(valid),
+                    message.cot.name,
                 )
                 return c104.ResponseState.SUCCESS
 
@@ -556,12 +690,47 @@ class C104Master:
             if not result:
                 raise RuntimeError(f"interrogation failed for {station_config.station_id}")
 
-    def recover(self, station_id: str) -> None:
+    def interrogate(
+        self, station_config: V01StationConfig, *, dispatch_id: str, raise_on_failure: bool = True
+    ) -> bool:
+        """Runtime GI, separate from startup clock synchronization and recovery."""
+        station_id = station_config.station_id
+        with self._station_locks[station_id]:
+            self._record_event(
+                "master_interrogation_requested",
+                {
+                    "station_id": station_id,
+                    "common_address": station_config.common_address,
+                    "dispatch_id": dispatch_id,
+                },
+            )
+            result = bool(
+                self._connections[station_id].interrogation(
+                    common_address=station_config.common_address,
+                    cause=self._c104.Cot.ACTIVATION,
+                    wait_for_response=True,
+                )
+            )
+            self._record_event(
+                "master_interrogation_result",
+                {"station_id": station_id, "dispatch_id": dispatch_id, "success": result},
+            )
+            if not result and raise_on_failure:
+                raise RuntimeError(f"runtime interrogation failed for {station_id}")
+            return result
+
+    def recover(self, station_id: str, *, raise_on_failure: bool = True) -> bool:
         connection = self._connections[station_id]
         deadline = time.monotonic() + 15
         while connection.state != self._c104.ConnectionState.OPEN:
             if time.monotonic() >= deadline:
-                raise TimeoutError(f"station did not recover: {station_id}")
+                self._record_event(
+                    "master_recovery_connection_result",
+                    {"station_id": station_id, "outcome": "connection_timeout", "success": False},
+                )
+                if raise_on_failure:
+                    raise TimeoutError(f"station did not recover: {station_id}")
+                return False
             time.sleep(0.05)
         station = next(s for s in self._stations if s.station_id == station_id)
         result = connection.interrogation(
@@ -576,8 +745,27 @@ class C104Master:
                 "success": result,
             },
         )
-        if not result:
+        if not result and raise_on_failure:
             raise RuntimeError("recovery interrogation failed")
+        return bool(result)
+
+    def suspend_for_maintenance(self, station_id: str) -> None:
+        """Drain actual STOPDT before an authorized endpoint shutdown.
+
+        A raw server.stop can abandon an in-flight S frame behind its closed
+        reader. This handshake is only for planned maintenance, never a fault.
+        """
+        connection = self._connections[station_id]
+        if not connection.mute():
+            raise RuntimeError(f"maintenance STOPDT failed: {station_id}")
+        self._wait_callback_states([station_id], "OPEN_MUTED")
+        connection.disconnect()
+        self._wait_callback_states([station_id], "CLOSED")
+        self._record_event("master_maintenance_connection_closed", {"station_id": station_id})
+
+    def resume_connection(self, station_id: str) -> None:
+        self._connections[station_id].connect()
+        self._record_event("master_maintenance_connection_requested", {"station_id": station_id})
 
     def send_setpoint(
         self,
@@ -586,11 +774,15 @@ class C104Master:
         action: str,
         *,
         dispatch_id: str | None = None,
-    ) -> None:
+        raise_on_failure: bool = True,
+    ) -> CommandResult:
         # IEC 104 does not carry task_id. Serialize local callers, including
         # repeated values/actions, until the protocol confirmation returns.
         with self._station_locks[station_config.station_id]:
-            self._send_setpoint(station_config, target_kw, action, dispatch_id=dispatch_id)
+            result = self._send_setpoint(station_config, target_kw, action, dispatch_id=dispatch_id)
+            if raise_on_failure and result.outcome != "accepted":
+                raise RuntimeError(f"command {result.outcome} for {station_config.station_id}")
+            return result
 
     def _send_setpoint(
         self,
@@ -599,18 +791,36 @@ class C104Master:
         action: str,
         *,
         dispatch_id: str | None = None,
-    ) -> None:
+    ) -> CommandResult:
+        if not math.isfinite(target_kw) or target_kw < 0:
+            raise ValueError("setpoint must be finite and nonnegative")
+        # c104's pybind setter distinguishes Python int from native float.
+        # Both are valid numeric kW inputs to this application API.
+        target_kw = float(target_kw)
         station = self._remote_stations[station_config.station_id]
         point = station.get_point(io_address=3001)
         if point is None:
             raise RuntimeError(f"command point missing for {station_config.station_id}")
-        observed_power = station.get_point(io_address=1001)
-        current_kw = float(observed_power.value) if observed_power is not None else 0.0
+        with self._observation_lock:
+            sample = self._observations.get((station_config.station_id, 1001))
+            valid = (station_config.station_id, 1001) not in self._invalid_observations
+        current_kw = (
+            sample[0]
+            if sample is not None
+            and valid
+            and 0 <= time.monotonic() - sample[1] <= station_config.telemetry_period_s * 2 + 1
+            else None
+        )
+        distance_kw = (
+            abs(target_kw - current_kw)
+            if current_kw is not None
+            else max(target_kw, abs(station_config.capacity_kw - target_kw))
+        )
         execution_s = max(
             10.0,
             min(
                 60.0,
-                abs(target_kw - current_kw) / station_config.ramp_kw_per_s
+                distance_kw / station_config.ramp_kw_per_s
                 + 2 * station_config.telemetry_period_s
                 + 1,
             ),
@@ -619,8 +829,18 @@ class C104Master:
         with self._command_lock:
             self._command_sequence += 1
             task_id = f"{station_config.station_id}-{self._command_sequence:09d}-{action}"
+        sent_ns, sent_utc_ns = time.monotonic_ns(), time.time_ns()
+        outcome = self._confirmations.begin(
+            station_config.station_id,
+            task_id,
+            station_config.common_address,
+            target_kw,
+            sent_ns,
+            sent_ns + 3_000_000_000,
+        )
+        epoch = self._confirmations.epochs.get(station_config.station_id, 0)
         self._record_event(
-            "master_command_sent",
+            "master_command_sent" if outcome is None else "master_command_not_sent",
             {
                 "station_id": station_config.station_id,
                 "ioa": 3001,
@@ -630,9 +850,20 @@ class C104Master:
                 "dispatch_id": dispatch_id,
                 "deadline_ms": 3000,
                 "execution_deadline_ms": math.ceil(execution_s * 1000),
+                "sent_mono_ns": sent_ns if outcome is None else None,
+                "sent_utc_ns": sent_utc_ns if outcome is None else None,
+                "connection_epoch": epoch,
+                "current_power_kw": current_kw,
+                "execution_basis": "fresh_observed_power"
+                if current_kw is not None
+                else "configured_capacity_bound",
             },
         )
-        result = point.transmit(cause=self._c104.Cot.ACTIVATION)
+        stack_result = None
+        positive = None
+        if outcome is None:
+            stack_result = bool(point.transmit(cause=self._c104.Cot.ACTIVATION))
+            outcome, positive = self._confirmations.finish(station_config.station_id)
         self._record_event(
             "master_command_response",
             {
@@ -640,24 +871,52 @@ class C104Master:
                 "task_id": task_id,
                 "ioa": 3001,
                 "target_kw": target_kw,
-                "positive_confirmation": result,
+                "positive_confirmation": positive,
+                "stack_result": stack_result,
+                "outcome": outcome,
+                "connection_epoch": epoch,
                 "dispatch_id": dispatch_id,
                 "execution_reached": None,
             },
         )
-        if not result:
-            raise RuntimeError(f"command was not accepted for {station_config.station_id}")
+        return CommandResult(
+            task_id, station_config.station_id, outcome, positive, stack_result, epoch
+        )
+
+    def _publish_observation(
+        self, station_id: str, ioa: int, value: float, valid: bool, cot: str
+    ) -> None:
+        # A concurrent allocator must not consume a point before its available_at
+        # evidence has been published. Writer failure leaves the old cache intact.
+        with self._observation_lock:
+            self._record_event(
+                "master_observed_point",
+                {
+                    "station_id": station_id,
+                    "ioa": ioa,
+                    "value": value if math.isfinite(value) else None,
+                    "cot": cot,
+                    "quality_valid": valid,
+                },
+            )
+            key = (station_id, ioa)
+            if valid:
+                self._invalid_observations.discard(key)
+            else:
+                self._invalid_observations.add(key)
+            self._observations[key] = (value, time.monotonic())
 
     def available_power(self, station_config: V01StationConfig) -> float:
         with self._observation_lock:
             sample = self._observations.get((station_config.station_id, 1008))
-        if (
-            sample is None
-            or time.monotonic() - sample[1] > station_config.telemetry_period_s * 2 + 1
-        ):
-            raise RuntimeError(
-                f"missing/stale observed availability for {station_config.station_id}"
-            )
+            invalid = (station_config.station_id, 1008) in self._invalid_observations
+        if sample is None:
+            raise ObservationUnavailable(station_config.station_id, "missing")
+        if invalid or not math.isfinite(sample[0]) or sample[0] < 0:
+            raise ObservationUnavailable(station_config.station_id, "invalid")
+        age = time.monotonic() - sample[1]
+        if age < 0 or age > station_config.telemetry_period_s * 2 + 1:
+            raise ObservationUnavailable(station_config.station_id, "stale")
         return sample[0]
 
     def stop(self) -> None:

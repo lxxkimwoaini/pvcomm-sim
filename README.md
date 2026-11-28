@@ -2,9 +2,31 @@
 
 分布式光伏电力—通信联合仿真平台。研究依据为 [V1.3 方案](docs/分布式光伏电力—通信联合仿真数据集构建方案_V1.3.md) 和 [AGENTS.md](AGENTS.md)。
 
-当前版本为 0.3.0.dev0，**V0.3 多站点开发门禁已通过**：完成3→10→20→30站逐级实跑，以及30站、3通信区域、3600秒电力—通信联合仿真和关闭Web/实时监测/历史回放资源验收。保留已验收的V0.0基础、V0.1真实协议和V0.2三站物理复现能力；当前提供配置驱动多站点、真实c104、pvlib/pandapower、独立P0/P1、Arrow、独立QC及M2只读工作台。未发布正式科研数据集或异常检测结果。实测、适用边界和复现方式见 [V0.3验收报告](docs/reports/2026-11-25-v03-acceptance.md) 及 [进度](docs/progress.md)。
+V1.0首批正式数据当前推荐WSL `/var/lib/pvcomm/datasets/pvcomm_v1.0_s2`：107次有效三站运行，六类各1次新独立测试阳性，W10/W30/W60各13项独立QC及44文件SHA核验通过。W60暂未覆盖A02短事件的采样终点，该快照正常累计3.135小时。2026-11-27 15:02实际生产已完成21/21独立测试任务、0失败，本地24小时正常队列已启动；新完成原件尚待导出下一快照，不倒填s2。实验室服务器已通过三站部署验证，另启动不同日期的一小时正常片段，见[服务器指南](docs/lab-server.md)；运行中时长不算已验收数据，168小时未完成。最新覆盖见[交付报告](docs/reports/2026-11-27-v10-first-delivery.md)和[进度](docs/progress.md)。[生产与增量导出指南](docs/v10-dataset.md)给出续跑命令；正式独立测试不用于调参或方法选择。下文V0.5.1为已经完成的开发数据。
+
+V0.5.1已交付可训练的开发评估数据集，推荐目录为WSL `/var/lib/pvcomm/datasets/v051_prerelease_s1`。复用106次有效运行、8来源组，W10/W30/W60分别62,820/55,620/9,036个窗口，共用冻结来源分层划分。三个尺度均通过13项独立QC，已执行M0/M1/M2固定基线及规则代理、跨站特征消融；[验收报告](docs/reports/2026-11-27-v051-quality.md)、[训练复现指南](docs/v051-dataset.md)、[数据字典](docs/data-dictionary-v051.md)给出实际结果和读取命令。小规模V0.4已收尾，不重复机制验收或扩展平台。
+
+V0.5.1三站训练/验证/测试均有正常和阳性样本；W10可评估站点事件43/20/4，W60为24/2/1。该开发版测试缺少A01/A02/A04阳性事件，M2表现强烈依赖业务规则代理，十站只作共享来源诊断；这些结果不证明六类泛化、算法创新或稳定跨站增益。所有性能仅用于开发；V1.0另行冻结未参与开发决策的独立来源。V0.5.1交付当时未生成新仿真、未启动24/168小时，其历史限制已由当前正式生产授权替代。历史V0.5目录 `/var/lib/pvcomm/datasets/v05_prerelease_s3`、原划分及[报告](docs/reports/2026-11-27-v05-prerelease.md)完整保留，9,036个W60控制窗口的特征、标签和规则逐行核验一致。
+
+**永久默认3站、最多10站**；取消30站强制验收及续跑、720小时、40次/类和剩余228项要求。完整优先级见[正式科研范围调整](docs/research-scope-2026-11-27.md)。接受统计匹配0，业务对照有效成员可入库，不改阈值。正常168小时按约1小时、24小时、一周渐进，不阻塞首版训练流程。
 
 ## 安装与复现
+
+V0.4新增受控科研实验队列：单独的Oracle页面可提交既有模板、查看队列和质量/标签；默认仍为M2观测，特权运行由独立Linux执行器执行。首切片已通过真实API→c104及启用态浏览器验证，见[报告](docs/reports/2026-11-26-v04-workbench-request.md)。证据定位、标签时间轴及逐文件导出已通过真实原件浏览器验证，见[证据报告](docs/reports/2026-11-26-v04-workbench-evidence.md)。配对遥测曲线、因果游标及固定流量统计交互已通过真实原件浏览器验证，见[配对回放报告](docs/reports/2026-11-26-v04-pair-replay.md)，不代表原V1.3大规模V0.4整体验收；调整后小规模收尾见页首。
+
+```sh
+# 授权实验Linux，本地API只排队，不创建网络资源。
+export PVCOMM_EXPERIMENT_ROOT=/var/lib/pvcomm/runs/web_requests_new
+export PVCOMM_SIMILARITY_POLICY="$PWD/configs/v0.4-similarity-policy.json"
+export PVCOMM_SIMILARITY_CALIBRATION="$PWD/configs/v0.4-similarity-calibration-dev.json"
+# 使用当前实验环境的python，绑定本机。
+python -m uvicorn pvcomm.web.app:create_app --factory --host 127.0.0.1 --port 8000
+# 在已冻结且干净的源码目录，另一个授权Linux终端消费最多一项；无请求不生成仿真数据。
+PVCOMM_ALLOW_LAB=1 PYTHONPATH=src python scripts/run_v04_requests.py \
+ --root /var/lib/pvcomm/runs/web_requests_new --maximum-jobs 1
+```
+
+未配置实验根目录时提交禁用；未配置成对冻结的相似性策略/校准文件时配对提交禁用。每项请求保存矩阵和哈希，执行复用既有run_batch。执行器`--resume`只用于保留预算内的中断续跑，完成任务不重跑。网页不接受任意路径、脚本或命令；请求和标签接口均在`/api/diagnostics/experiments`，不能作为M2数据源。
 
 工具：uv 0.11.13、Python 3.11.15、Node 24.14.0、pnpm 11.5.1。Windows PowerShell 和 Linux 均可执行以下命令：
 
@@ -26,7 +48,7 @@ pnpm --dir frontend dev
 
 打开终端显示的本地前端地址，粘贴 `configs/foundation.yaml` 并校验。前端通过本机 Vite 代理调用真实后端，不生成任何遥测。网页关闭不影响独立后端。
 
-有 GNU make 时可用 `make bootstrap lint typecheck test web-test web-build schemas`。Windows 没有 make 时使用等价 `uv run python scripts/dev.py <target>`，完整说明见 [开发指南](docs/development.md)。`run`/`parse` 已实现实验入口；`label/split/features/benchmark` 尚未实现，明确退出 3。
+有 GNU make 时可用 `make bootstrap lint typecheck test web-test web-build schemas`。Windows 没有 make 时使用等价 `uv run python scripts/dev.py <target>`，完整说明见 [开发指南](docs/development.md)。`run`/`parse` 已实现实验入口；`label` 已实现证据关联的Oracle分层标签（需要先完成QC）；`dataset-inventory`、`split`、`features`、`qc-dataset`及`benchmark`提供离线数据生产入口，见[V0.5复现指南](docs/v05-dataset.md)。
 
 V0.1 仅在授权的 WSL Linux 实验环境运行，使用已安装的 `.venv-wsl`：
 
@@ -101,6 +123,8 @@ uv run --frozen python scripts/dev.py power-test
 
 ## V0.3 多站点开发验收
 
+本节保留历史结果和配置说明。当前执行范围为3～10站，禁止再次启动20/30站实验。
+
 配置驱动 N 站点、区域聚合/独立接入链路、与通信分组独立的电气馈线、空间平流云影、差异周期/死区/事件上送、区域分批调控与显式资源不足反馈。参数均为仿真假设，非辉县现场配置。历史小时背景和模型生成秒级扰动严格区分；固定 available_kw 仍仅用于 V0.1 回归。
 
 ```sh
@@ -114,4 +138,120 @@ uv run --frozen python scripts/dev.py power-test
 
 Web继续只读实际M2，新增区域覆盖率、配置双拓扑、空间遥测、区域任务、原始回调计数、联合游标事件分页及曲线min/max降采样；原始Arrow/科学数据不降采样。资源诊断位于独立 `/api/diagnostics/runs/{key}/resources`，不进入M2输入。主站图中缺测不读取truth补齐，累计回调数不冒称独立解析APDU数。
 
-本机完整证据备份为`outputs/v03_hour_s8_backup`（Git忽略，非仓库下载内容），设置PVCOMM_RUN_ROOT为该父目录即可只读查看。720小时按当前实测及1.5余量估算约1.494TB，备份另计；现场校准、正式数据参数冻结、并发吞吐验证及V0.4均未开展。
+本机完整证据备份为`outputs/v03_hour_s8_backup`（Git忽略，非仓库下载内容），设置PVCOMM_RUN_ROOT为该父目录即可只读查看。原720小时约1.494TB预算保留在历史报告，当前不执行此目标。场景/配对/标签后续已有验收，小规模V0.4已收尾；当前数据生产及算法结果见[V0.5报告](docs/reports/2026-11-27-v05-prerelease.md)。现场校准仍未开展。
+
+## V0.4a 开发入口
+
+实施边界与分阶段门禁见 [V0.4计划](docs/plans/2026-11-26-v04.md)，实际验证见 [V0.4a记录](docs/reports/2026-11-26-v04a-acceptance.md)，正常场景计划见 [V0.4b计划](docs/plans/2026-11-26-v04b-normal-scenes.md)。正常验收仍使用默认 `qc --profile normal`。独立实验质量入口 `qc --profile experiment` 仅评估运行完整性和数据质量，并保留正常业务失败结果；其通过不代表故障施加、业务标签或整个V0.4验收通过。
+
+```sh
+.venv-wsl/bin/python -m pvcomm.cli qc --profile experiment --run-dir <new_parsed_run>
+uv run pvcomm storage-audit --run-dir <existing_run> --policy configs/retention-development.json
+uv run pvcomm archive-lossless --source <retained_file> --destination <new_archive_directory>
+uv run pvcomm validate-weather-source --config <historical_source_descriptor.json>
+```
+
+存储审计只读，归档保留原件并核验解压SHA256，禁止删除源文件。新气象描述符支持显式日期、位置和产品版本，当前仅实现离线NASA POWER小时数据适配；旧0.2/0.3配置及哈希保持可复现。新来源必须具备完整原始数据、许可/引用快照与哈希。未接入独立M3来源。N01–N10三站开发覆盖见下文；P0故障、配对标签与任务队列按后续切片验收；`label`的新入口及当前验收边界见文末。
+
+
+## V0.4b 显式正常业务计划（三站开发验收通过）
+
+新增 `0.4-scenario.1` 组合契约，单站设定值、站点子集分配及运行中总召唤共用现有通信路径；空计划不发送旧固定限发/解除指令。旧 `run` 行为保留。来源组、场景代码、配对信息和完整未来计划只存诊断侧。N01～N10已完成21项三站真实开发用例及v2严格复核；正式异常、配对和标签随后完成，见后续各切片记录。
+
+```sh
+uv run python scripts/make_normal_scenario.py --scene N04 --variant 1 --output outputs/new-normal.yaml
+uv run pvcomm validate-scenario --config outputs/new-normal.yaml
+# 以下需要授权Linux、归档历史输入和protocol/power/data依赖：
+PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli run-scenario --config configs/v0.4b-steady.yaml --output-root /var/lib/pvcomm/runs/NEW_ROOT
+PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli parse --run-dir <实际返回运行目录> --parquet
+PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli qc --profile schedule --run-dir <实际返回运行目录>
+```
+
+运行默认分配不含场景代码的唯一ID，已有目录拒绝覆盖。`qc --profile schedule`核验实际计划和独立证据，保留旧normal回归结果；不是异常标签。历史输入继续使用归档NASA小时背景，云影为显式模型扰动，未进行现场高频校准。实测26,132个完整APDU全部匹配、工具丢包0、日志P99最大3.840095ms；兼容回归及新CLI全链路通过。完整运行清单、来源组映射和边界见[覆盖报告](docs/reports/2026-11-26-v04b-normal-coverage.md)与[实施计划](docs/plans/2026-11-26-v04b-normal-scenes.md)。下一切片为[单故障机制](docs/plans/2026-11-26-v04c-single-faults.md)，不将三站正常覆盖冒称完整V0.4验收。
+
+## V0.4c A01（三站机制开发验收通过）
+
+新增独立故障外层及A01自有桥端口中断，站点/子集/区域/全局范围共用运行器；不停止电力模型。操作前后实际读回、失败及finally撤销保存在Oracle，M2不读取故障计划。A02结果见下文；A04/A05/A06/A08统一终端机制已实现，冻结真实矩阵验收见文末。
+
+A01运行另需Linux `strace`，只跟踪本次隔离端点的固定socket调用，证据存Oracle；用于区分c104写入前回调与实际接口发送。严格正常QC和解析/丢包/对齐门槛保留，规则见[ADR0017](docs/decisions/0017-v04-prewrite-testfr-evidence.md)。
+
+```sh
+uv run python scripts/make_fault_scenario.py --scope station --stations PV01 --duration 5 --variant 0 --output outputs/new-fault.yaml
+uv run pvcomm validate-fault-scenario --config outputs/new-fault.yaml
+# 以下仅限授权隔离Linux及已有真实协议/物理/Arrow环境：
+PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli run-fault --config outputs/new-fault.yaml --output-root /var/lib/pvcomm/runs/NEW_FAULT_ROOT
+PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli parse --run-dir <实际返回运行目录> --parquet
+PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli qc --profile fault --run-dir <实际返回运行目录>
+```
+
+`fault` profile核验实验质量和A01施加事实，单列真实影响与恢复，不生成正式业务异常标签。五项真实运行覆盖5/20/60秒及单站/子集/区域/全局，P0共8190/8190完整APDU、20路工具drop0、日志P99最大21.352394ms；取消1项、旧版兼容5项、正常N01/N09对照2项均通过。v4独立QC及恢复后真实总召唤复核通过，运行和核验SHA分别记录；原失败和正常门禁保留。
+
+完整清单、实际证据、限制和复现见[A01报告](docs/reports/2026-11-26-v04c-a01-acceptance.md)及[ADR0016](docs/decisions/0016-v04-owned-link-interruption.md)。A01不再重复设计；后续只做必要兼容回归。
+
+## V0.4c A02（三站机制开发验收通过）
+
+A02支持真实单向附加200/1000/3000ms及站点、子集、区域、全局作用范围，选中链路的原基线队列置于P0/P1之间的自有透明内部段。tc change保留qdisc/队列，施加、撤销和排空独立读回；独立QC从真实双端APDU测量时延并核验恢复GI。原采集点、正常网络、真实协议/物理模型及M2/Oracle隔离保留。具体实现及首轮失败修复见[ADR0018](docs/decisions/0018-a02-owned-netem-delay.md)。
+
+```sh
+uv run python scripts/make_fault_scenario.py --fault-type A02 --scope station --stations PV01 --delay-ms 200 --direction master_to_rtu --output outputs/new-a02.yaml
+uv run pvcomm validate-fault-scenario --config outputs/new-a02.yaml
+# 授权隔离Linux中运行，parse/QC命令与上节相同：
+PYTHONPATH=src .venv-wsl/bin/python -m pvcomm.cli run-fault --config outputs/new-a02.yaml --output-root /var/lib/pvcomm/runs/NEW_A02_ROOT
+```
+
+六项真实用例通过，P0完整APDU10996/10996、24路工具drop0、日志P99最大27.229112ms；双向内核探针、取消及旧版真实协议兼容均通过。10个恢复GI完整；四次高档确认超时如实保留，低/中档正常完成时不强标异常。完整清单、来源、冻结SHA和复现见[A02验收报告](docs/reports/2026-11-26-v04c-a02-acceptance.md)。上述A02运行原报告的label_quality仍为not_evaluated；后续标签按独立版本写入，不改写原报告。后续切片及当前状态见文末，原大规模V0.4未全部通过，调整后小规模收尾已完成。
+
+
+## V0.4c终端机制与V0.4d配对/标签（三站开发切片已验收）
+
+A04暂停日常测量全集的周期/事件/总召唤上送，保留已接受设定值1006；A06仅在实际接受命令后暂停1001/1006调控反馈，其他日常遥测继续。A05通过有界待处理槽与c104延后确认支持实际延后处理，A08在授权维护后保持业务数据未恢复。四类复用同一终端控制、读回、撤销、运行器及独立QC。A08首片为单站，后续分组/区域/混合恢复已通过，见下方分组维护报告。
+
+四类各三档真实运行通过，P0完整APDU共22,420/22,420，48路工具drop为0。P03/P04/P06及维护恢复失败四组配对八成员通过，完整APDU共15,021/15,021。标签v2及独立QC v3核验34份去重运行，共99 valid和3 invalid站点标签，失败原件保留。该首切片标签在Oracle的`labels/v04-label-v2/`、QC在`qc/v04-label-qc-v3/`；当前版本为下节v3/v4。实际清单见[配对报告](docs/reports/2026-11-26-v04d-paired-experiments.md)、[标签质量报告](docs/reports/2026-11-26-v04d-label-quality.md)及`docs/progress.md`。
+
+```bash
+uv run --group data pvcomm label --run-dir <已有机制或正常场景QC的run目录>
+uv run --group data pvcomm qc --run-dir <run目录> --profile labels
+uv run python scripts/make_pair_scenario.py --pair-type P04 --pair-id pair_unique_001 --output outputs/pair_unique_001.json
+# 仅在授权隔离Linux环境、已归档气象及冻结clean代码下运行
+PVCOMM_ALLOW_LAB=1 .venv-wsl/bin/python -m pvcomm.cli run-pair --config outputs/pair_unique_001.json --output-root /var/lib/pvcomm/runs/pairs
+```
+
+配对拒绝共享条件变化和重复输出，分别执行原运行器、解析、Arrow、正常/故障QC、标签及标签QC。保留固定流量统计距离和0匹配结果，不修改阈值。缺独立信息的M3仍未实现；720小时目标已取消，特征、分组划分和轻量基线已在V0.5实际执行，见页首入口。
+
+
+## V0.4 配对及标签复核接续
+
+当前接续计划见 [V0.4完成计划](docs/plans/2026-11-26-v04-completion.md)。配对QC v2把逐目标站业务对照及非目标站正常结果纳入总门禁，独立报告数据质量。标签生成当前另写`labels/v04-label-v3`，QC另写`qc/v04-label-qc-v4`；前文v2/v3为历史验收结果。新增迟到正/否确认、反馈交付与电气执行恢复、同点后续事务覆盖字段，见ADR0021及数据字典。已有原件可用`uv run --group data python scripts/recheck_v04_pairs.py --pair-dir <原配对目录> --output <新账本文件>`版本化复核，拒绝覆盖。原规模和统计匹配强制门禁已由用户取消，失败历史保留；V0.5已启动并完成首版处理。
+
+六组12次独立正常重复校准已完成，36个站点标签均valid/false，固定60项阈值保存在`configs/v0.4-similarity-calibration-dev.json`。原四组配对在同一规则下有效4/4、业务对照4/4、统计匹配0/4；保留全部未匹配样本，见[校准与回顾性报告](docs/reports/2026-11-26-v04-similarity-calibration.md)。没有根据匹配率放宽阈值。
+
+串行批量入口复用现有仿真/配对、解析、Arrow、标签和QC，支持有限重试、失败证据、任务级续跑及哈希检查。预声明四类型各三组已完成真实复验，结果见下方；40次/类要求已取消。以下只保留历史复现入口：
+
+```bash
+# 必须在已授权隔离Linux、clean冻结源码和历史气象输入就绪时执行。
+PVCOMM_ALLOW_LAB=1 PYTHONPATH=src .venv-wsl/bin/python scripts/run_v04_batch.py \
+  --matrix configs/v0.4-pair-repeat-matrix.json --output /var/lib/pvcomm/runs/NEW_BATCH
+# 中断续跑使用同一冻结源码和同一矩阵；不会恢复到协议运行中途。
+PVCOMM_ALLOW_LAB=1 PYTHONPATH=src .venv-wsl/bin/python scripts/run_v04_batch.py \
+  --matrix configs/v0.4-pair-repeat-matrix.json --output /var/lib/pvcomm/runs/NEW_BATCH --resume
+```
+
+场景.2支持显式站点组/区域维护，故障目标可为维护成员子集；旧场景.1序列化和哈希保持兼容。A08三站区域/站点组及混合恢复三项真实复验通过，见[分组维护报告](docs/reports/2026-11-26-v04-grouped-maintenance.md)。串行队列两项真实运行及完成后续跑通过，见[队列验证报告](docs/reports/2026-11-26-v04-batch-pipeline.md)。固定12组独立配对复验已结束：9组有效且业务对照成立、统计匹配0；失败和未匹配原件全部保留，详见[复验报告](docs/reports/2026-11-26-v04-pair-repeats.md)。
+
+历史六类异常构造器和各40次矩阵保留，默认三站72组模板规范哈希与8519edb一致，历史设计见ADR0025。当前已取消scale-30、coverage和40次要求，十站证据直接复用，不再运行旧覆盖队列。下列为历史接口示例，不是本轮执行任务：
+
+```bash
+# 历史十站矩阵接口；已验收证据直接复用，不重复运行。
+uv run --frozen python scripts/create_v04_fault_matrix.py --stage scale-10 --output outputs/NEW_SCALE_MATRIX.json
+# 使用冻结代码和真实历史输入，输出目录必须首次使用。
+PVCOMM_ALLOW_LAB=1 PYTHONPATH=src .venv-wsl/bin/python scripts/run_v04_batch.py \
+  --matrix outputs/NEW_SCALE_MATRIX.json --output /var/lib/pvcomm/runs/NEW_SCALE_BATCH
+```
+
+受控Web提交与诊断查询已建立。十站六类门禁通过；三十站首轮A02/A06/A08通过，A01/A04/A05质量失败，原件保留，详见[首轮规模报告](docs/reports/2026-11-26-v04-scale30-first-pass.md)。剩余重复覆盖要求已取消，不再追加规模实验；历史有限并发结论见进度，不以队列结束代替QC通过。
+
+六表Arrow现按4096行转换及逐行回读比较；标签使用临时磁盘索引按站点访问原始证据，标签schema与判据保持v3。可在保留运行上比较列表与索引路径，原标签/QC不覆盖：`uv run --frozen --group data python scripts/profile_v04_evidence.py --run-dir <运行目录> --mode indexed --output <新报告目录>`；`--mode list`提供同一代码下的兼容比较。该测量的Python分配峰值不等于进程RSS或全流程峰值。
+
+Linux队列支持`--measurements <独立新目录>`采样控制器及其子进程CPU/RSS/IO、活动任务的PDML/解析及标签索引临时字节；1秒采样的峰值为观测下界。完整小运行归档验证入口为`uv run --frozen python scripts/profile_v04_archive.py --run-dir <已完成运行> --output <独立新归档目录>`，逐文件解压校验并保留所有来源。上述入口不授权删除来源或生成720小时数据。
+
+科研工作台提供受限场景提交、队列/覆盖、实际QC、标签分层时间轴、SHA核验的原记录/PCAP帧定位及终态运行逐文件导出。M2默认入口与Oracle明确分离。服务端设置`PVCOMM_EXPERIMENT_ROOT`至受控请求根；Linux消费者通过`scripts/run_v04_requests.py`执行，Web不直接运行网络命令。配对回放可额外设置`PVCOMM_PAIR_REPLAY_ROOT`为只读历史批次根（含`trial_*/attempt_*/pair_*`），在Oracle页面选择配对、站点、遥测指标及场景秒游标；缺失观测不补真值。固定统计窗口结束前隐藏事后统计；未匹配与失败原件保留。此切片不代表V0.4整体通过。见[API契约](docs/api.md)与[配对回放验证](docs/reports/2026-11-26-v04-pair-replay.md)。
